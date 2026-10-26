@@ -1,6 +1,6 @@
 /* Gamins de Talus — calendrier : mois, semaine (saisie des heures), agenda et bilan des heures.
    On y voit les heures travaillées, les jours off et vacances, les événements (travail, récolte, livraison,
-   vente…, récurrents ou non), les échéances des tâches et des factures, et les cultures en place. */
+   vente…, récurrents ou non) et les échéances des tâches et des factures. */
 'use strict';
 
 const heuresToutes = () => DB.all('h:');
@@ -10,7 +10,7 @@ const CAL = { mois: '', calques: (() => { try { return JSON.parse(ls.get('gdt-ca
 const hKey = (date, p) => `h:${date}:${p}`;
 const EV_TYPES = [
   { k: 'travail', label: 'Journée de travail', court: 'Travail' },
-  { k: 'recolte', label: 'Récolte', court: 'Récolte' },
+  { k: 'recolte', label: 'Chantier de récolte', court: 'Récolte' },
   { k: 'livraison', label: 'Livraison', court: 'Livraison' },
   { k: 'vente', label: 'Vente ou marché', court: 'Vente' },
   { k: 'vacances', label: 'Vacances ou congé', court: 'Vacances' },
@@ -51,12 +51,6 @@ function itemsPeriode(de, a) {
   for (const f of factures()) { const s = facStatut(f); if ((s === 'ouverte' || s === 'retard') && f.echeance >= de && f.echeance <= a) add(f.echeance, { kind: 'facture', key: f.key, titre: `Échéance ${f.numero} · ${f.client.nom}`, montant: f.total }); }
   for (const h of heuresToutes()) if (h.date >= de && h.date <= a) add(h.date, { kind: 'heures', personne: h.personne, heures: num(h.heures), off: !!h.off });
   return jours;
-}
-function culturesEnPlace(de, a) {
-  const out = [];
-  const all = DB.all('cul:').sort((x, y) => String(x.saison).localeCompare(String(y.saison)) || (x.ordre || 0) - (y.ordre || 0));
-  all.forEach((c, i) => { const p = periodeCulture(c); if (p && p.debut <= a && p.fin >= de) out.push({ c, p, couleur: couleurCulture(c, i) }); });
-  return out;
 }
 
 /* ---------- Module ---------- */
@@ -125,19 +119,7 @@ function renderMois() {
       <span class="top"><span class="dn">${Number(d.slice(8))}</span>${wd === 0 ? `<span class="wk">S${semaineISO(d).semaine}</span>` : ''}<span class="hrs">${hrs}</span></span>
       <span class="chips">${chips.slice(0, max).join('')}${plus}</span><span class="dots">${chips.slice(0, 6).map((c) => `<span class="dot" style="${(c.match(/style="([^"]+)"/) || [, ''])[1]}"></span>`).join('')}</span></button>`;
   }
-  // Bandeau des cultures en place ce mois-ci (jour 1 à fin du mois)
-  const cul = L.cultures ? culturesEnPlace(premier, dernier) : [];
-  const col = (d) => (d < premier ? 1 : d > dernier ? nbJours : Number(d.slice(8)));
-  const strip = cul.length ? `<div class="cstrip" style="--n:${nbJours}"><div class="cs-head"><span class="cs-title">Cultures en place</span><span class="cs-days">${Array.from({ length: nbJours }, (_, i) => { const d = `${CAL.mois}-${String(i + 1).padStart(2, '0')}`, wd = (new Date(d + 'T12:00').getDay() + 6) % 7; return `<span class="${d === today ? 't' : ''}${wd >= 5 ? ' we' : ''}">${i + 1}</span>`; }).join('')}</span></div>
-    ${cul.map(({ c, p, couleur }) => {
-      const s = col(p.debut), e = col(p.fin);
-      const rs = p.recolteDebut && p.recolteDebut <= dernier ? col(p.recolteDebut) : null;
-      return `<div class="cs-row"><span class="cs-name" title="${esc(c.nom)} ${esc(c.saison)}">${esc(c.nom)}</span><span class="cs-track">
-        <span class="cs-bar" style="grid-column:${s} / ${e + 1};background:${couleur}33;border-color:${couleur}"></span>
-        ${rs ? `<span class="cs-bar harvest" style="grid-column:${Math.max(s, rs)} / ${e + 1};background:${couleur}"></span>` : ''}</span></div>`;
-    }).join('')}
-    <p class="hint">Clair : en place · foncé : période de récolte (semaines du plan de cultures).</p></div>` : '';
-  const legend = [['heures', 'Heures et jours off'], ['evenements', 'Événements'], ['taches', 'Échéances des tâches'], ['factures', 'Échéances des factures'], ['cultures', 'Cultures en place']]
+  const legend = [['heures', 'Heures et jours off'], ['evenements', 'Événements'], ['taches', 'Échéances des tâches'], ['factures', 'Échéances des factures']]
     .map(([k, l]) => `<button type="button" class="chip${L[k] ? ' on' : ''}" data-act="calCalque" data-k="${k}">${l}</button>`).join('');
   const prev = new Date(Y, M - 2, 1), next = new Date(Y, M, 1);
   const ym = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`;
@@ -149,7 +131,6 @@ function renderMois() {
       ${CAL.mois !== today.slice(0, 7) ? `<button class="btn small" type="button" data-act="calMois" data-m="${today.slice(0, 7)}">Aujourd'hui</button>` : ''}</div>
       <div class="row"><span class="hint">${ps.map((p) => `${esc(p.nom)} ${fmtH(tm[p.k] || 0)} h`).join(' · ')}</span><button class="btn primary small" type="button" data-act="evEdit" data-date="${CAL.mois === today.slice(0, 7) ? today : premier}">+ Événement</button></div></div>
     <div class="chips">${legend}</div>
-    ${strip}
     <div class="cal"><div class="cal-h">${JOURS.map((j) => `<span>${j.slice(0, 3)}</span>`).join('')}</div><div class="cal-g">${cells}</div></div>
     <p class="hint">Touche un jour pour y saisir les heures, voir le détail ou ajouter un événement (journée de travail, récolte, livraison, vacances…).</p>
   </div>`;
@@ -162,7 +143,6 @@ ACTIONS.calDay = (el) => ouvrirJour(el.dataset.d);
 function ouvrirJour(d) {
   const xs = itemsPeriode(d, d)[d] || [], ps = personnes(), j = DB.get('jour:' + d) || {};
   const evs = xs.filter((x) => x.kind === 'ev'), tch = xs.filter((x) => x.kind === 'tache'), fac = xs.filter((x) => x.kind === 'facture');
-  const cul = culturesEnPlace(d, d);
   const heures = ps.map((p) => { const h = DB.get(hKey(d, p.k)) || {}; return `<div class="field"><label for="jh-${p.k}">${esc(p.nom)}</label><div class="hcell"><input id="jh-${p.k}" type="text" inputmode="decimal" autocomplete="off" data-h="${d}|${p.k}" value="${h.heures ? esc(fmtH(h.heures)) : ''}" placeholder="heures"><button type="button" class="off${h.off ? ' on' : ''}" data-act="hOff" data-d="${d}" data-p="${p.k}" data-sheet="1" aria-pressed="${!!h.off}">off</button></div></div>`; }).join('');
   const evHtml = evs.map((x) => {
     const e = DB.get(x.key) || {}, st = (e.occ || {})[x.occ] || {}, rec = e.rec && e.rec.freq;
@@ -184,7 +164,6 @@ function ouvrirJour(d) {
     ${evHtml || '<p class="hint">Aucun événement ce jour.</p>'}
     ${tch.length ? `<h3>Tâches à rendre</h3>${tch.map((t) => `<a class="item" href="#/taches" style="--c:var(--c-taches)"><span class="who"><strong>${esc(t.titre)}</strong><span class="meta">${t.qui ? esc(quiLabel(t.qui)) : ''}${t.urgent ? ' · urgent' : ''}</span></span></a>`).join('')}` : ''}
     ${fac.length ? `<h3>Factures à échéance</h3>${fac.map((f) => `<a class="item" href="#/factures/voir/${encodeURIComponent(f.key)}"><span class="who"><strong>${esc(f.titre)}</strong></span><span class="amt">${chf(f.montant)}</span></a>`).join('')}` : ''}
-    ${cul.length ? `<h3>Cultures en place</h3><div class="chips">${cul.map(({ c, p, couleur }) => `<span class="tpill" style="border-color:${couleur};color:${couleur}">${esc(c.nom)}${p.recolteDebut && d >= p.recolteDebut ? ' · récolte' : ''}</span>`).join('')}</div>` : ''}
   </div>`);
   const sh = $('jour-sheet'); brancherHeures(sh);
   sh.querySelectorAll('input[data-fait]').forEach((el) => el.addEventListener('change', () => {
@@ -235,10 +214,21 @@ ACTIONS.evEdit = (el) => {
     <div class="grid2">${sel('ev-rec', 'Se répète', (e.rec && e.rec.freq) || '', RECS, { name: 'freq' })}${inp('ev-jq', "Jusqu'au", e.rec && e.rec.jusquau, { name: 'jusquau', type: 'date', sub: 'Vide : sans fin.' })}</div>
     ${txt('ev-rem', 'Remarque', e.remarque, { name: 'remarque' })}
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="${e.rec && e.rec.freq ? 'toute la série' : 'cet événement'}">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  /* Vacances : il faut choisir la personne (pas « Ensemble ») */
+  const f = $('ev-form'), qui = $('ev-qui'), lab = f.querySelector('label[for="ev-qui"]');
+  const majQui = () => {
+    const vac = (f.querySelector('input[name=type]:checked') || {}).value === 'vacances', cur = qui.value;
+    const opts = vac ? [['', 'Choisir…']].concat(persOptions()) : [['', '—']].concat(persOptions(true));
+    qui.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    qui.value = opts.some(([v]) => v === cur) ? cur : '';
+    qui.required = vac; lab.textContent = vac ? 'Vacances de (obligatoire)' : 'Qui';
+  };
+  f.querySelectorAll('input[name=type]').forEach((r) => r.addEventListener('change', majQui)); majQui();
 };
 FORMS.ev = (v) => {
   if (!v.date) { toast('La date est obligatoire.'); return; }
   if (v.fin && v.fin < v.date) { toast('La date de fin est avant le début.'); return; }
+  if (v.type === 'vacances' && !personnes().some((p) => p.k === v.qui)) { toast('Indique pour qui sont les vacances.'); $('ev-qui').focus(); return; }
   const k = v.key || 'ev:' + uid('e'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '', occ: {}, exceptions: [] };
   DB.put(k, Object.assign({}, old, { type: v.type || 'autre', titre: v.titre, date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: v.heureDebut, heureFin: v.heureFin, qui: v.qui, contactId: v.contactId, cultureId: v.cultureId, remarque: v.remarque, rec: { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } }));
   closeSheet(); toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
@@ -247,11 +237,6 @@ FORMS.ev = (v) => {
 /* ---------- Agenda (liste des 8 prochaines semaines) ---------- */
 function renderAgenda() {
   const today = todayISO(), a = addDays(today, 55), items = itemsPeriode(today, a);
-  // Jalons des cultures
-  for (const { c, p } of culturesEnPlace(today, a)) {
-    const j = (d, t) => { if (d >= today && d <= a) (items[d] = items[d] || []).push({ kind: 'culture', titre: `${c.nom} : ${t}` }); };
-    j(p.debut, 'plantation (semaine ' + (parseSemaines(c.semPlantation) || [''])[0] + ')'); if (p.recolteDebut) j(p.recolteDebut, 'début des récoltes'); j(p.fin, 'fin des récoltes prévue');
-  }
   const days = Object.keys(items).sort().filter((d) => items[d].some((x) => x.kind !== 'heures'));
   const ic = (x) => x.kind === 'ev' ? `var(--ev-${x.type})` : x.kind === 'tache' ? 'var(--c-taches)' : x.kind === 'facture' ? 'var(--c-factures)' : 'var(--c-cultures)';
   return `<div class="panel"><div class="between"><h2>Les 8 prochaines semaines</h2><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div>

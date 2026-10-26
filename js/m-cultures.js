@@ -93,7 +93,7 @@ MODULES.cultures = {
         <div class="stat"><span class="k">Plantons</span><span class="v">${f0(T.plantons)}</span></div>
         <div class="stat"><span class="k">Compost</span><span class="v">${fmtNum(T.compostM3, 1)} m³</span></div>
       </div>
-      <div class="panel"><h2>Planning ${s}</h2>${gantt}<p class="hint">Clair : en place depuis la plantation · foncé : semaines de récolte. Le trait rouge marque cette semaine. Ces périodes apparaissent aussi dans le calendrier.</p></div>
+      <div class="panel"><h2>Planning ${s}</h2>${gantt}<p class="hint">Clair : en place depuis la plantation · foncé : semaines de récolte. Le trait rouge marque cette semaine.</p></div>
       <div class="split">
         <div class="panel"><h2>Planches</h2><div class="blocks">${blocks}</div><div class="legend">${legend}</div></div>
         <div class="panel"><h2>Récolte prévue et réelle (kg)</h2>${bars}<h2 style="margin-top:8px">Ventes directes prévues (CHF)</h2>${ventes}</div>
