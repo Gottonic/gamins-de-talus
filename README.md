@@ -13,9 +13,9 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 |---|---|
 | Factures | Factures QR (virement) ou payées comptant, PDF, suivi des paiements, produits et prix |
 | Finances | Dépenses, recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
-| Heures | Heures de chacun par jour, jours off, remarques du jour, bilans par mois et par an |
+| Calendrier | Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, récoltes (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures, cultures en place. Saisie des heures à la semaine, agenda, bilan des heures |
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
-| Cultures | Plan par saison : surfaces, récoltes et ventes prévues, plantons, compost, engrais |
+| Cultures | Plan par saison modifiable directement dans le tableau : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
 | Inventaire | Objets amortis (dégressif) et achats prévus |
 | Contacts | Clients, grossistes, fournisseurs, partenaires |
 | Réglages | Coordonnées, IBAN, associés et parts, export / import, corbeille |
@@ -90,4 +90,4 @@ Pas d'étape de compilation : `index.html` (page et styles) + des scripts dans `
 Chaque élément est une ligne `clé → contenu JSON` dans la table `rows`. Préfixes des clés :
 `cfg:` réglages, `ct:` contacts, `prod:` produits, `fac:` factures, `dep:` dépenses, `rec:` recettes,
 `reg:` remboursements, `h:AAAA-MM-JJ:personne` heures, `jour:` remarques du jour, `t:` tâches,
-`cul:` cultures, `inv:` inventaire, `achat:` achats prévus.
+`cul:` cultures, `inv:` inventaire, `achat:` achats prévus, `ev:` événements du calendrier.

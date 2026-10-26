@@ -58,7 +58,7 @@ FORMS.cfgAss = (v) => {
 };
 
 /* ---------- Données ---------- */
-const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'cfg:': 'Réglages' };
+const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'cfg:': 'Réglages' };
 const prefixOf = (k) => Object.keys(PREFIX_LABEL).find((p) => k.startsWith(p)) || '';
 function libelleDe(k, d) { d = d || {}; return d.numero ? 'Facture ' + d.numero : d.objet || d.titre || d.nom || d.organisation || d.client || d.remarque || (d.date ? fmtDate(d.date) : '') || k; }
 

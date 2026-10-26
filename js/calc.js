@@ -157,10 +157,43 @@ function semaineISO(iso) {
   const y = d.getFullYear(); const j4 = new Date(y, 0, 4, 12); const w = 1 + Math.round(((d - j4) / 864e5 - 3 + ((j4.getDay() + 6) % 7)) / 7);
   return { annee: y, semaine: w };
 }
+/* Lundi de la semaine ISO n d'une année. */
+function lundiSemaine(annee, semaine) {
+  const j4 = new Date(Number(annee), 0, 4, 12); const wd = (j4.getDay() + 6) % 7;
+  const d = new Date(j4); d.setDate(j4.getDate() - wd + (Number(semaine) - 1) * 7); return isoDate(d);
+}
+/* « 44-48 » → [44, 48] ; « 25 » → [25, 25] ; vide → null */
+function parseSemaines(s) {
+  const m = String(s || '').match(/(\d{1,2})(?:\s*[-–à]\s*(\d{1,2}))?/); if (!m) return null;
+  const a = Number(m[1]), b = m[2] ? Number(m[2]) : a; if (a < 1 || a > 53 || b < 1 || b > 53) return null; return [a, b];
+}
+/* Période d'une culture : en place dès la semaine de plantation, récoltée pendant les semaines de récolte. */
+function periodeCulture(c) {
+  const y = Number(c.saison) || new Date().getFullYear();
+  const p = parseSemaines(c.semPlantation), r = parseSemaines(c.semRecolte);
+  if (!p && !r) return null;
+  const debut = p ? lundiSemaine(y, p[0]) : lundiSemaine(y, r[0]);
+  let yr = y; if (p && r && r[0] < p[0]) yr = y + 1;        // récolte l'année suivante (hivernage)
+  const recolteDebut = r ? lundiSemaine(yr, r[0]) : null;
+  const yr2 = r && r[1] < r[0] ? yr + 1 : yr;
+  const fin = r ? addDays(lundiSemaine(yr2, r[1]), 6) : addDays(debut, 7 * 12);
+  return { debut, recolteDebut, fin };
+}
+/* Occurrences d'un événement (récurrent ou non) qui touchent la période [de, a]. */
+function occurrences(ev, de, a) {
+  const out = [], dur = ev.fin && ev.fin > ev.date ? Math.round((new Date(ev.fin + 'T12:00') - new Date(ev.date + 'T12:00')) / 864e5) : 0;
+  const ex = new Set(ev.exceptions || []), rec = (ev.rec && ev.rec.freq) || '', fin = (ev.rec && ev.rec.jusquau) || '9999-12-31';
+  const push = (d) => { const f = addDays(d, dur); if (f >= de && d <= a && !ex.has(d)) out.push({ date: d, fin: f }); };
+  if (!rec) { push(ev.date); return out; }
+  let d = ev.date, i = 0;
+  const step = (n) => { if (rec === 'mensuel') { const [Y, M, D] = ev.date.split('-').map(Number); const t = new Date(Y, M - 1 + n, 1, 12); const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate(); t.setDate(Math.min(D, last)); return isoDate(t); } return addDays(ev.date, n * (rec === 'bihebdo' ? 14 : 7)); };
+  while (d <= a && d <= fin && i < 1000) { push(d); i++; d = step(i); }
+  return out;
+}
 function totalHeures(heures, filtre) {
   const o = {};
   for (const h of heures) { if (filtre && !filtre(h)) continue; o[h.personne] = (o[h.personne] || 0) + num(h.heures); }
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { r2, num, yearOf, parts, DEFAULT_PERSONNES, factureStatut, factureTotal, recettesUnifiees, decompte, valeurFinAnnee, amortissementAnnee, NUTR, DEFAULT_PARAMS_CULTURES, culture, totauxCultures, isoDate, lundiDe, addDays, semaineISO, totalHeures };
+if (typeof module !== 'undefined') module.exports = { r2, num, yearOf, parts, DEFAULT_PERSONNES, factureStatut, factureTotal, recettesUnifiees, decompte, valeurFinAnnee, amortissementAnnee, NUTR, DEFAULT_PARAMS_CULTURES, culture, totauxCultures, isoDate, lundiDe, addDays, semaineISO, totalHeures, lundiSemaine, parseSemaines, periodeCulture, occurrences };

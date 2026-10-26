@@ -153,14 +153,27 @@ const UI = {
     else if (force === 'envoi' || DB.dirty.size) { cls = 'pend'; txt = 'Envoi…' + (DB.dirty.size ? ' ' + DB.dirty.size : ''); tip = 'Envoi en cours'; }
     el.className = 'sync ' + cls; el.textContent = txt; el.title = tip;
   },
+  /* Différé d'un instant : pendant un « change », le navigateur n'a pas encore déplacé le focus vers la case suivante. */
   dataChanged() {
-    const a = document.activeElement;
-    if (a && $('view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { this.pending = true; return; }
-    render();
+    clearTimeout(this._t);
+    this._t = setTimeout(() => {
+      const a = document.activeElement;
+      if (a && $('view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { this.pending = true; return; }
+      render();
+    }, 0);
   },
 };
 document.addEventListener('focusout', () => { setTimeout(() => { if (UI.pending) { const a = document.activeElement; if (!(a && $('view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) { UI.pending = false; render(); } } }, 0); });
 
+/* Ré-affiche la page en gardant la case où l'on est (pour passer d'une case à l'autre avec Tab) */
+function renderGardeFocus() {
+  setTimeout(() => {
+    const a = document.activeElement, id = a && a.id; let s0 = null, s1 = null;
+    try { s0 = a.selectionStart; s1 = a.selectionEnd; } catch (e) { /* */ }
+    UI.pending = false; render();
+    if (id && $(id)) { const n = $(id); n.focus(); try { if (s0 != null) n.setSelectionRange(s0, s1); } catch (e) { /* */ } }
+  }, 1);
+}
 function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 function parseRoute() { const p = location.hash.replace(/^#\/?/, '').split('/'); ROUTE.mod = p[0] || ''; ROUTE.sub = p[1] || ''; ROUTE.id = decodeURIComponent(p[2] || ''); }
 
