@@ -1,7 +1,7 @@
 /* Gamins de Talus — plan de cultures : surfaces, récoltes, ventes prévues, plantons et fumure. */
 'use strict';
 
-const CU = { saison: '' };
+const CU = { saison: '', fermes: (() => { try { return JSON.parse(ls.get('gdt-cu-fermes') || '[]'); } catch (e) { return []; } })() };
 const cultures = (s) => DB.all('cul:').filter((c) => String(c.saison) === String(s)).sort((a, b) => (a.ordre || 0) - (b.ordre || 0) || String(a.nom).localeCompare(b.nom, 'fr'));
 const saisons = () => { const s = new Set(DB.all('cul:').map((c) => String(c.saison))); if (!s.size) s.add(todayISO().slice(0, 4)); return [...s].sort().reverse(); };
 function saisonCourante() { const ss = saisons(); return CU.saison && ss.includes(CU.saison) ? CU.saison : (ss.includes(todayISO().slice(0, 4)) ? todayISO().slice(0, 4) : ss[0]); }
@@ -18,15 +18,16 @@ MODULES.cultures = {
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture ».</p></div>';
     const os = list.map((c) => culture(c, P)), T = totauxCultures(list, P);
     const cols = list.length;
-    const grp = (t) => `<tr class="grp"><td>${t}</td>${'<td></td>'.repeat(cols + 1)}</tr>`;
+    let gi = 0;
+    const grp = (t, n) => { const id = t.toLowerCase().replace(/[^a-z]+/g, '-'); const closed = CU.fermes.includes(id); return `${gi++ ? '</tbody>' : ''}<tbody class="${closed ? 'closed' : ''}"><tr class="grp" data-act="cuToggle" data-g="${id}" tabindex="0" aria-expanded="${!closed}"><td>${t}<span class="cnt">${closed ? n + ' lignes' : ''}</span></td>${'<td></td>'.repeat(cols + 1)}</tr>`; };
     const row = (label, f, tot, cls) => `<tr><td>${label}</td>${list.map((c, i) => { const v = f(c, os[i]); return `<td class="num ${cls ? cls(c, os[i]) : ''}">${v}</td>`; }).join('')}<td class="num tot">${tot ?? ''}</td></tr>`;
     const engr = (P.engrais || []);
-    const table = `<div class="table-wrap"><table class="matrix"><thead><tr><th></th>${list.map((c) => `<th><button type="button" data-act="cuEdit" data-key="${esc(c.key)}">${esc(c.nom)}</button></th>`).join('')}<th>Total</th></tr></thead><tbody>
-      ${grp('Surface')}
+    const table = `<div class="table-wrap"><table class="matrix"><thead><tr><th></th>${list.map((c) => `<th><button type="button" data-act="cuEdit" data-key="${esc(c.key)}">${esc(c.nom)}</button></th>`).join('')}<th>Total</th></tr></thead>
+      ${grp('Surface', 3)}
       ${row('Planches', (c) => f0(c.planches), f0(list.reduce((a, c) => a + num(c.planches), 0)))}
       ${row('Surface m²', (c, o) => f1(o.surface), f1(T.surface))}
       ${row('Part de la surface', (c, o) => T.surface ? Math.round(o.surface / T.surface * 100) + ' %' : '—', '100 %')}
-      ${grp('Récolte et ventes')}
+      ${grp('Récolte et ventes', 9)}
       ${row('Rendement kg/m²', (c) => fmtNum(c.rendement, 2))}
       ${row('Récolte prévue kg', (c, o) => f0(o.recolte), f0(T.recolte))}
       ${row('Récolte réelle kg', (c) => c.recolteReelle ? f0(c.recolteReelle) : '—', T.recolteReelle ? f0(T.recolteReelle) : '—')}
@@ -36,7 +37,7 @@ MODULES.cultures = {
       ${row('Prix revendeur CHF/kg', (c, o) => money(o.prixRevendeur) + (c.prixRevendeur == null || c.prixRevendeur === '' ? '*' : ''))}
       ${row('Ventes revendeur CHF', (c, o) => f0(o.ventesRevendeur), f0(T.ventesRevendeur))}
       ${row('CHF/m² revendeur', (c, o) => money(o.chfM2Revendeur))}
-      ${grp('Plantation')}
+      ${grp('Plantation', 7)}
       ${row('Semaine de plantation', (c) => esc(c.semPlantation || '—'))}
       ${row('Semaines de récolte', (c) => esc(c.semRecolte || '—'))}
       ${row('Lignes par planche', (c) => f0(c.lignes))}
@@ -44,7 +45,7 @@ MODULES.cultures = {
       ${row('Plantons', (c, o) => f0(o.plantons), f0(T.plantons))}
       ${row('Variété', (c) => esc(c.variete || '—'))}
       ${row('Fournisseur', (c) => esc(c.fournisseur || '—'))}
-      ${grp('Fumure')}
+      ${grp('Fumure', 14 + 2 * engr.length)}
       ${NUTR.map((n) => row(`Besoin net ${n} g/m²`, (c, o) => f1(o.net[n]))).join('')}
       ${row('Compost L/m²', (c) => f1(c.compost))}
       ${row('Compost m³', (c, o) => fmtNum(o.compostM3, 2), fmtNum(T.compostM3, 2))}
@@ -52,7 +53,8 @@ MODULES.cultures = {
       ${NUTR.map((n) => row(`À apporter ${n} kg`, (c, o) => fmtNum(o.total[n] / 1000, 2), fmtNum(T.total[n] / 1000, 2))).join('')}
       ${engr.map((e) => row(`${esc(e.nom)} kg`, (c, o) => fmtNum(o.engrais[e.k] ? o.engrais[e.k].kg : 0, 1), fmtNum(T.engrais[e.k] || 0, 1))).join('')}
       ${engr.map((e) => row(`${esc(e.nom)} kg/planche`, (c, o) => fmtNum(o.engrais[e.k] ? o.engrais[e.k].kgParPlanche : 0, 2))).join('')}
-    </tbody></table></div>`;
+    </tbody></table></div>
+    <div class="row"><button class="btn small" type="button" data-act="cuToutes" data-v="ouvrir">Tout ouvrir</button><button class="btn small" type="button" data-act="cuToutes" data-v="fermer">Tout fermer</button></div>`;
     return `${head}
       <div class="stats">
         <div class="stat good"><span class="k">Surface cultivée</span><span class="v">${f0(T.surface)} m²</span><span class="s">${list.reduce((a, c) => a + num(c.planches), 0)} planches de ${fmtNum(P.longueur, 1)} m</span></div>
@@ -68,6 +70,10 @@ MODULES.cultures = {
   },
 };
 ACTIONS.cuSaison = (el) => { CU.saison = el.dataset.s; render(); };
+function cuSave() { ls.set('gdt-cu-fermes', JSON.stringify(CU.fermes)); render(); }
+ACTIONS.cuToggle = (el) => { const g = el.dataset.g; CU.fermes = CU.fermes.includes(g) ? CU.fermes.filter((x) => x !== g) : CU.fermes.concat([g]); cuSave(); };
+ACTIONS.cuToutes = (el) => { CU.fermes = el.dataset.v === 'fermer' ? ['surface', 'r-colte-et-ventes', 'plantation', 'fumure'] : []; cuSave(); };
+document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('tr.grp[data-act]')) { e.preventDefault(); e.target.click(); } });
 
 ACTIONS.cuEdit = (el) => {
   const k = el.dataset.key || '', s = saisonCourante();

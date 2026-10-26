@@ -16,16 +16,48 @@ const ORDRE = ['factures', 'finances', 'heures', 'taches', 'cultures', 'inventai
 function renderAccueil() {
   const h = new Date().getHours();
   const salut = h < 11 ? 'Bonjour' : h < 18 ? 'Salut' : 'Bonsoir';
+  const today = todayISO(), y = today.slice(0, 4);
+
+  /* --- Les 3 chiffres importants --- */
+  const fs = factures(), ouvertes = fs.filter((f) => ['ouverte', 'retard'].includes(facStatut(f))), retard = ouvertes.filter((f) => facStatut(f) === 'retard');
+  const b = bilanAnnee(y);
+  const l = lundiDe(today), dim = addDays(l, 6), hs = totalHeures(heuresToutes(), (x) => x.date >= l && x.date <= dim);
+  const hTot = Object.values(hs).reduce((a, x) => a + x, 0);
+  const kpis = `<section class="dash" aria-label="Tableau de bord">
+    <a class="kpi t-factures" href="#/factures"><span class="k">À encaisser</span><span class="v">${chf(ouvertes.reduce((a, f) => a + f.total, 0))}</span>
+      <span class="s ${retard.length ? 'bad' : ''}">${ouvertes.length ? `${ouvertes.length} facture${ouvertes.length > 1 ? 's' : ''} ouverte${ouvertes.length > 1 ? 's' : ''}${retard.length ? `, dont ${retard.length} en retard` : ''}` : 'Toutes les factures sont payées'}</span></a>
+    <a class="kpi t-finances" href="#/finances"><span class="k">Résultat ${y}</span><span class="v">${chf(b.resultat)}</span><span class="s">Recettes ${chf(b.rec)} · charges ${chf(b.charges)}</span></a>
+    <a class="kpi t-heures" href="#/heures"><span class="k">Heures cette semaine</span><span class="v">${fmtH(hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
+  </section>`;
+
+  /* --- Ce qui est à faire --- */
+  const groupes = [];
+  if (ouvertes.length) groupes.push({ mod: 'factures', titre: 'Factures impayées', n: ouvertes.length, items: ouvertes.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
+    .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });
+  const dans7 = addDays(today, 7);
+  const tch = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && (t.urgent || (t.echeance && t.echeance <= dans7)))
+    .sort((a, c) => (c.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || String(a.echeance || '9').localeCompare(String(c.echeance || '9')));
+  const nOuvertes = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu').length;
+  groupes.push({ mod: 'taches', titre: 'Tâches urgentes ou proches', n: tch.length, vide: nOuvertes ? `Rien d'urgent. ${nOuvertes} tâche${nOuvertes > 1 ? 's' : ''} ouverte${nOuvertes > 1 ? 's' : ''}.` : 'Aucune tâche ouverte.',
+    items: tch.slice(0, 6).map((t) => ({ href: '#/taches', txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''), val: t.urgent ? 'urgent' : (t.echeance < today ? 'en retard' : fmtDateCourt(t.echeance)), bad: t.urgent || (t.echeance && t.echeance < today) })) });
+  const sansJ = depenses().filter(sansJustificatif).sort((a, c) => String(c.date).localeCompare(String(a.date)));
+  if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
+    plus: sansJ.length > 4 ? { href: '#/finances/depenses', txt: `Voir les ${sansJ.length} dépenses sans justificatif` } : null, avant: () => { FIN.sansJ = true; } });
+  const d = decompteActuel();
+  if (d.transferts.length) groupes.push({ mod: 'finances', titre: 'Entre associés', items: d.transferts.map((t) => ({ href: '#/finances/associes', txt: `${nomDe(t.de)} doit à ${nomDe(t.a)}`, val: chf(t.montant) })) });
+
+  const todo = `<section class="panel"><h2>À traiter</h2><div class="todo">${groupes.map((g) => `<div class="grp t-${g.mod}"><h3>${esc(g.titre)}${g.n ? `<span class="n">${g.n}</span>` : ''}</h3>
+      ${g.items.length ? g.items.map((it) => `<a class="it${it.bad ? ' bad' : ''}" href="${it.href}"${g.avant ? ' data-act="goSansJ"' : ''}><span>${esc(it.txt)}</span><span class="num">${esc(it.val)}</span></a>`).join('') : `<p class="none">${esc(g.vide || 'Rien.')}</p>`}
+      ${g.plus ? `<a class="btn link" href="${g.plus.href}" data-act="goSansJ">${esc(g.plus.txt)}</a>` : ''}</div>`).join('')}</div></section>`;
+
   const tiles = ORDRE.filter((k) => MODULES[k]).map((k) => {
     const m = MODULES[k]; let t = { line: '' };
     try { t = m.tuile ? m.tuile() : t; } catch (e) { console.error(e); }
-    return `<a class="tile" href="#/${k}">${ICONS[k] || ''}<b>${esc(m.titre)}</b><span class="${t.warn ? 'warn' : ''}">${esc(t.line || '')}</span></a>`;
+    return `<a class="tile t-${k}" href="#/${k}"><span class="ic">${ICONS[k] || ''}</span><b>${esc(m.titre)}</b><span class="tline${t.warn ? ' warn' : ''}">${esc(t.line || '')}</span></a>`;
   }).join('');
-  const attn = [];
-  try { attn.push(...attentionFactures()); } catch (e) { /* */ }
-  try { attn.push(...attentionTaches()); } catch (e) { /* */ }
-  try { attn.push(...attentionFinances()); } catch (e) { /* */ }
-  return `<section class="hello"><span class="eyebrow">Maraîchers · Marly</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></section>
+  return `<section class="hello"><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></section>
+    ${kpis}
     <section class="tiles" aria-label="Modules">${tiles}</section>
-    ${attn.length ? `<section class="panel"><h2>À voir</h2><div class="attn">${attn.map((a) => `<a href="${a.href}" class="${a.info ? 'info' : ''}"><span>${esc(a.txt)}</span><span class="num">${esc(a.val || '')}</span></a>`).join('')}</div></section>` : ''}`;
+    ${todo}`;
 }
+ACTIONS.goSansJ = () => { FIN.sansJ = true; FIN.annee = ''; FIN.type = ''; FIN.par = ''; FIN.q = ''; go('#/finances/depenses'); };

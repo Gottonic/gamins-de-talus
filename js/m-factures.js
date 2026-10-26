@@ -23,7 +23,13 @@ function problemesReglages(cash) {
 /* ---------- Brouillon de facture ---------- */
 const draftF = { clientId: '', date: todayISO(), livraison: '', bulletin: '', remarque: '', paiement: 'virement', lignes: [] };
 const EXAMPLE_CLIENT = { nom: 'Exemple : Grossiste SA', attn: '', rue: "Route de l'Exemple", numero: '1', npa: '1700', localite: 'Fribourg' };
-function nouvelleLigne() { const p = produits()[0]; return p ? { produitId: p.key, designation: p.nom, quantite: '', unite: p.unite || 'kg', prix: p.prix ?? '' } : { produitId: '', designation: '', quantite: '', unite: 'kg', prix: '' }; }
+/* Prix d'un produit selon le type de client ; sinon le prix par défaut. Modifiable ensuite sur chaque facture. */
+const TARIFS = [['grossiste', 'Grossiste'], ['pro', 'Client pro'], ['particulier', 'Particulier']];
+const vide = (v) => v === '' || v == null;
+function prixPour(p, type) { if (!p) return ''; const t = p.prixParType || {}; if (!vide(t[type])) return t[type]; if (!vide(p.prix)) return p.prix; if (!vide(p.prixMin)) return p.prixMin; return ''; }
+function fourchette(p) { if (vide(p.prixMin) && vide(p.prixMax)) return ''; if (vide(p.prixMax) || num(p.prixMin) === num(p.prixMax)) return money(vide(p.prixMin) ? p.prixMax : p.prixMin); if (vide(p.prixMin)) return 'jusqu\'à ' + money(p.prixMax); return money(p.prixMin) + ' – ' + money(p.prixMax); }
+const typeClientBrouillon = () => { const c = DB.get(draftF.clientId); return c ? (c.type || 'autre') : ''; };
+function nouvelleLigne() { const p = produits()[0]; return p ? { produitId: p.key, designation: p.nom, quantite: '', unite: p.unite || 'kg', prix: prixPour(p, typeClientBrouillon()), auto: true } : { produitId: '', designation: '', quantite: '', unite: 'kg', prix: '' }; }
 function factureDepuisBrouillon() {
   const s = cfg(), n = prochainNumero(draftF.date), client = DB.get(draftF.clientId);
   const lignes = draftF.lignes.filter((l) => (l.designation || '').trim() && num(l.quantite) > 0).map((l) => ({ designation: l.designation.trim(), quantite: r2(num(l.quantite)), unite: l.unite || 'kg', prix: r2(num(l.prix)) }));
@@ -115,7 +121,8 @@ function renderDetailFacture(f, dbl) {
 }
 
 function renderNouvelleFacture(contactKey) {
-  if (contactKey && DB.get(contactKey)) { draftF.clientId = contactKey; const c = DB.get(contactKey); if (!c.npa || !c.localite) draftF.paiement = 'especes'; }
+  if (contactKey) { try { history.replaceState(null, '', '#/factures/nouvelle'); render._last = location.hash; } catch (e) { /* */ } }
+  if (contactKey && DB.get(contactKey) && draftF.clientId !== contactKey) { draftF.clientId = contactKey; const c = DB.get(contactKey); if (!c.npa || !c.localite) draftF.paiement = 'especes'; for (const l of draftF.lignes) { const pr = DB.get(l.produitId); if (pr && l.auto) l.prix = prixPour(pr, c.type || 'autre'); } }
   if (!draftF.lignes.length) draftF.lignes.push(nouvelleLigne());
   const cl = contacts().sort(byName);
   const groups = TYPES.map((t) => [t, cl.filter((c) => (c.type || 'autre') === t.k)]).filter(([, l]) => l.length);
@@ -158,11 +165,21 @@ function majApercu() {
   $('d-paper').innerHTML = invoiceSvg(d.inv); $('d-badge').hidden = !d.example;
   $('d-total').textContent = chf(d.lignes.reduce((a, l) => a + r2(l.quantite * l.prix), 0));
   $('d-title').textContent = 'Nouvelle facture ' + d.inv.numero; $('d-create').textContent = 'Créer la facture ' + d.inv.numero;
-  draftF.lignes.forEach((l, i) => { const t = $('l-t-' + i); if (t) t.textContent = num(l.quantite) > 0 && l.prix !== '' ? '= ' + money(r2(num(l.quantite) * num(l.prix))) : ''; });
+  draftF.lignes.forEach((l, i) => {
+    const t = $('l-t-' + i); if (!t) return;
+    const p = DB.get(l.produitId), f = p ? fourchette(p) : '';
+    const hors = p && f && !vide(l.prix) && ((!vide(p.prixMin) && num(l.prix) < num(p.prixMin)) || (!vide(p.prixMax) && num(l.prix) > num(p.prixMax)));
+    t.innerHTML = [num(l.quantite) > 0 && l.prix !== '' ? '= ' + money(r2(num(l.quantite) * num(l.prix))) : '', f ? `<span class="${hors ? 'err' : ''}">fourchette ${f}${hors ? ' : hors fourchette' : ''}</span>` : ''].filter(Boolean).join(' · ');
+  });
 }
 function brancherBrouillon() {
   majApercu();
-  $('d-client').addEventListener('change', (e) => { draftF.clientId = e.target.value; const c = DB.get(draftF.clientId); if (c && (!c.npa || !c.localite)) draftF.paiement = 'especes'; render(); });
+  $('d-client').addEventListener('change', (e) => {
+    draftF.clientId = e.target.value; const c = DB.get(draftF.clientId); if (c && (!c.npa || !c.localite)) draftF.paiement = 'especes';
+    const ty = typeClientBrouillon(); let n = 0;
+    for (const l of draftF.lignes) { const p = DB.get(l.produitId); if (p && l.auto) { const np = prixPour(p, ty); if (String(np) !== String(l.prix)) { l.prix = np; n++; } } }
+    render(); if (n && c) toast(`Prix « ${typeLabel(c.type)} » appliqués.`);
+  });
   for (const k of ['date', 'livraison', 'bulletin', 'remarque']) $('d-' + k).addEventListener('input', (e) => { draftF[k] = e.target.value; majApercu(); });
   for (const r of document.querySelectorAll('input[name="d-paiement"]')) r.addEventListener('change', (e) => { draftF.paiement = e.target.value; render(); });
   $('d-addline').addEventListener('click', () => { draftF.lignes.push(nouvelleLigne()); render(); const q = $('l-q-' + (draftF.lignes.length - 1)); if (q) q.focus(); });
@@ -172,8 +189,8 @@ function brancherBrouillon() {
     const i = Number(el.dataset.i), k = e.target.dataset.k, l = draftF.lignes[i]; if (!l || !k) return;
     if (k === 'produitId') {
       const p = DB.get(e.target.value); l.produitId = e.target.value;
-      if (p) { l.designation = p.nom; l.unite = p.unite || 'kg'; l.prix = p.prix ?? ''; $('l-d-' + i).value = l.designation; $('l-u-' + i).value = l.unite; $('l-x-' + i).value = l.prix; }
-    } else l[k] = e.target.value;
+      if (p) { l.designation = p.nom; l.unite = p.unite || 'kg'; l.prix = prixPour(p, typeClientBrouillon()); l.auto = true; $('l-d-' + i).value = l.designation; $('l-u-' + i).value = l.unite; $('l-x-' + i).value = l.prix; }
+    } else { l[k] = e.target.value; if (k === 'prix') l.auto = false; }
     majApercu();
   });
   $('d-create').addEventListener('click', () => {
@@ -230,8 +247,8 @@ ACTIONS.facCsv = () => {
 function renderProduits() {
   const list = produits();
   return `<div class="split"><div class="panel"><div class="between"><h2>Produits</h2><button class="btn primary small" type="button" data-act="prodEdit">+ Produit</button></div>
-    <p class="hint">Le prix sert de valeur par défaut ; il reste modifiable sur chaque facture.</p>
-    <div class="items">${list.length ? list.map((p) => `<a class="item" data-act="prodEdit" data-key="${esc(p.key)}" href="#"><span class="who"><strong>${esc(p.nom)}</strong><span class="meta">${p.prix == null || p.prix === '' ? 'Prix à fixer' : `${chf(p.prix)} / ${esc(p.unite)}`}</span></span></a>`).join('') : '<p class="empty">Pas encore de produit.</p>'}</div></div>
+    <p class="hint">Chaque produit a une fourchette de prix, et un prix par type de client. Le prix du client est mis automatiquement sur la facture, puis reste modifiable.</p>
+    <div class="items">${list.length ? list.map((p) => `<a class="item" data-act="prodEdit" data-key="${esc(p.key)}" href="#"><span class="who"><strong>${esc(p.nom)}</strong><span class="meta">${fourchette(p) ? `Fourchette CHF ${fourchette(p)} / ${esc(p.unite)}` : 'Fourchette à définir'}</span><span class="meta">${[...TARIFS.filter(([k]) => !vide((p.prixParType || {})[k])).map(([k, l]) => `${l} ${money(p.prixParType[k])}`), !vide(p.prix) ? `Autres ${money(p.prix)}` : ''].filter(Boolean).join(' · ') || 'Prix par type de client à fixer'}</span></span></a>`).join('') : '<p class="empty">Pas encore de produit.</p>'}</div></div>
     <div class="panel"><h2>Prix de référence</h2><p class="hint">Prix prévus dans le plan de cultures (par kg), en vente directe et chez un revendeur.</p>${tablePrixCultures()}</div></div>`;
 }
 function tablePrixCultures() {
@@ -241,17 +258,29 @@ function tablePrixCultures() {
   return `<div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Direct</th><th class="r">Revendeur</th></tr></thead><tbody>${list.sort((a, b) => (a.ordre || 0) - (b.ordre || 0)).map((c) => { const o = culture(c, P); return `<tr><td>${esc(c.nom)}</td><td class="r num">${money(c.prixDirect)}</td><td class="r num">${money(o.prixRevendeur)}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 ACTIONS.prodEdit = (el) => {
-  const k = el.dataset.key || '', p = k ? DB.get(k) : { unite: 'kg' };
+  const k = el.dataset.key || '', p = k ? DB.get(k) : { unite: 'kg', prixParType: {} };
+  const t = p.prixParType || {};
+  const n = (id, label, val, name, sub) => inp(id, label, vide(val) ? '' : val, { name, type: 'number', sub });
   openSheet(`${sheetHead(k ? 'Modifier ' + p.nom : 'Nouveau produit')}<form class="sbody form" data-form="prod"><input type="hidden" name="key" value="${esc(k)}">
     ${inp('pr-nom', 'Désignation', p.nom, { name: 'nom', req: true, attrs: { maxlength: 46 } })}
-    <div class="grid2">${sel('pr-unite', 'Unité', p.unite, UNITES.map((u) => [u, u]), { name: 'unite' })}${inp('pr-prix', 'Prix CHF par unité', p.prix ?? '', { name: 'prix', type: 'number', attrs: { step: '0.01', min: '0', inputmode: 'decimal' } })}</div>
+    ${sel('pr-unite', 'Unité', p.unite, UNITES.map((u) => [u, u]), { name: 'unite' })}
+    <h3>Fourchette de prix (CHF par ${esc(p.unite || 'unité')})</h3>
+    <div class="grid2">${n('pr-min', 'Minimum', p.prixMin, 'prixMin')}${n('pr-max', 'Maximum', p.prixMax, 'prixMax')}</div>
+    <h3>Prix selon le type de client</h3>
+    <div class="grid2">${TARIFS.map(([key, label]) => n('pr-t-' + key, label, t[key], 't_' + key)).join('')}${n('pr-def', 'Autres clients', p.prix, 'prix')}</div>
+    <p class="hint">Ce prix est mis automatiquement sur la facture selon le type du client (fiche contact). Il reste modifiable sur chaque facture.</p>
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="prodDel" data-key="${esc(k)}">Retirer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.prod = (v) => {
   if (!v.nom) { toast('La désignation est obligatoire.'); return; }
+  const val = (x) => (x === '' ? null : r2(num(x)));
   const k = v.key || 'prod:' + uid('p'), old = DB.get(k) || {};
-  DB.put(k, Object.assign({}, old, { nom: v.nom, unite: v.unite, prix: v.prix === '' ? null : r2(num(v.prix)) }));
-  closeSheet(); toast('Produit enregistré.');
+  const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), prix: val(v.prix), prixParType: {} });
+  for (const [key] of TARIFS) o.prixParType[key] = val(v['t_' + key]);
+  if (o.prixMin != null && o.prixMax != null && o.prixMin > o.prixMax) { toast('Le minimum dépasse le maximum.'); return; }
+  const hors = [...TARIFS.map(([key, l]) => [l, o.prixParType[key]]), ['Autres clients', o.prix]].filter(([, x]) => x != null && ((o.prixMin != null && x < o.prixMin) || (o.prixMax != null && x > o.prixMax)));
+  DB.put(k, o); closeSheet();
+  toast(hors.length ? `Produit enregistré. Attention : ${hors.map(([l]) => l).join(', ')} hors fourchette.` : 'Produit enregistré.', hors.length ? 5000 : 3200);
 };
 ACTIONS.prodDel = (el) => { DB.del(el.dataset.key); closeSheet(); toast('Produit retiré (récupérable dans la corbeille).'); };
 
