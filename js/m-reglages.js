@@ -1,0 +1,109 @@
+/* Gamins de Talus — réglages, export / import des données, corbeille et historique. */
+'use strict';
+
+MODULES.reglages = {
+  titre: 'Réglages',
+  tuile() { return { line: DB.dirty.size ? `${DB.dirty.size} changement(s) à envoyer` : 'Coordonnées, associés, données' }; },
+  render(sub) {
+    const t = tabs('reglages', [['', 'Entreprise'], ['associes', 'Associés'], ['donnees', 'Données']], sub);
+    if (sub === 'associes') return t + renderRegAssocies();
+    if (sub === 'donnees') return t + renderDonnees();
+    return t + renderEntreprise();
+  },
+  after(sub) {
+    const ib = $('s-iban'); if (ib) { const upd = () => { const r = ibanCheck(ib.value); const el = $('s-iban-check'); el.textContent = ib.value.trim() ? r.msg : ''; el.className = 'sub check ' + (r.ok ? 'ok' : 'bad'); }; ib.addEventListener('input', upd); upd(); }
+    const f = $('imp-file'); if (f) f.addEventListener('change', () => lireImport(f.files[0]));
+  },
+};
+
+function renderEntreprise() {
+  const s = cfg();
+  return `<form class="panel form" data-form="cfgEnt"><h2>Coordonnées sur les factures</h2>
+    <div class="grid2">
+      ${inp('s-nom', "Nom de l'activité", s.nom, { name: 'nom' })}${inp('s-tit', 'Titulaire du compte', s.titulaire, { name: 'titulaire' })}
+      ${inp('s-rue', 'Rue', s.rue, { name: 'rue' })}${inp('s-num', 'N°', s.numero, { name: 'numero' })}
+      ${inp('s-npa', 'NPA', s.npa, { name: 'npa' })}${inp('s-loc', 'Localité', s.localite, { name: 'localite' })}
+      ${inp('s-tel', 'Téléphone', s.telephone, { name: 'telephone' })}${inp('s-mail', 'E-mail', s.email, { name: 'email' })}
+    </div>
+    ${fld('s-iban', 'IBAN (compte BAS)', `<input id="s-iban" name="iban" class="num" value="${esc(fmtIban(s.iban))}" autocomplete="off" maxlength="30">`, '<span id="s-iban-check"></span>')}
+    <div class="grid2">
+      ${sel('s-compte', 'Le compte appartient à', s.compteDe, persOptions(), { name: 'compteDe', sub: 'Les virements reçus comptent comme encaissés par cette personne.' })}
+      ${inp('s-delai', 'Délai de paiement (jours)', s.delai, { name: 'delai', type: 'number', attrs: { min: 0, max: 120 } })}
+      ${inp('s-pre', 'Préfixe des numéros', s.prefixe, { name: 'prefixe', attrs: { maxlength: 6 }, sub: `Ex. ${esc(s.prefixe || 'GDT')}-${todayISO().slice(0, 4)}-001` })}
+    </div>
+    ${inp('s-mention', 'Mention TVA', s.mention, { name: 'mention', sub: "Gamins de Talus n'est pas assujetti à la TVA : aucune TVA n'est ajoutée." })}
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`;
+}
+FORMS.cfgEnt = (v) => {
+  if (v.iban && !ibanCheck(v.iban).ok) { toast("Corrige l'IBAN avant d'enregistrer."); return; }
+  const o = Object.assign({}, DB.get('cfg:reglages') || {}, v, { iban: cleanIban(v.iban), delai: Math.max(0, Math.min(120, parseInt(v.delai, 10) || 0)), prefixe: (v.prefixe || 'GDT').replace(/[^A-Za-z0-9]/g, '') || 'GDT' });
+  DB.put('cfg:reglages', o); toast('Réglages enregistrés.');
+};
+
+function renderRegAssocies() {
+  const s = cfg(), ps = personnes();
+  return `<form class="panel form" data-form="cfgAss"><h2>Associés et partage</h2>
+    <p class="hint">Les dépenses et les recettes sont partagées selon ces parts. Le décompte « qui doit quoi » en dépend.</p>
+    ${ps.map((p, i) => `<div class="grid2">${inp('pa-n' + i, 'Nom', p.nom, { name: 'nom_' + i })}${inp('pa-p' + i, 'Part', p.part ?? 1, { name: 'part_' + i, type: 'number', attrs: { step: 'any', min: 0 }, sub: '1 et 1 = moitié-moitié' })}</div>`).join('')}
+    <h3>Objectifs et calculs</h3>
+    ${inp('pa-obj', 'Objectif de revenu annuel CHF', s.objectifAnnuel, { name: 'objectifAnnuel', type: 'number', attrs: { step: 100, min: 0 }, sub: 'Sert à calculer « objectif par heure » dans les heures.' })}
+    <label class="row" style="font-size:14px"><input type="checkbox" name="amortirDesAchat"${s.amortirDesAchat ? ' checked' : ''}> Amortir dès l'année d'achat (sinon, comme l'ancien tableur : dès l'année suivante)</label>
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`;
+}
+FORMS.cfgAss = (v) => {
+  const ps = personnes().map((p, i) => ({ k: p.k, nom: v['nom_' + i] || p.nom, part: num(v['part_' + i]) }));
+  if (!ps.some((p) => p.part > 0)) { toast('Au moins une part doit être positive.'); return; }
+  DB.put('cfg:reglages', Object.assign({}, DB.get('cfg:reglages') || {}, { personnes: ps, objectifAnnuel: num(v.objectifAnnuel), amortirDesAchat: !!v.amortirDesAchat }));
+  toast('Réglages enregistrés.');
+};
+
+/* ---------- Données ---------- */
+const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'cfg:': 'Réglages' };
+const prefixOf = (k) => Object.keys(PREFIX_LABEL).find((p) => k.startsWith(p)) || '';
+function libelleDe(k, d) { d = d || {}; return d.numero ? 'Facture ' + d.numero : d.objet || d.titre || d.nom || d.organisation || d.client || d.remarque || (d.date ? fmtDate(d.date) : '') || k; }
+
+function renderDonnees() {
+  const counts = {}; for (const k in DB.data) { const p = prefixOf(k); counts[p] = (counts[p] || 0) + 1; }
+  const trash = Object.entries(DB.trash).sort((a, b) => String(b[1]._supprimeLe || '').localeCompare(String(a[1]._supprimeLe || '')));
+  return `<div class="split"><div class="panel"><h2>Sauvegarde</h2>
+      <p class="hint">Toutes les données sont dans la base Supabase, avec l'historique de chaque modification. Pour une copie chez toi, exporte un fichier de temps en temps (par exemple chaque mois).</p>
+      <div class="table-wrap"><table class="list"><tbody>${Object.entries(PREFIX_LABEL).filter(([p]) => counts[p]).map(([p, l]) => `<tr><td>${l}</td><td class="r num">${counts[p]}</td></tr>`).join('')}</tbody></table></div>
+      <div class="row"><button class="btn primary" type="button" data-act="exportJson">Exporter tout (fichier JSON)</button></div>
+      <h3>Importer</h3>
+      <p class="hint">Ajoute les éléments d'un fichier exporté (ou du fichier de reprise de l'Excel). Ce qui existe déjà n'est jamais écrasé.</p>
+      <input type="file" id="imp-file" accept=".json,application/json">
+      <div id="imp-res"></div></div>
+    <div class="panel"><h2>Corbeille</h2>
+      ${trash.length ? `<div class="items">${trash.slice(0, 60).map(([k, d]) => `<div class="item" style="cursor:default"><span class="who"><strong>${esc(trunc(libelleDe(k, d), 60))}</strong><span class="meta">${esc(PREFIX_LABEL[prefixOf(k)] || '')}${d._supprimeLe ? ' · supprimé le ' + fmtDate(d._supprimeLe.slice(0, 10)) : ''}${d._supprimePar ? ' par ' + esc(nomDe(d._supprimePar)) : ''}</span></span><button class="btn small" type="button" data-act="restore" data-key="${esc(k)}">Restaurer</button></div>`).join('')}</div>`
+        : '<p class="empty">La corbeille est vide.</p>'}
+      <p class="hint">Rien n'est jamais effacé définitivement de la base : chaque version reste dans l'historique Supabase (table rows_history).</p></div></div>`;
+}
+ACTIONS.restore = (el) => { if (DB.restore(el.dataset.key)) toast('Restauré.'); };
+ACTIONS.exportJson = () => {
+  const out = { app: 'gamins-de-talus', version: 1, exporte: new Date().toISOString(), par: Sync.me || '', rows: DB.data };
+  downloadFile(`Gamins de Talus sauvegarde ${todayISO()}.json`, JSON.stringify(out, null, 1), 'application/json');
+};
+let IMPORT = null;
+function lireImport(file) {
+  const res = $('imp-res'); if (!file) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const o = JSON.parse(fr.result); const rows = o.rows || o;
+      if (!rows || typeof rows !== 'object') throw new Error('format inconnu');
+      const nouv = {}, deja = {}; let nN = 0, nD = 0;
+      for (const k of Object.keys(rows)) { const p = prefixOf(k); if (!p) continue; if (k in DB.data || k in DB.trash) { deja[p] = (deja[p] || 0) + 1; nD++; } else { nouv[p] = (nouv[p] || 0) + 1; nN++; } }
+      IMPORT = rows;
+      res.innerHTML = `<div class="panel" style="padding:12px"><p><b>${nN} nouvel(s) élément(s)</b> à ajouter${nD ? `, ${nD} déjà présent(s) (ignorés)` : ''}.</p>
+        <p class="hint">${Object.entries(nouv).map(([p, n]) => `${PREFIX_LABEL[p]} : ${n}`).join(' · ') || 'Rien de nouveau.'}</p>
+        ${o.controle ? `<p class="hint">Contrôle du fichier : ${esc(o.controle)}</p>` : ''}
+        ${nN ? '<div class="row"><button class="btn primary" type="button" data-act="importOk">Importer</button></div>' : ''}</div>`;
+    } catch (e) { res.innerHTML = `<p class="errors">Ce fichier n'a pas pu être lu : ${esc(e.message)}.</p>`; }
+  };
+  fr.readAsText(file);
+}
+ACTIONS.importOk = () => {
+  if (!IMPORT) return; let n = 0;
+  for (const [k, v] of Object.entries(IMPORT)) { if (!prefixOf(k) || k in DB.data || k in DB.trash || !v) continue; DB.data[k] = v; DB.sig[k] = canon(v); DB.dirty.add(k); n++; }
+  IMPORT = null; Sync.changed(); toast(`${n} élément(s) importé(s).`); render();
+};

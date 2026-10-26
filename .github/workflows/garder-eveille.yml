@@ -1,0 +1,14 @@
+name: Garder Supabase éveillé
+on:
+  schedule:
+    - cron: '23 6 * * 1,4'   # lundi et jeudi, 6h23 UTC
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Envoyer un signal à la base
+        run: |
+          curl -fsS -X POST "https://faouvytsqxridrwffrth.supabase.co/rest/v1/rpc/ping" \
+            -H "apikey: sb_publishable_EQKYeWZcBAPl_PjuMdfQjw_iRrc_7ak" \
+            -H "Content-Type: application/json" -d '{}'
