@@ -128,7 +128,7 @@ function renderMois() {
   // Bandeau des cultures en place ce mois-ci (jour 1 à fin du mois)
   const cul = L.cultures ? culturesEnPlace(premier, dernier) : [];
   const col = (d) => (d < premier ? 1 : d > dernier ? nbJours : Number(d.slice(8)));
-  const strip = cul.length ? `<div class="cstrip" style="--n:${nbJours}"><div class="cs-head"><span></span><span class="cs-days">${Array.from({ length: nbJours }, (_, i) => `<span${`${CAL.mois}-${String(i + 1).padStart(2, '0')}` === today ? ' class="t"' : ''}>${(i + 1) % 5 === 1 || i === 0 ? i + 1 : ''}</span>`).join('')}</span></div>
+  const strip = cul.length ? `<div class="cstrip" style="--n:${nbJours}"><div class="cs-head"><span class="cs-title">Cultures en place</span><span class="cs-days">${Array.from({ length: nbJours }, (_, i) => { const d = `${CAL.mois}-${String(i + 1).padStart(2, '0')}`, wd = (new Date(d + 'T12:00').getDay() + 6) % 7; return `<span class="${d === today ? 't' : ''}${wd >= 5 ? ' we' : ''}">${i + 1}</span>`; }).join('')}</span></div>
     ${cul.map(({ c, p, couleur }) => {
       const s = col(p.debut), e = col(p.fin);
       const rs = p.recolteDebut && p.recolteDebut <= dernier ? col(p.recolteDebut) : null;
