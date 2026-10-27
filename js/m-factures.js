@@ -24,7 +24,7 @@ function problemesReglages(cash) {
 const draftF = { clientId: '', date: todayISO(), livraison: '', bulletin: '', remarque: '', paiement: 'virement', lignes: [] };
 const EXAMPLE_CLIENT = { nom: 'Exemple : Grossiste SA', attn: '', rue: "Route de l'Exemple", numero: '1', npa: '1700', localite: 'Fribourg' };
 /* Prix d'un produit selon le type de client ; sinon le prix par défaut. Modifiable ensuite sur chaque facture. */
-const TARIFS = [['grossiste', 'Grossiste'], ['pro', 'Client pro'], ['particulier', 'Particulier']];
+const TARIFS = [['grossiste', 'Grossiste'], ['collectivite', 'Restauration collective'], ['pro', 'Client pro (restaurant, épicerie)'], ['particulier', 'Particulier']];
 const vide = (v) => v === '' || v == null;
 function prixPour(p, type) { if (!p) return ''; const t = p.prixParType || {}; if (!vide(t[type])) return t[type]; if (!vide(p.prix)) return p.prix; if (!vide(p.prixMin)) return p.prixMin; return ''; }
 function fourchette(p) { if (vide(p.prixMin) && vide(p.prixMax)) return ''; if (vide(p.prixMax) || num(p.prixMin) === num(p.prixMax)) return money(vide(p.prixMin) ? p.prixMax : p.prixMin); if (vide(p.prixMin)) return 'jusqu\'à ' + money(p.prixMax); return money(p.prixMin) + ' – ' + money(p.prixMax); }
@@ -248,7 +248,7 @@ function renderProduits() {
   const list = produits();
   return `<div class="split"><div class="panel"><div class="between"><h2>Produits</h2><button class="btn primary small" type="button" data-act="prodEdit">+ Produit</button></div>
     <p class="hint">Chaque produit a une fourchette de prix, et un prix par type de client. Le prix du client est mis automatiquement sur la facture, puis reste modifiable.</p>
-    <div class="items">${list.length ? list.map((p) => `<a class="item" data-act="prodEdit" data-key="${esc(p.key)}" href="#"><span class="who"><strong>${esc(p.nom)}</strong><span class="meta">${fourchette(p) ? `Fourchette CHF ${fourchette(p)} / ${esc(p.unite)}` : 'Fourchette à définir'}</span><span class="meta">${[...TARIFS.filter(([k]) => !vide((p.prixParType || {})[k])).map(([k, l]) => `${l} ${money(p.prixParType[k])}`), !vide(p.prix) ? `Autres ${money(p.prix)}` : ''].filter(Boolean).join(' · ') || 'Prix par type de client à fixer'}</span></span></a>`).join('') : '<p class="empty">Pas encore de produit.</p>'}</div></div>
+    <div class="items">${list.length ? list.map((p) => `<a class="item" data-act="prodEdit" data-key="${esc(p.key)}" href="#"><span class="who"><strong>${esc(p.nom)}</strong><span class="meta">${fourchette(p) ? `Fourchette CHF ${fourchette(p)} / ${esc(p.unite)}` : 'Fourchette à définir'}</span><span class="meta">${[...TARIFS.filter(([k]) => !vide((p.prixParType || {})[k])).map(([k, l]) => `${l.replace(/ \(.*\)/, '')} ${money(p.prixParType[k])}`), !vide(p.prix) ? `Autres ${money(p.prix)}` : ''].filter(Boolean).join(' · ') || 'Prix par type de client à fixer'}</span>${p.remarque ? `<span class="meta">${esc(p.remarque)}</span>` : ''}</span></a>`).join('') : '<p class="empty">Pas encore de produit.</p>'}</div></div>
     <div class="panel"><h2>Prix de référence</h2><p class="hint">Prix prévus dans le plan de cultures (par kg), en vente directe et chez un revendeur.</p>${tablePrixCultures()}</div></div>`;
 }
 function tablePrixCultures() {
@@ -269,13 +269,14 @@ ACTIONS.prodEdit = (el) => {
     <h3>Prix selon le type de client</h3>
     <div class="grid2">${TARIFS.map(([key, label]) => n('pr-t-' + key, label, t[key], 't_' + key)).join('')}${n('pr-def', 'Autres clients', p.prix, 'prix')}</div>
     <p class="hint">Ce prix est mis automatiquement sur la facture selon le type du client (fiche contact). Il reste modifiable sur chaque facture.</p>
+    ${txt('pr-rem', 'Remarque', p.remarque, { name: 'remarque', rows: 2, sub: 'Ex. 4.50 dès 200 kg' })}
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="prodDel" data-key="${esc(k)}">Retirer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.prod = (v) => {
   if (!v.nom) { toast('La désignation est obligatoire.'); return; }
   const val = (x) => (x === '' ? null : r2(num(x)));
   const k = v.key || 'prod:' + uid('p'), old = DB.get(k) || {};
-  const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), prix: val(v.prix), prixParType: {} });
+  const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), prix: val(v.prix), remarque: v.remarque || '', prixParType: {} });
   for (const [key] of TARIFS) o.prixParType[key] = val(v['t_' + key]);
   if (o.prixMin != null && o.prixMax != null && o.prixMin > o.prixMax) { toast('Le minimum dépasse le maximum.'); return; }
   const hors = [...TARIFS.map(([key, l]) => [l, o.prixParType[key]]), ['Autres clients', o.prix]].filter(([, x]) => x != null && ((o.prixMin != null && x < o.prixMin) || (o.prixMax != null && x > o.prixMax)));

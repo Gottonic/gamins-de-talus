@@ -6,7 +6,7 @@
 const heuresToutes = () => DB.all('h:');
 const evenements = () => DB.all('ev:');
 const HEU = { lundi: '', annee: '' };
-const CAL = { mois: '', calques: (() => { try { return JSON.parse(ls.get('gdt-cal-calques') || 'null'); } catch (e) { return null; } })() || { heures: true, evenements: true, taches: true, factures: true, cultures: true } };
+const CAL = { mois: '', calques: Object.assign({ heures: true, evenements: true, taches: true, factures: true, relances: true }, (() => { try { return JSON.parse(ls.get('gdt-cal-calques') || 'null'); } catch (e) { return null; } })() || {}) };
 const hKey = (date, p) => `h:${date}:${p}`;
 const EV_TYPES = [
   { k: 'travail', label: 'Journée de travail', court: 'Travail' },
@@ -50,6 +50,7 @@ function itemsPeriode(de, a) {
   for (const t of taches()) if (t.statut !== 'termine' && t.echeance && t.echeance >= de && t.echeance <= a) add(t.echeance, { kind: 'tache', key: t.key, titre: t.titre, urgent: t.urgent, qui: t.responsable });
   for (const f of factures()) { const s = facStatut(f); if ((s === 'ouverte' || s === 'retard') && f.echeance >= de && f.echeance <= a) add(f.echeance, { kind: 'facture', key: f.key, titre: `Échéance ${f.numero} · ${f.client.nom}`, montant: f.total }); }
   for (const h of heuresToutes()) if (h.date >= de && h.date <= a) add(h.date, { kind: 'heures', personne: h.personne, heures: num(h.heures), off: !!h.off });
+  for (const c of relancesProspection(de, a)) add(c.prospection.relanceLe, { kind: 'relance', key: c.key, titre: 'Relancer ' + displayName(c) });
   return jours;
 }
 
@@ -114,12 +115,13 @@ function renderMois() {
     if (L.evenements) xs.filter((x) => x.kind === 'ev').sort((a, b) => String(a.heure).localeCompare(String(b.heure))).forEach((x) => chips.push(`<span class="ch${x.fait ? ' fait' : ''}${x.multi ? ' multi' : ''}" style="--c:var(--ev-${x.type})">${x.heure ? `<i>${esc(x.heure)}</i> ` : ''}${esc(x.titre)}</span>`));
     if (L.taches) xs.filter((x) => x.kind === 'tache').forEach((x) => chips.push(`<span class="ch tache${x.urgent ? ' urgent' : ''}" style="--c:var(--c-taches)">⚑ ${esc(x.titre)}</span>`));
     if (L.factures) xs.filter((x) => x.kind === 'facture').forEach((x) => chips.push(`<span class="ch" style="--c:var(--c-factures)">${esc(x.titre)}</span>`));
+    if (L.relances) xs.filter((x) => x.kind === 'relance').forEach((x) => chips.push(`<span class="ch" style="--c:var(--c-contacts)">☎ ${esc(x.titre)}</span>`));
     const max = 4, plus = chips.length > max ? `<span class="more">+${chips.length - max}</span>` : '';
     cells += `<button type="button" class="cell${d.slice(0, 7) !== CAL.mois ? ' out' : ''}${d === today ? ' today' : ''}${wd >= 5 ? ' we' : ''}${vac.length && L.evenements ? ' vac' : ''}" data-act="calDay" data-d="${d}" aria-label="${esc(dateLongue(d))}">
       <span class="top"><span class="dn">${Number(d.slice(8))}</span>${wd === 0 ? `<span class="wk">S${semaineISO(d).semaine}</span>` : ''}<span class="hrs">${hrs}</span></span>
       <span class="chips">${chips.slice(0, max).join('')}${plus}</span><span class="dots">${chips.slice(0, 6).map((c) => `<span class="dot" style="${(c.match(/style="([^"]+)"/) || [, ''])[1]}"></span>`).join('')}</span></button>`;
   }
-  const legend = [['heures', 'Heures et jours off'], ['evenements', 'Événements'], ['taches', 'Échéances des tâches'], ['factures', 'Échéances des factures']]
+  const legend = [['heures', 'Heures et jours off'], ['evenements', 'Événements'], ['taches', 'Échéances des tâches'], ['factures', 'Échéances des factures'], ['relances', 'Relances prospection']]
     .map(([k, l]) => `<button type="button" class="chip${L[k] ? ' on' : ''}" data-act="calCalque" data-k="${k}">${l}</button>`).join('');
   const prev = new Date(Y, M - 2, 1), next = new Date(Y, M, 1);
   const ym = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}`;
@@ -142,7 +144,7 @@ ACTIONS.calCalque = (el) => { CAL.calques[el.dataset.k] = !CAL.calques[el.datase
 ACTIONS.calDay = (el) => ouvrirJour(el.dataset.d);
 function ouvrirJour(d) {
   const xs = itemsPeriode(d, d)[d] || [], ps = personnes(), j = DB.get('jour:' + d) || {};
-  const evs = xs.filter((x) => x.kind === 'ev'), tch = xs.filter((x) => x.kind === 'tache'), fac = xs.filter((x) => x.kind === 'facture');
+  const evs = xs.filter((x) => x.kind === 'ev'), tch = xs.filter((x) => x.kind === 'tache'), fac = xs.filter((x) => x.kind === 'facture'), rel = xs.filter((x) => x.kind === 'relance');
   const heures = ps.map((p) => { const h = DB.get(hKey(d, p.k)) || {}; return `<div class="field"><label for="jh-${p.k}">${esc(p.nom)}</label><div class="hcell"><input id="jh-${p.k}" type="text" inputmode="decimal" autocomplete="off" data-h="${d}|${p.k}" value="${h.heures ? esc(fmtH(h.heures)) : ''}" placeholder="heures"><button type="button" class="off${h.off ? ' on' : ''}" data-act="hOff" data-d="${d}" data-p="${p.k}" data-sheet="1" aria-pressed="${!!h.off}">off</button></div></div>`; }).join('');
   const evHtml = evs.map((x) => {
     const e = DB.get(x.key) || {}, st = (e.occ || {})[x.occ] || {}, rec = e.rec && e.rec.freq;
@@ -163,6 +165,7 @@ function ouvrirJour(d) {
     <div class="between"><h3>Événements</h3><button class="btn small primary" type="button" data-act="evEdit" data-date="${d}">+ Événement</button></div>
     ${evHtml || '<p class="hint">Aucun événement ce jour.</p>'}
     ${tch.length ? `<h3>Tâches à rendre</h3>${tch.map((t) => `<a class="item" href="#/taches" style="--c:var(--c-taches)"><span class="who"><strong>${esc(t.titre)}</strong><span class="meta">${t.qui ? esc(quiLabel(t.qui)) : ''}${t.urgent ? ' · urgent' : ''}</span></span></a>`).join('')}` : ''}
+    ${rel.length ? `<h3>Relances prospection</h3>${rel.map((r) => `<a class="item" href="#/contacts/prospect/${encodeURIComponent(r.key)}"><span class="who"><strong>${esc(r.titre)}</strong></span></a>`).join('')}` : ''}
     ${fac.length ? `<h3>Factures à échéance</h3>${fac.map((f) => `<a class="item" href="#/factures/voir/${encodeURIComponent(f.key)}"><span class="who"><strong>${esc(f.titre)}</strong></span><span class="amt">${chf(f.montant)}</span></a>`).join('')}` : ''}
   </div>`);
   const sh = $('jour-sheet'); brancherHeures(sh);
@@ -200,14 +203,14 @@ ACTIONS.hOff = _hOff;
 /* ---------- Formulaire d'événement ---------- */
 ACTIONS.evEdit = (el) => {
   const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
-  const cl = contacts().sort(byName), cu = DB.all('cul:').sort((a, b) => String(b.saison).localeCompare(String(a.saison)) || (a.ordre || 0) - (b.ordre || 0));
+  const cl = tousContacts().sort(byName), cu = DB.all('cul:').sort((a, b) => String(b.saison).localeCompare(String(a.saison)) || (a.ordre || 0) - (b.ordre || 0));
   openSheet(`${sheetHead(k ? 'Modifier l\'événement' : 'Nouvel événement', k && e.rec && e.rec.freq ? 'Modifie toute la série' : '')}<form class="sbody form" data-form="ev" id="ev-form"><input type="hidden" name="key" value="${esc(k)}">
     <div class="field"><span class="flabel">Type</span><div class="seg">${EV_TYPES.map((t) => `<label style="--c:var(--ev-${t.k})"><input type="radio" name="type" value="${t.k}"${e.type === t.k ? ' checked' : ''}> ${t.court}</label>`).join('')}</div></div>
     ${inp('ev-titre', 'Titre', e.titre, { name: 'titre', attrs: { placeholder: 'Facultatif : sinon « Livraison Epinettes », « Récolte Courge »…' } })}
     <div class="grid2">${inp('ev-date', 'Date', e.date, { name: 'date', type: 'date', req: true })}${inp('ev-fin', "Jusqu'au (plusieurs jours)", e.fin, { name: 'fin', type: 'date', sub: 'Pour des vacances, une semaine de récolte…' })}
       ${inp('ev-hd', 'Heure de début', e.heureDebut, { name: 'heureDebut', type: 'time' })}${inp('ev-hf', 'Heure de fin', e.heureFin, { name: 'heureFin', type: 'time' })}
       ${sel('ev-qui', 'Qui', e.qui || '', [['', '—']].concat(persOptions(true)), { name: 'qui' })}
-      ${sel('ev-contact', 'Client / contact', e.contactId || '', [['', '—']].concat(cl.map((c) => [c.key, displayName(c)])), { name: 'contactId', sub: 'Pour une livraison : permet de créer la facture depuis le calendrier.' })}
+      ${sel('ev-contact', 'Client / contact', e.contactId || '', [['', '—']].concat(cl.map((c) => [c.key, displayName(c) + (c.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour une livraison : permet de créer la facture depuis le calendrier.' })}
       ${sel('ev-cul', 'Culture', e.cultureId || '', [['', '—']].concat(cu.map((c) => [c.key, `${c.nom} (${c.saison})`])), { name: 'cultureId', sub: 'Pour une récolte : les kilos notés s\'ajoutent à la récolte réelle.' })}
     </div>
     <h3>Répétition</h3>
@@ -238,7 +241,7 @@ FORMS.ev = (v) => {
 function renderAgenda() {
   const today = todayISO(), a = addDays(today, 55), items = itemsPeriode(today, a);
   const days = Object.keys(items).sort().filter((d) => items[d].some((x) => x.kind !== 'heures'));
-  const ic = (x) => x.kind === 'ev' ? `var(--ev-${x.type})` : x.kind === 'tache' ? 'var(--c-taches)' : x.kind === 'facture' ? 'var(--c-factures)' : 'var(--c-cultures)';
+  const ic = (x) => x.kind === 'ev' ? `var(--ev-${x.type})` : x.kind === 'tache' ? 'var(--c-taches)' : x.kind === 'facture' ? 'var(--c-factures)' : x.kind === 'relance' ? 'var(--c-contacts)' : 'var(--c-cultures)';
   return `<div class="panel"><div class="between"><h2>Les 8 prochaines semaines</h2><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div>
     ${days.length ? days.map((d) => `<div class="agday"><button type="button" class="agdate" data-act="calDay" data-d="${d}"><b>${d === today ? "Aujourd'hui" : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b><span>${fmtDateCourt(d)}</span></button>
       <div class="agitems">${items[d].filter((x) => x.kind !== 'heures' && !(x.kind === 'ev' && x.multi && !x.debut && d !== today)).map((x) => `<div class="agit${x.fait ? ' fait' : ''}" style="--c:${ic(x)}">${x.heure ? `<span class="num">${esc(x.heure)}</span> ` : ''}${esc(x.kind === 'tache' ? '⚑ ' + x.titre : x.titre)}${x.qui ? ` <span class="hint">· ${esc(quiLabel(x.qui))}</span>` : ''}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}</div></div>`).join('')

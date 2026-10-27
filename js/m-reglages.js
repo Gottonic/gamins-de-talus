@@ -84,26 +84,47 @@ ACTIONS.exportJson = () => {
   downloadFile(`Gamins de Talus sauvegarde ${todayISO()}.json`, JSON.stringify(out, null, 1), 'application/json');
 };
 let IMPORT = null;
+/* Compléter un élément existant : seuls les champs vides sont remplis, jamais une valeur déjà saisie.
+   « forcer » liste les champs que le fichier peut remplacer explicitement. */
+function completer(old, add, forcer) {
+  const o = JSON.parse(JSON.stringify(old)); let ch = 0;
+  const vide = (x) => x === '' || x == null || (Array.isArray(x) && !x.length);
+  for (const [f, v] of Object.entries(add)) {
+    if ((forcer || []).includes(f)) { if (JSON.stringify(o[f]) !== JSON.stringify(v)) { o[f] = v; ch++; } continue; }
+    if (v && typeof v === 'object' && !Array.isArray(v) && o[f] && typeof o[f] === 'object' && !Array.isArray(o[f])) {
+      for (const [g, w] of Object.entries(v)) if (vide(o[f][g]) && !vide(w)) { o[f][g] = w; ch++; }
+    } else if (vide(o[f]) && !vide(v)) { o[f] = v; ch++; }
+  }
+  return ch ? o : null;
+}
+function planImport(o) {
+  const rows = o.rows || (o.app ? {} : o), fusion = o.fusion || {};
+  const nouv = {}, plan = { ajouts: [], completes: [], ignores: 0 };
+  for (const k of Object.keys(rows)) { const p = prefixOf(k); if (!p || !rows[k]) continue; if (k in DB.data || k in DB.trash) plan.ignores++; else { plan.ajouts.push([k, rows[k]]); nouv[p] = (nouv[p] || 0) + 1; } }
+  for (const [k, f] of Object.entries(fusion)) { if (!(k in DB.data)) continue; const r = completer(DB.data[k], f.data || {}, f.forcer); if (r) plan.completes.push([k, r, f.libelle || libelleDe(k, DB.data[k])]); }
+  plan.nouv = nouv; return plan;
+}
 function lireImport(file) {
   const res = $('imp-res'); if (!file) return;
   const fr = new FileReader();
   fr.onload = () => {
     try {
-      const o = JSON.parse(fr.result); const rows = o.rows || o;
-      if (!rows || typeof rows !== 'object') throw new Error('format inconnu');
-      const nouv = {}, deja = {}; let nN = 0, nD = 0;
-      for (const k of Object.keys(rows)) { const p = prefixOf(k); if (!p) continue; if (k in DB.data || k in DB.trash) { deja[p] = (deja[p] || 0) + 1; nD++; } else { nouv[p] = (nouv[p] || 0) + 1; nN++; } }
-      IMPORT = rows;
-      res.innerHTML = `<div class="panel" style="padding:12px"><p><b>${nN} nouvel(s) élément(s)</b> à ajouter${nD ? `, ${nD} déjà présent(s) (ignorés)` : ''}.</p>
-        <p class="hint">${Object.entries(nouv).map(([p, n]) => `${PREFIX_LABEL[p]} : ${n}`).join(' · ') || 'Rien de nouveau.'}</p>
+      const o = JSON.parse(fr.result);
+      if (!o || typeof o !== 'object') throw new Error('format inconnu');
+      const plan = planImport(o); IMPORT = plan;
+      const n = plan.ajouts.length + plan.completes.length;
+      res.innerHTML = `<div class="panel" style="padding:12px"><p><b>${plan.ajouts.length} nouvel(s) élément(s)</b> à ajouter${plan.completes.length ? `, <b>${plan.completes.length} à compléter</b>` : ''}${plan.ignores ? `, ${plan.ignores} déjà présent(s) (ignorés)` : ''}.</p>
+        <p class="hint">${Object.entries(plan.nouv).map(([p, k]) => `${PREFIX_LABEL[p]} : ${k}`).join(' · ') || 'Rien de nouveau.'}</p>
+        ${plan.completes.length ? `<p class="hint">Complétés (seuls les champs vides sont remplis) : ${plan.completes.map((x) => esc(x[2])).join(' · ')}</p>` : ''}
         ${o.controle ? `<p class="hint">Contrôle du fichier : ${esc(o.controle)}</p>` : ''}
-        ${nN ? '<div class="row"><button class="btn primary" type="button" data-act="importOk">Importer</button></div>' : ''}</div>`;
+        ${n ? '<div class="row"><button class="btn primary" type="button" data-act="importOk">Importer</button></div>' : ''}</div>`;
     } catch (e) { res.innerHTML = `<p class="errors">Ce fichier n'a pas pu être lu : ${esc(e.message)}.</p>`; }
   };
   fr.readAsText(file);
 }
 ACTIONS.importOk = () => {
-  if (!IMPORT) return; let n = 0;
-  for (const [k, v] of Object.entries(IMPORT)) { if (!prefixOf(k) || k in DB.data || k in DB.trash || !v) continue; DB.data[k] = v; DB.sig[k] = canon(v); DB.dirty.add(k); n++; }
-  IMPORT = null; Sync.changed(); toast(`${n} élément(s) importé(s).`); render();
+  if (!IMPORT) return; let n = 0, c = 0;
+  for (const [k, v] of IMPORT.ajouts) { if (k in DB.data || k in DB.trash) continue; DB.data[k] = v; DB.sig[k] = canon(v); DB.dirty.add(k); n++; }
+  for (const [k, v] of IMPORT.completes) { if (!(k in DB.data)) continue; DB.data[k] = v; DB.sig[k] = canon(v); DB.dirty.add(k); c++; }
+  IMPORT = null; Sync.changed(); toast(`${n} élément(s) importé(s)${c ? `, ${c} complété(s)` : ''}.`); render();
 };

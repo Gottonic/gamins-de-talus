@@ -17,7 +17,7 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
 | Cultures | Plan par saison modifiable directement dans le tableau : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
 | Inventaire | Objets amortis (dégressif) et achats prévus |
-| Contacts | Clients, grossistes, fournisseurs, partenaires |
+| Contacts | Clients, grossistes, restauration collective, fournisseurs, partenaires. Prospection : établissements à appeler avec statut, priorité, horaires d'appel, journal des échanges, relances (accueil et calendrier), pitch d'appel ; un prospect devient client en un clic |
 | Réglages | Coordonnées, IBAN, associés et parts, export / import, corbeille |
 
 ## Mise en route (une seule fois)
