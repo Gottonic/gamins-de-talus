@@ -387,6 +387,16 @@ table.matrix thead th .sw { display: inline-block; width: 10px; height: 10px; bo
 .jl { border-left: 3px solid var(--c-contacts); padding: 4px 0 4px 10px; }
 .jl p { margin: 4px 0 0; white-space: pre-wrap; font-size: 14px; }
 @media (min-width: 901px) { #ct-right { position: sticky; top: calc(70px + env(safe-area-inset-top, 0px)); max-height: calc(100vh - 86px); overflow: auto; border-radius: 12px; } }
+.lastj { background: var(--s-contacts); border-left: 4px solid var(--c-contacts); border-radius: 8px; padding: 10px 12px; }
+.lastj p { margin: 6px 0 0; white-space: pre-wrap; }
+.lastj.vide { background: var(--bg); border-left-color: var(--line); }
+.pitchbox { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--c-contacts); border-radius: 12px; }
+.pitchbox summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; font-family: var(--font-display); font-weight: 600; font-size: 19px; color: var(--c-contacts); }
+.pitchbox summary::-webkit-details-marker { display: none; }
+.pitchbox summary::before { content: "▸"; margin-right: 8px; transition: transform .15s; display: inline-block; }
+.pitchbox[open] summary::before { transform: rotate(90deg); }
+.pitchbox summary > span:first-child { margin-right: auto; }
+.pitchbox > .split { padding: 0 18px 18px; }
 details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--muted); padding: 6px 0; }
 
 /* Connexion */

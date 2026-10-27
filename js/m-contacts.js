@@ -60,6 +60,7 @@ MODULES.contacts = {
     liveSearch('ct-search', (v) => { CT.search = v; });
     liveSearch('pr-search', (v) => { PR.search = v; });
     const cat = $('pr-cat'); if (cat) cat.addEventListener('change', () => { PR.categorie = cat.value; render(); });
+    const pb = $('pitchbox'); if (pb) pb.addEventListener('toggle', () => { ls.set('gdt-pitch-ouvert', pb.open ? '1' : '0'); const h = pb.querySelector('summary .hint'); if (h) h.textContent = pb.open ? 'fermer' : 'ouvrir'; });
     if (['voir', 'nouveau', 'modifier', 'prospect', 'convertir'].includes(sub) && innerWidth < 900) { const r = $('ct-right'); if (r) r.scrollIntoView({ block: 'start' }); }
   },
 };
@@ -209,12 +210,12 @@ function renderProspection(sub, id) {
   else if (sub === 'prospect' && DB.get(id)) right = ficheProspect(Object.assign({ key: id }, DB.get(id)));
   else if (sub === 'convertir' && DB.get(id)) right = formConversion(Object.assign({ key: id }, DB.get(id)));
   else if (sub === 'modifier' && DB.get(id)) right = contactForm(Object.assign({ key: id }, DB.get(id)));
-  else right = pitchCard();
-  return `<div class="stats">
+  else right = '<div class="panel"><p class="hint">Choisis un prospect pour voir sa fiche et noter un appel.</p></div>';
+  return `${pitchBox()}<div class="stats">
       <div class="stat good"><span class="k">À contacter</span><span class="v">${cnt.afaire}</span></div>
       <div class="stat blue"><span class="k">À relancer</span><span class="v">${cnt.relance}</span><span class="s ${dus.length ? 'err' : ''}">${dus.length ? `${dus.length} relance${dus.length > 1 ? 's' : ''} prévue${dus.length > 1 ? 's' : ''} aujourd'hui ou avant` : 'pas joignable, à rappeler, mail envoyé'}</span></div>
       <div class="stat good"><span class="k">En discussion</span><span class="v">${cnt.discussion}</span><span class="s">intéressés, en cours</span></div>
-      <div class="stat"><span class="k">Validés</span><span class="v">${cnt.valide}</span><span class="s">${contacts().filter((c) => c.devenuClientLe || (c.prospection || {}).statut === 'Validé').length} déjà passés en clients</span></div>
+      <div class="stat"><span class="k">Validés</span><span class="v">${cnt.valide}</span><span class="s">${((n) => `${n} déjà passé${n > 1 ? 's' : ''} en client${n > 1 ? 's' : ''}`)(contacts().filter((c) => c.devenuClientLe || (c.prospection || {}).statut === 'Validé').length)}</span></div>
     </div>
     <div class="split wide-left"><div class="panel">
       <div class="between"><h2>Prospection</h2><a class="btn primary small" href="#/contacts/prospect/nouveau">+ Prospect</a></div>
@@ -227,11 +228,19 @@ function renderProspection(sub, id) {
 ACTIONS.prGroupe = (el) => { PR.groupe = el.dataset.k; render(); };
 ACTIONS.prPrio = (el) => { PR.prio = PR.prio === el.dataset.k ? '' : el.dataset.k; render(); };
 
+/* Le dernier échange du journal, affiché en haut de la fiche */
+function dernierEchange(c) {
+  const j = (c.journal || []).map((e, i) => [e, i]).sort((a, b) => String(b[0].date || '').localeCompare(String(a[0].date || '')) || b[1] - a[1]);
+  if (!j.length) return '<div class="lastj vide"><span class="hint">Aucun échange noté pour l\'instant.</span></div>';
+  const e = j[0][0];
+  return `<div class="lastj"><div class="between"><span class="hint"><b>Dernier échange</b> · ${e.date ? fmtDate(e.date) : 'sans date'}${e.par ? ' · ' + esc(nomDe(e.par)) : ''}</span>${e.statut ? pillStatut(e.statut) : ''}</div>${e.note ? `<p>${esc(e.note)}</p>` : ''}</div>`;
+}
 function ficheProspect(c) {
   const p = c.prospection || {}, st = pStat(c), g = groupeStatut(st);
   return `<div class="panel">
     <div class="between"><div><h2>${esc(displayName(c))}</h2><div class="row">${pillStatut(st)}<span class="tpill">${esc(p.categorie || '—')}</span>${p.priorite ? `<span class="tpill">Priorité ${p.priorite}</span>` : ''}</div></div>
       <div class="row"><a class="btn primary" href="#/contacts/convertir/${encodeURIComponent(c.key)}">Devenir client</a><a class="btn" href="#/contacts/modifier/${encodeURIComponent(c.key)}">Modifier</a></div></div>
+    ${dernierEchange(c)}
     ${p.horaires ? `<div class="banner callhours"><span><b>Quand appeler :</b> ${esc(p.horaires)}</span></div>` : ''}
     ${lignesContact(c)}
     ${p.pourquoi ? `<div><h3>Pourquoi eux</h3><p class="hint" style="color:var(--ink)">${esc(p.pourquoi)}</p></div>` : ''}
@@ -292,12 +301,17 @@ document.addEventListener('click', (e) => { const b = e.target.closest('form[dat
 
 /* ---------- Pitch d'appel (modifiable) ---------- */
 const PITCH_DEFAUT = "1. Qui : « Bonjour, je suis [prénom], maraîcher à Marly, Gamins de Talus. »\n2. Quoi : « J'ai cette saison des patates douces et des courges de Marly, en quantité. »\n3. Pour eux : « Vous travaillez local et de saison, je me suis dit que ça pourrait vous intéresser. »\n4. Question : « Qui s'occupe des achats de légumes chez vous, et quel est le meilleur moment pour en parler ? »\n5. Suite : proposer de passer avec un échantillon, ou envoyer prix et quantités par mail.";
-function pitchCard() {
-  const P = DB.get('cfg:prospection') || {};
-  return `<div class="panel"><div class="between"><h2>Pitch d'appel</h2><button class="btn small" type="button" data-act="pitchEdit">Modifier</button></div>
-    <div class="notes">${esc(P.pitch || PITCH_DEFAUT)}</div>
-    ${P.memo ? `<h3>À avoir sous la main</h3><div class="notes">${esc(P.memo)}</div>` : ''}
-    <p class="hint">Les prix par type de client sont dans Factures → Produits et prix. Choisis un prospect pour noter un appel.</p></div>`;
+/* Boîte « pitch et prix », repliable, en haut de la prospection */
+function pitchBox() {
+  const P = DB.get('cfg:prospection') || {}, ouvert = ls.get('gdt-pitch-ouvert') === '1';
+  const prods = produits(), cols = TARIFS.filter(([k]) => prods.some((p) => !vide((p.prixParType || {})[k])));
+  const prix = prods.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Fourchette</th>${cols.map(([, l]) => `<th class="r">${esc(l.replace(/ \(.*\)/, ''))}</th>`).join('')}</tr></thead><tbody>
+    ${prods.map((p) => `<tr><td>${esc(p.nom)}${p.remarque ? `<br><span class="hint">${esc(p.remarque)}</span>` : ''}</td><td class="r num" style="white-space:nowrap">${fourchette(p) || '—'}</td>${cols.map(([k]) => `<td class="r num">${vide((p.prixParType || {})[k]) ? '—' : money(p.prixParType[k])}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div><p class="hint">CHF par ${esc(prods[0].unite || 'kg')}. À modifier dans Factures → <a href="#/factures/produits">Produits et prix</a>.</p>` : '<p class="hint">Aucun produit. Ajoute-les dans Factures → Produits et prix.</p>';
+  return `<details class="pitchbox" id="pitchbox"${ouvert ? ' open' : ''}><summary><span>Pitch d'appel et prix</span><span class="hint">${ouvert ? 'fermer' : 'ouvrir'}</span></summary>
+    <div class="split"><div class="form"><div class="between"><h3>Pitch</h3><button class="btn small" type="button" data-act="pitchEdit">Modifier</button></div>
+      <div class="notes">${esc(P.pitch || PITCH_DEFAUT)}</div>${P.memo ? `<h3>À avoir sous la main</h3><div class="notes">${esc(P.memo)}</div>` : ''}</div>
+      <div class="form"><h3>Prix</h3>${prix}</div></div></details>`;
 }
 ACTIONS.pitchEdit = () => {
   const P = DB.get('cfg:prospection') || {};
