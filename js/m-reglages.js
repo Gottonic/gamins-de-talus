@@ -32,8 +32,17 @@ function renderEntreprise() {
       ${inp('s-pre', 'Préfixe des numéros', s.prefixe, { name: 'prefixe', attrs: { maxlength: 6 }, sub: `Ex. ${esc(s.prefixe || 'GDT')}-${todayISO().slice(0, 4)}-001` })}
     </div>
     ${inp('s-mention', 'Mention TVA', s.mention, { name: 'mention', sub: "Gamins de Talus n'est pas assujetti à la TVA : aucune TVA n'est ajoutée." })}
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>
+    <form class="panel form" data-form="cfgDrive"><h2>Drive partagé</h2>
+    ${inp('s-drive', 'Lien de partage (Proton Drive)', s.drive, { name: 'drive', type: 'url', attrs: { placeholder: 'https://drive.proton.me/urls/…', autocomplete: 'off' }, sub: 'Un bouton « Drive » apparaît en haut de chaque page. Le lien reste dans la base, pas dans le code public.' })}
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`;
 }
+FORMS.cfgDrive = (v) => {
+  const l = String(v.drive || '').trim();
+  if (l && !/^https:\/\//.test(l)) { toast('Le lien doit commencer par https://'); return; }
+  DB.put('cfg:reglages', Object.assign({}, DB.get('cfg:reglages') || {}, { drive: l }));
+  toast(l ? 'Lien du drive enregistré.' : 'Lien du drive retiré.'); render();
+};
 FORMS.cfgEnt = (v) => {
   if (v.iban && !ibanCheck(v.iban).ok) { toast("Corrige l'IBAN avant d'enregistrer."); return; }
   const o = Object.assign({}, DB.get('cfg:reglages') || {}, v, { iban: cleanIban(v.iban), delai: Math.max(0, Math.min(120, parseInt(v.delai, 10) || 0)), prefixe: (v.prefixe || 'GDT').replace(/[^A-Za-z0-9]/g, '') || 'GDT' });

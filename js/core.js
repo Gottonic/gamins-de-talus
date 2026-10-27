@@ -184,6 +184,7 @@ function render() {
   document.body.dataset.mod = m ? ROUTE.mod : 'accueil';
   $('title').textContent = m ? m.titre : cfg().nom;
   $('home-btn').hidden = !m;
+  const dr = $('drive'), lien = cfg().drive || ''; dr.hidden = !lien; if (lien) dr.href = lien;
   const sy = window.scrollY, same = render._last === location.hash; render._last = location.hash;
   try { view.innerHTML = m ? m.render(ROUTE.sub, ROUTE.id) : renderAccueil(); }
   catch (e) { console.error(e); view.innerHTML = `<div class="panel"><p class="err">Cette page n'a pas pu s'afficher : ${esc(e.message)}. Tes données ne sont pas touchées.</p></div>`; }
