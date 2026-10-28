@@ -2,6 +2,7 @@
 'use strict';
 
 const ICONS = {
+  messages: '<svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>',
   factures: '<svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3"/><path d="M9 10h6M9 14h6M9 18h3"/></svg>',
   finances: '<svg viewBox="0 0 24 24"><ellipse cx="9" cy="7" rx="5" ry="2.5"/><path d="M4 7v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V7"/><path d="M10 15.5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4c0-1.3-1.9-2.4-4.4-2.5"/><path d="M10 15.5v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4"/></svg>',
   calendrier: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.5 14h2M11 14h2M14.5 14h2M7.5 17h2M11 17h2"/></svg>',
@@ -11,7 +12,7 @@ const ICONS = {
   contacts: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.5.2 4.3 1.9 4.9 4.9"/></svg>',
   reglages: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
 };
-const ORDRE = ['factures', 'finances', 'calendrier', 'taches', 'cultures', 'inventaire', 'contacts', 'reglages'];
+const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'inventaire', 'contacts'];
 
 function renderAccueil() {
   const h = new Date().getHours();
@@ -32,6 +33,9 @@ function renderAccueil() {
 
   /* --- Ce qui est à faire --- */
   const groupes = [];
+  const nl = typeof nonLus === 'function' ? nonLus() : [];
+  if (nl.length) groupes.push({ mod: 'messages', titre: 'Messages non lus', n: nl.length, items: nl.slice(-4).reverse().map((m) => ({ href: '#/messages', txt: `${nomDe(m.de)} : ${trunc(m.texte, 60)}`, val: fmtDateCourt(isoDate(new Date(m.cree))) })),
+    plus: { href: '#/messages', txt: 'Ouvrir la messagerie' } });
   if (ouvertes.length) groupes.push({ mod: 'factures', titre: 'Factures impayées', n: ouvertes.length, items: ouvertes.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
     .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });
   /* Tâches : d'abord urgentes et en retard, puis les prochaines échéances, puis les autres tâches ouvertes */
@@ -69,7 +73,8 @@ function renderAccueil() {
     try { t = m.tuile ? m.tuile() : t; } catch (e) { console.error(e); }
     return `<a class="tile t-${k}" href="#/${k}"><span class="ic">${ICONS[k] || ''}</span><b>${esc(m.titre)}</b><span class="tline${t.warn ? ' warn' : ''}">${esc(t.line || '')}</span></a>`;
   }).join('');
-  return `<section class="hello"><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></section>
+  return `<section class="hello"><div><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></div>
+    <button class="btn primary big" type="button" data-act="mesHeures"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Enregistrer mes heures</button></section>
     ${kpis}
     <section class="tiles" aria-label="Modules">${tiles}</section>
     ${todo}`;

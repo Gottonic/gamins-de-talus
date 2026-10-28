@@ -11,9 +11,10 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 
 | Module | Ce qu'on y fait |
 |---|---|
+| Messages | Discussion entre associés : non lus sur l'accueil, « vu par », notifications Discord au choix de chacun (bouton dans la messagerie) |
 | Factures | Factures QR (virement) ou payées comptant, PDF, suivi des paiements, produits et prix |
 | Finances | Dépenses, recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
-| Calendrier | Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Saisie des heures à la semaine, agenda, bilan des heures |
+| Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Saisie des heures à la semaine, agenda, bilan des heures |
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
 | Cultures | Plan par saison modifiable directement dans le tableau : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
 | Inventaire | Objets amortis (dégressif) et achats prévus |
@@ -50,6 +51,10 @@ Seules les personnes de la table `membres` voient les données, même si quelqu'
 ```sql
 insert into public.membres (user_id, personne, nom) select id, 'marc', 'Marc' from auth.users where email = 'ADRESSE-DE-MARC' on conflict do nothing;
 ```
+
+### Messages en direct (facultatif)
+SQL Editor → `alter publication supabase_realtime add table public.rows;` → Run.
+Les nouveaux messages apparaissent alors tout de suite chez les autres (sinon : toutes les 8 secondes dans la messagerie, chaque minute ailleurs).
 
 ### 4. Activer le site
 GitHub → dépôt `gamins-de-talus` → **Settings** → **Pages** → Source : **Deploy from a branch**, branche `main`, dossier `/ (root)` → **Save**.
@@ -100,4 +105,5 @@ Pas d'étape de compilation : `index.html` (page et styles) + des scripts dans `
 Chaque élément est une ligne `clé → contenu JSON` dans la table `rows`. Préfixes des clés :
 `cfg:` réglages, `ct:` contacts, `prod:` produits, `fac:` factures, `dep:` dépenses, `rec:` recettes,
 `reg:` remboursements, `h:AAAA-MM-JJ:personne` heures, `jour:` remarques du jour, `t:` tâches,
-`cul:` cultures, `inv:` inventaire, `achat:` achats prévus, `ev:` événements du calendrier.
+`cul:` cultures, `inv:` inventaire, `achat:` achats prévus, `ev:` événements du calendrier,
+`msg:` messages, `lu:` jusqu'où chacun a lu, `cfg:discord:personne` webhook Discord de chacun.

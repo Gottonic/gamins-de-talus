@@ -23,7 +23,17 @@ async function enter(user) {
     $('view').innerHTML = `<div class="panel"><h2>Compte pas encore relié</h2><p class="hint">Ce compte (${esc(Sync.email)}) n'est pas encore membre de Gamins de Talus. Dans Supabase, exécute la ligne « insert into public.membres … » du fichier <code>supabase/schema.sql</code> avec cette adresse, puis recharge la page.</p></div>`;
     return;
   }
-  render(); Sync.push();
+  render(); Sync.push(); ecouterEnDirect();
+}
+/* Mises à jour en direct (messages, etc.) : actif si la table est publiée pour Realtime dans Supabase.
+   Sinon rien ne casse : l'app regarde quand même toutes les minutes (toutes les 8 s dans la messagerie). */
+function ecouterEnDirect() {
+  if (ecouterEnDirect.on || !Sync.sb || !Sync.sb.channel) return; ecouterEnDirect.on = true;
+  try {
+    Sync.sb.channel('rows-direct').on('postgres_changes', { event: '*', schema: 'public', table: 'rows' }, () => {
+      clearTimeout(ecouterEnDirect.t); ecouterEnDirect.t = setTimeout(() => Sync.pull(), 300);
+    }).subscribe();
+  } catch (e) { /* pas de direct : la synchro régulière suffit */ }
 }
 function majMoi() { const b = $('me'); if (Sync.me) { b.hidden = false; b.textContent = nomDe(Sync.me); } else b.hidden = true; }
 

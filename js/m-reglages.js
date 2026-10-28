@@ -93,9 +93,9 @@ FORMS.cfgAss = (v) => {
 };
 
 /* ---------- Données ---------- */
-const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'cfg:': 'Réglages' };
+const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'msg:': 'Messages', 'lu:': 'Messages lus', 'cfg:': 'Réglages' };
 const prefixOf = (k) => Object.keys(PREFIX_LABEL).find((p) => k.startsWith(p)) || '';
-function libelleDe(k, d) { d = d || {}; return d.numero ? 'Facture ' + d.numero : d.objet || d.titre || d.nom || d.organisation || d.client || d.remarque || (d.date ? fmtDate(d.date) : '') || k; }
+function libelleDe(k, d) { d = d || {}; return d.numero ? 'Facture ' + d.numero : d.texte ? trunc(d.texte, 60) : d.objet || d.titre || d.nom || d.organisation || d.client || d.remarque || (d.date ? fmtDate(d.date) : '') || k; }
 
 function renderDonnees() {
   const counts = {}; for (const k in DB.data) { const p = prefixOf(k); counts[p] = (counts[p] || 0) + 1; }

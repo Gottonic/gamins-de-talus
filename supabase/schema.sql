@@ -96,3 +96,6 @@ grant execute on function public.ping() to anon, authenticated;
 --
 -- insert into public.membres (user_id, personne, nom) select id, 'nicolas', 'Nicolas' from auth.users where email = 'ADRESSE-DE-NICOLAS' on conflict do nothing;
 -- insert into public.membres (user_id, personne, nom) select id, 'noe', 'Noé' from auth.users where email = 'ADRESSE-DE-NOE' on conflict do nothing;
+
+-- 6. (Facultatif, pour la messagerie) Mises à jour en direct : les autres voient un message dès qu'il est envoyé.
+alter publication supabase_realtime add table public.rows;

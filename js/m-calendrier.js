@@ -270,7 +270,8 @@ function renderSemaine() {
   }).join('');
   const mois = l.slice(0, 7), annee = l.slice(0, 4);
   const tm = totalHeures(heuresToutes(), (h) => h.date.slice(0, 7) === mois), ty = totalHeures(heuresToutes(), (h) => h.date.slice(0, 4) === annee);
-  return `<div class="panel">
+  return `<div class="row"><button class="btn primary" type="button" data-act="mesHeures">+ Enregistrer mes heures</button></div>
+    <div class="panel">
     <div class="between"><div class="row"><button class="btn small" type="button" data-act="hWeek" data-n="-7" aria-label="Semaine précédente">←</button>
       <h2>Semaine ${w.semaine}</h2><button class="btn small" type="button" data-act="hWeek" data-n="7" aria-label="Semaine suivante">→</button></div>
       <div class="row"><span class="hint">${fmtDate(l)} – ${fmtDate(fin)}</span>${l !== lundiDe(today) ? '<button class="btn small" type="button" data-act="hWeek" data-n="0">Aujourd\'hui</button>' : ''}</div></div>
@@ -321,4 +322,34 @@ ACTIONS.hCsv = (el) => {
   for (const j of DB.all('jour:')) if (yearOf(j.date) === y) days[j.date] = days[j.date] || {};
   const rows = Object.keys(days).sort().map((d) => [fmtDate(d), JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]].concat(ps.map((p) => (days[d][p.k] && days[d][p.k].heures) ? String(days[d][p.k].heures).replace('.', ',') : ''), ps.map((p) => (days[d][p.k] && days[d][p.k].off) ? 'off' : ''), [(DB.get('jour:' + d) || {}).remarque || '']));
   downloadFile(`Heures Gamins de Talus ${y}.csv`, csv(['Date', 'Jour'].concat(ps.map((p) => 'Heures ' + p.nom), ps.map((p) => 'Off ' + p.nom), ['Remarque']), rows), 'text/csv;charset=utf-8');
+};
+
+/* ---------- « Enregistrer mes heures » : le plus court chemin, aujourd'hui et à mon nom par défaut ---------- */
+ACTIONS.mesHeures = (el) => {
+  const p0 = (el && el.dataset.p) || Sync.me || personnes()[0].k, d0 = (el && el.dataset.d) || todayISO();
+  openSheet(`${sheetHead('Enregistrer mes heures')}<form class="sbody form" data-form="mesHeures">
+    <div class="grid2">${sel('mh-p', 'Qui', p0, persOptions(), { name: 'p' })}${inp('mh-d', 'Jour', d0, { name: 'd', type: 'date', attrs: { max: addDays(todayISO(), 31) } })}</div>
+    ${inp('mh-h', 'Heures travaillées', '', { name: 'h', type: 'number', attrs: { placeholder: 'Ex. 7,5', autofocus: '' }, sub: '<span id="mh-deja"></span>7,5 = 7 h 30' })}
+    <div class="row chips-h">${[2, 4, 6, 7, 8, 9].map((h) => `<button type="button" class="chip" data-act="mhSet" data-h="${h}">${h} h</button>`).join('')}</div>
+    ${inp('mh-n', "Ce que j'ai fait (facultatif)", '', { name: 'n', attrs: { placeholder: 'Ex. récolte courges, livraison Épinettes' } })}
+    <div class="row-end"><a class="btn link" href="#/calendrier/semaine" data-act="go" data-href="#/calendrier/semaine">Voir toute la semaine</a><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  const maj = () => {
+    const h = DB.get(hKey($('mh-d').value, $('mh-p').value)) || {};
+    $('mh-h').value = h.heures ? fmtH(h.heures) : ''; $('mh-n').value = h.note || '';
+    $('mh-deja').textContent = h.heures ? `Déjà noté ce jour-là : ${fmtH(h.heures)} h (tu peux corriger). ` : '';
+  };
+  $('mh-p').addEventListener('change', maj); $('mh-d').addEventListener('change', maj); maj();
+  setTimeout(() => { const i = $('mh-h'); if (i) i.focus(); }, 60);
+};
+ACTIONS.mhSet = (el) => { $('mh-h').value = el.dataset.h; $('mh-h').focus(); };
+FORMS.mesHeures = (v) => {
+  if (!v.d || !v.p) { toast('Indique le jour et la personne.'); return; }
+  const h = num(v.h); if (h < 0 || h > 24) { toast('Indique un nombre d\'heures entre 0 et 24.'); return; }
+  const k = hKey(v.d, v.p), old = DB.get(k) || {};
+  const o = Object.assign({}, old, { date: v.d, personne: v.p, heures: h || 0 });
+  if (v.n) o.note = v.n; else delete o.note;
+  if (h > 0) delete o.off;
+  if (!o.heures && !o.off && !o.note) { if (DB.get(k)) DB.del(k); } else DB.put(k, o);
+  closeSheet();
+  toast(h ? `${fmtH(h)} h notées pour ${nomDe(v.p)} ${v.d === todayISO() ? "aujourd'hui" : 'le ' + fmtDate(v.d)}.` : 'Heures effacées pour ce jour.');
 };
