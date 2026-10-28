@@ -34,7 +34,7 @@ function renderAccueil() {
   /* --- Ce qui est à faire --- */
   const groupes = [];
   const nl = typeof nonLus === 'function' ? nonLus() : [];
-  if (nl.length) groupes.push({ mod: 'messages', titre: 'Messages non lus', n: nl.length, items: nl.slice(-4).reverse().map((m) => ({ href: '#/messages', txt: `${nomDe(m.de)} : ${trunc(m.texte, 60)}`, val: fmtDateCourt(isoDate(new Date(m.cree))) })),
+  if (nl.length) groupes.push({ mod: 'messages', titre: 'Messages non lus', n: nl.length, items: nl.slice(-4).reverse().map((m) => ({ href: '#/messages', txt: `${nomDe(m.de)} : ${trunc(apercuMsg(m), 60)}`, val: fmtDateCourt(isoDate(new Date(m.cree))) })),
     plus: { href: '#/messages', txt: 'Ouvrir la messagerie' } });
   if (ouvertes.length) groupes.push({ mod: 'factures', titre: 'Factures impayées', n: ouvertes.length, items: ouvertes.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
     .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });

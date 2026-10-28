@@ -1,10 +1,11 @@
 /* Gamins de Talus — messagerie entre associés, avec notifications Discord (facultatives, par personne).
-   msg:<id>          un message { de, texte, cree }
+   msg:<id>          un message { de, texte, cree, photo? { chemin, w, h } }
    lu:<personne>     jusqu'où la personne a lu { jusqua } : une ligne par personne, donc jamais de conflit
    cfg:discord:<p>   le webhook Discord de la personne { webhook, texte } (dans la base, pas dans le code public) */
 'use strict';
 
-const MSG = { draft: '', timer: null };
+const MSG = { draft: '', timer: null, photo: null, envoi: false };
+const apercuMsg = (m) => (m.texte ? m.texte.replace(/\s+/g, ' ') : '') || (m.photo ? '📷 Photo' : '');
 const messages = () => DB.all('msg:').sort((a, b) => String(a.cree).localeCompare(String(b.cree)));
 const luJusqua = (p) => ((DB.get('lu:' + p) || {}).jusqua || '');
 function nonLus(p) { p = p || Sync.me; const l = luJusqua(p); return messages().filter((m) => m.de !== p && String(m.cree) > l); }
@@ -16,7 +17,7 @@ MODULES.messages = {
   tuile() {
     const n = nonLus().length, ms = messages(), der = ms[ms.length - 1];
     if (!der) return { line: 'Discuter entre associés' };
-    return { qui: der.de === Sync.me ? 'Toi :' : nomDe(der.de) + ' :', line: trunc(der.texte.replace(/\s+/g, ' '), 90), clamp: true, badge: n };
+    return { qui: der.de === Sync.me ? 'Toi :' : nomDe(der.de) + ' :', line: (der.photo && der.texte ? '📷 ' : '') + trunc(apercuMsg(der), 90), clamp: true, badge: n };
   },
   render() { return renderMessages(); },
   after() {
@@ -26,6 +27,7 @@ MODULES.messages = {
     if (t) {
       const grow = () => { t.style.height = 'auto'; t.style.height = Math.min(220, t.scrollHeight + 2) + 'px'; };
       t.addEventListener('input', () => { MSG.draft = t.value; grow(); }); grow();
+      const f = $('msg-file'); if (f) f.addEventListener('change', () => choisirPhoto(f.files[0]));
       t.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey && matchMedia('(pointer: fine)').matches) { e.preventDefault(); envoyerMessage(); }
       });
@@ -65,7 +67,7 @@ function renderMessages() {
     const mien = m.de === me, suite = i > 0 && ms[i - 1].de === m.de && isoDate(new Date(ms[i - 1].cree)) === j;
     html += `<div class="msg${mien ? ' mine' : ''}${suite ? ' suite' : ''}">
       ${!mien && !suite ? `<span class="msg-who">${esc(nomDe(m.de))}</span>` : ''}
-      <div class="bubble">${texteMsg(m.texte)}<span class="msg-t">${heureMsg(m.cree)}${mien ? ` <button type="button" class="msg-del" data-act="msgDel" data-key="${esc(m.key)}" title="Supprimer ce message" aria-label="Supprimer ce message">×</button>` : ''}</span></div></div>`;
+      <div class="bubble${m.photo ? ' has-photo' : ''}">${m.photo ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${m.photo.w ? ` width="${m.photo.w}" height="${m.photo.h}"` : ''} loading="lazy"></button>` : ''}${texteMsg(m.texte || '')}<span class="msg-t">${heureMsg(m.cree)}${mien ? ` <button type="button" class="msg-del" data-act="msgDel" data-key="${esc(m.key)}" title="Supprimer ce message" aria-label="Supprimer ce message">×</button>` : ''}</span></div></div>`;
   });
   /* « Vu par » sous le dernier message */
   const der = ms[ms.length - 1];
@@ -79,9 +81,11 @@ function renderMessages() {
       <button class="btn small${dOn ? ' on' : ''}" type="button" data-act="discordSheet">${ICON_DISCORD}${dOn ? 'Notifications Discord activées' : 'Recevoir les notifications sur Discord'}</button></div>
     <p class="hint chat-who">${esc(personnes().map((p) => p.nom).join(', '))} · ${prevenus.length ? 'prévenus sur Discord : ' + esc(prevenus.join(', ')) : 'personne n\'est encore prévenu sur Discord'}</p>
     <div class="msg-list" id="msg-list" aria-live="polite">${html || '<p class="empty">Aucun message pour l\'instant. Écris le premier !</p>'}</div>
+    ${MSG.photo ? `<div class="msg-prev"><img src="${MSG.photo.apercu}" alt="Photo à envoyer"><span>Photo prête à envoyer${MSG.envoi ? ' : envoi…' : ' · ajoute une légende si tu veux'}</span><button type="button" class="btn small" data-act="msgPhotoOff"${MSG.envoi ? ' disabled' : ''}>Retirer</button></div>` : ''}
     <form class="composer" data-form="msg">
+      <label class="btn photo-btn" title="Ajouter une photo" aria-label="Ajouter une photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg><input id="msg-file" type="file" accept="image/*" hidden></label>
       <textarea id="msg-txt" name="texte" rows="1" placeholder="Écrire un message…" aria-label="Message">${esc(MSG.draft)}</textarea>
-      <button class="btn primary" type="submit">Envoyer</button>
+      <button class="btn primary" type="submit"${MSG.envoi ? ' disabled' : ''}>${MSG.envoi ? 'Envoi…' : 'Envoyer'}</button>
     </form>
     <p class="hint">${matchMedia('(pointer: fine)').matches ? 'Entrée pour envoyer, Maj + Entrée pour aller à la ligne. ' : ''}Les messages restent dans la base, comme tout le reste.</p></div>`;
 }
@@ -89,16 +93,40 @@ function renderMessages() {
 const ICON_DISCORD = '<svg class="ic-d" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8.5c4-2 8-2 12 0l1.5 7c-1.5 1.3-3 2-4.5 2.3l-1-1.6m-4 0-1 1.6C7.5 17.5 6 16.8 4.5 15.5z"/><circle cx="9.5" cy="12.5" r="1.1"/><circle cx="14.5" cy="12.5" r="1.1"/></svg>';
 
 FORMS.msg = () => envoyerMessage();
-function envoyerMessage() {
+async function choisirPhoto(file) {
+  if (!file) return;
+  try {
+    const f = await preparerFichier(file, 'photo');
+    if (MSG.photo) URL.revokeObjectURL(MSG.photo.apercu);
+    MSG.photo = Object.assign(f, { apercu: URL.createObjectURL(f.blob) });
+    const t = $('msg-txt'); if (t) MSG.draft = t.value;
+    render();
+  } catch (e) { toast('Photo impossible : ' + e.message); }
+}
+ACTIONS.msgPhotoOff = () => { if (MSG.photo) URL.revokeObjectURL(MSG.photo.apercu); MSG.photo = null; render(); };
+async function envoyerMessage() {
+  if (MSG.envoi) return;
   const t = $('msg-txt'); const texte = String((t && t.value) || '').trim();
-  if (!texte) return;
+  if (!texte && !MSG.photo) return;
   if (!Sync.me) { toast('Connecte-toi pour envoyer un message.'); return; }
+  let photo = null; const ph = MSG.photo;
+  if (ph) {
+    MSG.envoi = true; MSG.draft = texte; render();
+    try {
+      const chemin = await Fichiers.envoyer(ph.blob, cheminFichier('messages', ph.ext));
+      photo = { chemin, w: ph.w, h: ph.h };
+    } catch (e) { MSG.envoi = false; render(); toast("La photo n'est pas partie : " + e.message, 6000); return; }
+    MSG.envoi = false;
+  }
   const cree = new Date().toISOString();
-  MSG.draft = ''; if (t) t.value = '';
-  DB.put('msg:' + uid('m'), { de: Sync.me, texte, cree });
+  MSG.draft = ''; MSG.photo = null; const tt = $('msg-txt'); if (tt) tt.value = '';
+  const msg = { de: Sync.me, texte, cree }; if (photo) msg.photo = photo;
+  DB.put('msg:' + uid('m'), msg);
   DB.put('lu:' + Sync.me, { jusqua: cree });
   Sync.schedule(0);
-  notifierDiscord(Sync.me, texte);
+  notifierDiscord(Sync.me, texte, ph && ph.blob);
+  if (ph) Fichiers.local[photo.chemin] = Fichiers.local[photo.chemin] || ph.apercu;
+  if (ph && !LOCAL_MODE) Fichiers.liens[photo.chemin] = { url: ph.apercu, exp: Date.now() + 50 * 60000 };
   render(); const n = $('msg-txt'); if (n && matchMedia('(pointer: fine)').matches) n.focus();
 }
 ACTIONS.msgDel = (el) => confirmSheet('Supprimer ce message ?', 'Il disparaît pour tout le monde (il reste récupérable dans la corbeille).', 'delItemOk', 'Supprimer', { key: el.dataset.key });
@@ -107,13 +135,23 @@ ACTIONS.msgDel = (el) => confirmSheet('Supprimer ce message ?', 'Il disparaît p
    Chaque personne colle l'adresse d'un webhook de son propre salon Discord. Quand quelqu'un écrit,
    l'app poste dans le salon des autres. Envoi en « multipart » : Discord l'accepte sans autorisation spéciale du navigateur. */
 const DQ_KEY = 'gdt-discord-file';
-function posterDiscord(webhook, contenu) {
+function posterDiscord(webhook, contenu, image) {
   const fd = new FormData();
   fd.append('payload_json', JSON.stringify({ username: 'Gamins de Talus', content: contenu.slice(0, 1900), allowed_mentions: { parse: [] } }));
+  if (image) fd.append('files[0]', image, 'photo.jpg');
   return fetch(webhook, { method: 'POST', mode: 'no-cors', body: fd });
 }
-function notifierDiscord(de, texte) {
+function notifierDiscord(de, texte, image) {
   if (LOCAL_MODE) return;
+  /* Avec une photo : envoi direct (une photo ne se garde pas dans la file d'attente) */
+  if (image) {
+    for (const p of personnes()) {
+      const d = discordDe(p.k); if (p.k === de || !d.webhook) continue;
+      const c = d.texte === false ? `📷 Nouvelle photo de **${nomDe(de)}** · ${APP_URL}#/messages` : `📷 **${nomDe(de)}**${texte ? ' : ' + trunc(texte, 1500) : ''}\n${APP_URL}#/messages`;
+      posterDiscord(d.webhook, c, d.texte === false ? null : image).catch(() => {});
+    }
+    return;
+  }
   const envois = personnes().filter((p) => p.k !== de && discordDe(p.k).webhook).map((p) => {
     const d = discordDe(p.k);
     return { webhook: d.webhook, contenu: d.texte === false ? `💬 Nouveau message de **${nomDe(de)}** · ${APP_URL}#/messages` : `💬 **${nomDe(de)}** : ${trunc(texte, 1500)}\n${APP_URL}#/messages` };

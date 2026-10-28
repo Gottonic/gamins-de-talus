@@ -107,6 +107,25 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .msg-vu.mine { align-self: flex-end; }
 .composer { display: flex; gap: 8px; align-items: flex-end; margin-top: 12px; }
 .composer textarea { flex: 1; resize: none; min-height: 44px; max-height: 220px; font: inherit; }
+.btn.photo-btn { padding: 0; width: 44px; height: 44px; display: grid; place-items: center; flex: none; cursor: pointer; }
+.btn.photo-btn svg, .btn.justif-btn svg, .photo-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
+.justif-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; align-self: flex-start; }
+.bubble.has-photo { padding: 4px 4px 6px; }
+.bubble.has-photo .msg-t { padding: 0 8px; }
+.msg-photo { display: block; border: 0; padding: 0; background: none; cursor: zoom-in; margin-bottom: 4px; }
+.msg-photo img { display: block; max-width: min(280px, 62vw); max-height: 340px; width: auto; height: auto; border-radius: 12px; background: color-mix(in srgb, var(--line) 60%, transparent); min-width: 120px; min-height: 90px; object-fit: cover; }
+.msg-prev { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 14px; }
+.msg-prev img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; }
+.msg-prev span { flex: 1; color: var(--muted); }
+.grande-photo { display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 10px; background: var(--bg); min-height: 200px; }
+.fich-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.fich { position: relative; }
+.fich-voir { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 4px; cursor: zoom-in; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 96px; }
+.fich-voir img, .fich-pdf { width: 86px; height: 86px; object-fit: cover; border-radius: 7px; background: var(--bg); }
+.fich-pdf { display: grid; place-items: center; font-weight: 800; color: var(--danger); font-family: var(--font-display); }
+.fich-voir small { font-size: 11px; color: var(--muted); max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fich-x { position: absolute; top: -7px; right: -7px; width: 24px; height: 24px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; line-height: 1; }
+.clip { font-size: 13px; margin-left: 4px; }
 .steps { padding-left: 20px; margin: 0 0 14px; display: grid; gap: 6px; font-size: 14.5px; }
 .me { border: 0; background: var(--soft); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 13px; cursor: pointer; }
 
@@ -493,6 +512,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="lib/qrcode.js"></script>
 <script src="js/calc.js"></script>
 <script src="js/core.js"></script>
+<script src="js/fichiers.js"></script>
 <script src="js/pdf.js"></script>
 <script src="js/m-accueil.js"></script>
 <script src="js/m-factures.js"></script>

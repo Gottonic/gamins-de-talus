@@ -1,9 +1,9 @@
 /* Gamins de Talus : fonctionne hors ligne. Changer VERSION à chaque mise à jour du code. */
-const VERSION = 'gdt-2026-10-28-5';
+const VERSION = 'gdt-2026-10-28-6';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/supabase.js', 'lib/jspdf.umd.min.js', 'lib/qrcode.js',
-  'js/calc.js', 'js/core.js', 'js/pdf.js', 'js/m-accueil.js', 'js/m-factures.js', 'js/m-contacts.js', 'js/m-finances.js',
+  'js/calc.js', 'js/core.js', 'js/fichiers.js', 'js/pdf.js', 'js/m-accueil.js', 'js/m-factures.js', 'js/m-contacts.js', 'js/m-finances.js',
   'js/m-calendrier.js', 'js/m-taches.js', 'js/m-cultures.js', 'js/m-inventaire.js', 'js/m-reglages.js', 'js/m-messages.js', 'js/main.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'fonts/bricolage-grotesque-latin-600-normal.woff2', 'fonts/bricolage-grotesque-latin-800-normal.woff2',
