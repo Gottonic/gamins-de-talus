@@ -288,6 +288,21 @@ textarea { resize: vertical; }
 .week tfoot td { font-weight: 700; font-family: var(--font-mono); }
 @media (max-width: 620px) { .week .ncol { display: none; } .week tr.noteRow td { display: table-cell; } }
 .week tr.noteRow td { border-top: 0; padding-top: 0; }
+.hweek { table-layout: fixed; }
+.hweek th:first-child { width: 112px; }
+@media (max-width: 620px) { .hweek th:first-child { width: 86px; } }
+.hweek td { vertical-align: middle; }
+.hbtn { width: 100%; min-height: 40px; border: 1px dashed transparent; border-radius: 8px; background: none; padding: 5px 8px; cursor: pointer; font: inherit; text-align: left; display: flex; flex-direction: column; justify-content: center; color: var(--ink); }
+.hbtn:hover { border-color: var(--line); background: var(--surface); }
+.hbtn.mien { border-color: color-mix(in srgb, var(--c-calendrier) 30%, transparent); }
+.hbtn.full { background: var(--s-calendrier); border-style: solid; border-color: transparent; }
+.hbtn b { font-family: var(--font-mono); font-weight: 500; font-size: 15px; }
+.hbtn small { font-size: 12px; color: var(--muted); line-height: 1.25; }
+.hbtn .plus { color: var(--muted); font-size: 13px; opacity: .7; }
+.hbtn.mien .plus { color: var(--c-calendrier); opacity: 1; font-weight: 700; }
+.tag-off { font-size: 12px; color: var(--blue); font-weight: 700; }
+.tag-vac { font-size: 12px; color: var(--ev-vacances); font-weight: 700; }
+.jrem { display: block; font-size: 12px; color: var(--muted); font-style: italic; margin-top: 2px; max-width: 140px; white-space: normal; }
 @media (min-width: 621px) { .week tr.noteRow { display: none; } }
 .bars { display: flex; flex-direction: column; gap: 8px; }
 .bar-row { display: grid; grid-template-columns: minmax(90px, 140px) minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 14px; }

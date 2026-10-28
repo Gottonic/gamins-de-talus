@@ -14,7 +14,7 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 | Messages | Discussion entre associés : non lus sur l'accueil, « vu par », notifications Discord au choix de chacun (bouton dans la messagerie) |
 | Factures | Factures QR (virement) ou payées comptant, PDF, suivi des paiements, produits et prix |
 | Finances | Dépenses, recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
-| Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Saisie des heures à la semaine, agenda, bilan des heures |
+| Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Onglet Heures : la semaine (une case = un clic pour noter) et le bilan de l'année, agenda |
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
 | Cultures | Plan par saison modifiable directement dans le tableau : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
 | Inventaire | Objets amortis (dégressif) et achats prévus |

@@ -28,7 +28,7 @@ function renderAccueil() {
     <a class="kpi t-factures" href="#/factures"><span class="k">À encaisser</span><span class="v">${chf(ouvertes.reduce((a, f) => a + f.total, 0))}</span>
       <span class="s ${retard.length ? 'bad' : ''}">${ouvertes.length ? `${ouvertes.length} facture${ouvertes.length > 1 ? 's' : ''} ouverte${ouvertes.length > 1 ? 's' : ''}${retard.length ? `, dont ${retard.length} en retard` : ''}` : 'Toutes les factures sont payées'}</span></a>
     <a class="kpi t-finances" href="#/finances"><span class="k">Résultat ${y}</span><span class="v">${chf(b.resultat)}</span><span class="s">Recettes ${chf(b.rec)} · charges ${chf(b.charges)}</span></a>
-    <a class="kpi t-calendrier" href="#/calendrier/semaine"><span class="k">Heures cette semaine</span><span class="v">${fmtH(hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
+    <a class="kpi t-calendrier" href="#/calendrier/heures"><span class="k">Heures cette semaine</span><span class="v">${fmtH(hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
   </section>`;
 
   /* --- Ce qui est à faire --- */

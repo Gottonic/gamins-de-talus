@@ -63,10 +63,10 @@ MODULES.calendrier = {
     return { line: `Semaine : ${personnes().map((p) => `${p.nom} ${fmtH(t[p.k] || 0)} h`).join(' · ')}${prochains ? ` · ${prochains} événement${prochains > 1 ? 's' : ''} à venir` : ''}` };
   },
   render(sub) {
-    const t = tabs('calendrier', [['', 'Mois'], ['semaine', 'Heures de la semaine'], ['agenda', 'Agenda'], ['heures', 'Bilan des heures']], sub);
-    if (sub === 'semaine') return t + renderSemaine();
+    if (sub === 'semaine') { setTimeout(() => location.replace('#/calendrier/heures'), 0); return ''; }
+    const t = tabs('calendrier', [['', 'Mois'], ['heures', 'Heures'], ['agenda', 'Agenda']], sub);
     if (sub === 'agenda') return t + renderAgenda();
-    if (sub === 'heures') return t + renderBilanHeures();
+    if (sub === 'heures') return t + `<div class="row"><button class="btn primary" type="button" data-act="mesHeures">+ Enregistrer mes heures</button></div>` + renderSemaineHeures() + renderBilanHeures();
     return t + renderMois();
   },
   after(sub) {
@@ -75,7 +75,7 @@ MODULES.calendrier = {
   },
 };
 /* L'ancienne adresse #/heures mène au calendrier */
-MODULES.heures = { titre: 'Calendrier', render(sub) { setTimeout(() => location.replace('#/calendrier/' + (sub === 'bilan' ? 'heures' : 'semaine')), 0); return ''; } };
+MODULES.heures = { titre: 'Calendrier', render(sub) { setTimeout(() => location.replace('#/calendrier/heures'), 0); return ''; } };
 
 function brancherHeures(root) {
   root.querySelectorAll('input[data-h]').forEach((el) => el.addEventListener('change', () => {
@@ -248,38 +248,35 @@ function renderAgenda() {
       : '<p class="empty">Rien de prévu. Ajoute des journées de travail, récoltes ou livraisons avec « + Événement ».</p>'}</div>`;
 }
 
-/* ---------- Semaine : saisie des heures ---------- */
-function renderSemaine() {
+/* ---------- Heures : la semaine en lecture (un clic sur une case pour noter), puis le bilan de l'année ---------- */
+function renderSemaineHeures() {
   if (!HEU.lundi) HEU.lundi = lundiDe(todayISO());
   const l = HEU.lundi, ps = personnes(), today = todayISO(), w = semaineISO(l), fin = addDays(l, 6);
   const items = itemsPeriode(l, fin);
   const jours = Array.from({ length: 7 }, (_, i) => addDays(l, i));
   const tot = {}; ps.forEach((p) => { tot[p.k] = 0; });
   const rows = jours.map((d, i) => {
+    const vac = (items[d] || []).filter((x) => x.kind === 'ev' && x.type === 'vacances');
     const cells = ps.map((p) => {
       const h = DB.get(hKey(d, p.k)) || {}; tot[p.k] += num(h.heures);
-      return `<td><div class="hcell"><input type="text" inputmode="decimal" autocomplete="off" data-h="${d}|${p.k}" value="${h.heures ? esc(fmtH(h.heures)) : ''}" aria-label="Heures de ${esc(p.nom)} le ${fmtDate(d)}" placeholder="–">
-        <button type="button" class="off${h.off ? ' on' : ''}" data-act="hOff" data-d="${d}" data-p="${p.k}" aria-pressed="${!!h.off}" title="Jour off">off</button></div></td>`;
+      const enVac = vac.some((x) => x.qui === p.k || x.qui === 'ensemble');
+      const mien = p.k === Sync.me;
+      const contenu = h.heures ? `<b>${fmtH(h.heures)} h</b>${h.note ? `<small>${esc(trunc(h.note, 34))}</small>` : ''}`
+        : h.off ? '<span class="tag-off">off</span>' : enVac ? '<span class="tag-vac">vacances</span>' : `<span class="plus">${mien ? '+ noter' : '+'}</span>`;
+      return `<td><button type="button" class="hbtn${h.heures ? ' full' : ''}${mien ? ' mien' : ''}" data-act="mesHeures" data-d="${d}" data-p="${p.k}" aria-label="Heures de ${esc(p.nom)} le ${fmtDate(d)}">${contenu}</button></td>`;
     }).join('');
     const j = DB.get('jour:' + d) || {};
-    const evs = (items[d] || []).filter((x) => x.kind === 'ev' || x.kind === 'tache');
-    const note = `<input class="note" data-jour="${d}" value="${esc(j.remarque || '')}" placeholder="Remarque…" aria-label="Remarque du ${fmtDate(d)}">`;
     return `<tr class="${d === today ? 'today' : ''} ${i >= 5 ? 'we' : ''}"><td class="day"><button type="button" class="daybtn" data-act="calDay" data-d="${d}"><b>${JOURS[i]}</b><span>${fmtDateCourt(d)}</span></button>
-        ${evs.length ? `<span class="mini">${evs.map((x) => `<span class="ch" style="--c:${x.kind === 'tache' ? 'var(--c-taches)' : `var(--ev-${x.type})`}">${esc(x.titre)}</span>`).join('')}</span>` : ''}</td>${cells}<td class="ncol">${note}</td></tr>
-      <tr class="noteRow ${i >= 5 ? 'we' : ''}"><td colspan="${ps.length + 1}">${note}</td></tr>`;
+        ${j.remarque ? `<span class="jrem">${esc(trunc(j.remarque, 40))}</span>` : ''}</td>${cells}</tr>`;
   }).join('');
-  const mois = l.slice(0, 7), annee = l.slice(0, 4);
-  const tm = totalHeures(heuresToutes(), (h) => h.date.slice(0, 7) === mois), ty = totalHeures(heuresToutes(), (h) => h.date.slice(0, 4) === annee);
-  return `<div class="row"><button class="btn primary" type="button" data-act="mesHeures">+ Enregistrer mes heures</button></div>
-    <div class="panel">
+  return `<div class="panel">
     <div class="between"><div class="row"><button class="btn small" type="button" data-act="hWeek" data-n="-7" aria-label="Semaine précédente">←</button>
       <h2>Semaine ${w.semaine}</h2><button class="btn small" type="button" data-act="hWeek" data-n="7" aria-label="Semaine suivante">→</button></div>
-      <div class="row"><span class="hint">${fmtDate(l)} – ${fmtDate(fin)}</span>${l !== lundiDe(today) ? '<button class="btn small" type="button" data-act="hWeek" data-n="0">Aujourd\'hui</button>' : ''}</div></div>
-    <div class="table-wrap"><table class="week"><thead><tr><th>Jour</th>${ps.map((p) => `<th>${esc(p.nom)}</th>`).join('')}<th class="ncol">Remarque du jour</th></tr></thead>
+      <div class="row"><span class="hint">${fmtDate(l)} – ${fmtDate(fin)}</span>${l !== lundiDe(today) ? '<button class="btn small" type="button" data-act="hWeek" data-n="0">Cette semaine</button>' : ''}</div></div>
+    <div class="table-wrap"><table class="week hweek"><thead><tr><th>Jour</th>${ps.map((p) => `<th>${esc(p.nom)}</th>`).join('')}</tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td>Total</td>${ps.map((p) => `<td>${fmtH(tot[p.k])} h</td>`).join('')}<td class="ncol"></td></tr></tfoot></table></div>
-    <p class="hint">Heures en décimal : 7,5 = 7 h 30. Chaque saisie est enregistrée dès que tu quittes la case. Touche un jour pour ses événements.</p></div>
-    <div class="stats">${ps.map((p) => `<div class="stat good"><span class="k">${esc(p.nom)} · ${MOIS[Number(mois.slice(5)) - 1]}</span><span class="v">${fmtH(tm[p.k] || 0)} h</span><span class="s">${annee} : ${fmtH(ty[p.k] || 0)} h</span></div>`).join('')}</div>`;
+      <tfoot><tr><td>Total</td>${ps.map((p) => `<td>${fmtH(tot[p.k])} h</td>`).join('')}</tr></tfoot></table></div>
+    <p class="hint">Touche une case pour noter ou corriger des heures, ou un jour pour sa remarque, les jours off et ses événements.</p></div>`;
 }
 ACTIONS.hWeek = (el) => { const n = Number(el.dataset.n); HEU.lundi = n === 0 ? lundiDe(todayISO()) : addDays(HEU.lundi || lundiDe(todayISO()), n); render(); };
 
@@ -303,7 +300,7 @@ function renderBilanHeures() {
   const maxM = Math.max(1, ...parMois.map(([, t]) => Math.max(0, ...Object.values(t))));
   const b = bilanAnnee(y), obj = num(cfg().objectifAnnuel);
   const joursTrav = {}; inY.forEach((h) => { if (num(h.heures) > 0) joursTrav[h.personne] = (joursTrav[h.personne] || 0) + 1; });
-  return `<div class="row">${sel('h-annee', 'Année', y, ys.map((x) => [x, x]))}</div>
+  return `<div class="between" style="margin-top:22px"><h2 style="margin:0">Bilan de l'année</h2>${sel('h-annee', 'Année', y, ys.map((x) => [x, x]))}</div>
     <div class="stats">
       ${ps.map((p, i) => `<div class="stat ${i ? 'blue' : 'good'}"><span class="k">${esc(p.nom)}</span><span class="v">${fmtH(ty[p.k] || 0)} h</span><span class="s">${joursTrav[p.k] || 0} jours travaillés · ${offs[p.k] || 0} jours off · ${vac[p.k] || 0} jours de vacances</span></div>`).join('')}
       <div class="stat"><span class="k">Total ${y}</span><span class="v">${fmtH(total)} h</span></div>
@@ -332,7 +329,7 @@ ACTIONS.mesHeures = (el) => {
     ${inp('mh-h', 'Heures travaillées', '', { name: 'h', type: 'number', attrs: { placeholder: 'Ex. 7,5', autofocus: '' }, sub: '<span id="mh-deja"></span>7,5 = 7 h 30' })}
     <div class="row chips-h">${[2, 4, 6, 7, 8, 9].map((h) => `<button type="button" class="chip" data-act="mhSet" data-h="${h}">${h} h</button>`).join('')}</div>
     ${inp('mh-n', "Ce que j'ai fait (facultatif)", '', { name: 'n', attrs: { placeholder: 'Ex. récolte courges, livraison Épinettes' } })}
-    <div class="row-end"><a class="btn link" href="#/calendrier/semaine" data-act="go" data-href="#/calendrier/semaine">Voir toute la semaine</a><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+    <div class="row-end"><a class="btn link" href="#/calendrier/heures" data-act="go" data-href="#/calendrier/heures">Voir la semaine</a><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const maj = () => {
     const h = DB.get(hKey($('mh-d').value, $('mh-p').value)) || {};
     $('mh-h').value = h.heures ? fmtH(h.heures) : ''; $('mh-n').value = h.note || '';
