@@ -11,6 +11,8 @@ const luJusqua = (p) => ((DB.get('lu:' + p) || {}).jusqua || '');
 function nonLus(p) { p = p || Sync.me; const l = luJusqua(p); return messages().filter((m) => m.de !== p && String(m.cree) > l); }
 const discordDe = (p) => DB.get('cfg:discord:' + p) || {};
 const APP_URL = 'https://gottonic.github.io/gamins-de-talus/';
+/* Petit lien 🔗 au début de chaque message Discord : ouvre la messagerie pour répondre (les < > évitent l'aperçu du site) */
+const LIEN_MSG = `[🔗](<${APP_URL}#/messages>)`;
 
 MODULES.messages = {
   titre: 'Messages',
@@ -147,14 +149,14 @@ function notifierDiscord(de, texte, image) {
   if (image) {
     for (const p of personnes()) {
       const d = discordDe(p.k); if (p.k === de || !d.webhook) continue;
-      const c = d.texte === false ? `📷 Nouvelle photo de **${nomDe(de)}** · ${APP_URL}#/messages` : `📷 **${nomDe(de)}**${texte ? ' : ' + trunc(texte, 1500) : ''}\n${APP_URL}#/messages`;
+      const c = d.texte === false ? `${LIEN_MSG} 📷 Nouvelle photo de **${nomDe(de)}**` : `${LIEN_MSG} 📷 **${nomDe(de)}**${texte ? ' : ' + trunc(texte, 1500) : ''}`;
       posterDiscord(d.webhook, c, d.texte === false ? null : image).catch(() => {});
     }
     return;
   }
   const envois = personnes().filter((p) => p.k !== de && discordDe(p.k).webhook).map((p) => {
     const d = discordDe(p.k);
-    return { webhook: d.webhook, contenu: d.texte === false ? `💬 Nouveau message de **${nomDe(de)}** · ${APP_URL}#/messages` : `💬 **${nomDe(de)}** : ${trunc(texte, 1500)}\n${APP_URL}#/messages` };
+    return { webhook: d.webhook, contenu: d.texte === false ? `${LIEN_MSG} Nouveau message de **${nomDe(de)}**` : `${LIEN_MSG} **${nomDe(de)}** : ${trunc(texte, 1500)}` };
   });
   if (!envois.length) return;
   let file = []; try { file = JSON.parse(ls.get(DQ_KEY) || '[]'); } catch (e) { file = []; }
@@ -198,7 +200,7 @@ FORMS.discord = (v) => {
 ACTIONS.discordTest = async () => {
   const el = $('dc-url'), u = String((el && el.value) || discordDe(Sync.me).webhook || '').trim();
   if (!webhookOk(u)) { toast("Colle d'abord l'adresse du webhook."); return; }
-  try { await posterDiscord(u, `✅ Test : les messages de l'app Gamins de Talus arriveront ici, ${nomDe(Sync.me)}.`); toast('Test envoyé : regarde dans Discord.'); }
+  try { await posterDiscord(u, `${LIEN_MSG} ✅ Test : les messages de l'app Gamins de Talus arriveront ici, ${nomDe(Sync.me)}. Le 🔗 au début ouvre la messagerie pour répondre.`); toast('Test envoyé : regarde dans Discord.'); }
   catch (e) { toast("Envoi impossible : vérifie la connexion et l'adresse."); }
 };
 ACTIONS.discordOff = () => { if (DB.get('cfg:discord:' + Sync.me)) DB.del('cfg:discord:' + Sync.me); closeSheet(); toast('Notifications Discord désactivées.'); };
