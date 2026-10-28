@@ -1,0 +1,29 @@
+# Chaque jour : ET0 et pluie de la station MeteoSwiss Fribourg / Posieux → meteo/posieux.json (lu par le module Irrigation).
+# Les données journalières sont publiées vers 10 h et 1 h UTC.
+name: Météo Posieux
+on:
+  schedule:
+    - cron: '47 11 * * *'
+    - cron: '47 2 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/meteo.py', '.github/workflows/meteo.yml']
+permissions:
+  contents: write
+concurrency: meteo
+jobs:
+  meteo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/meteo.py
+      - name: Enregistrer si quelque chose a changé
+        run: |
+          git config user.name 'meteo-bot'
+          git config user.email 'meteo-bot@users.noreply.github.com'
+          git add meteo/posieux.json
+          if git diff --cached --quiet; then echo "Rien de nouveau"; exit 0; fi
+          git commit -m "Météo Posieux $(date -u +%F)"
+          git pull --rebase --autostash
+          git push
