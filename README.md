@@ -17,6 +17,7 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 | Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Onglet Heures : la semaine (une case = un clic pour noter) et le bilan de l'année, agenda |
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
 | Cultures | « Nos cultures » : chaque culture se crée ici (rendement, prix, semaines, espacements, variété, fumure, notes), avec son bilan saison après saison. Le plan d'une saison les place (liste déroulante) et précise planches, longueur, récolte réelle ; corrections d'analyse de sol dans les hypothèses. Plan : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
+| Irrigation | Arrosage conseillé par culture et par semaine (méthode FAO-56 : ETc = Kc × ET0 selon le stade), selon votre matériel (goutte-à-goutte, aspersion) ; pluie efficace, report d'une semaine à l'autre, heures réellement arrosées ; météo de Fribourg / Posieux mise à jour chaque jour |
 | Contacts | Clients, grossistes, restauration collective, fournisseurs, partenaires |
 | Réglages | Coordonnées, IBAN, associés et parts, export / import, corbeille |
 
@@ -92,6 +93,9 @@ Se connecter une fois par appareil.
 
 ## Bon à savoir
 
+- Météo : `.github/workflows/meteo.yml` télécharge chaque jour l'ET0 et la pluie de la station MeteoSwiss Fribourg / Posieux
+  (données ouvertes, `scripts/meteo.py`) dans `meteo/posieux.json`. Ce commit quotidien garde aussi le dépôt actif.
+
 - GitHub envoie un signal à la base deux fois par semaine pour qu'elle ne se mette pas en veille
   (`.github/workflows/garder-eveille.yml`). GitHub arrête ces signaux après 60 jours sans modification du dépôt :
   dans ce cas, Actions → « Garder Supabase éveillé » → **Enable workflow**.
@@ -113,4 +117,4 @@ Chaque élément est une ligne `clé → contenu JSON` dans la table `rows`. Pr�
 `cfg:` réglages, `ct:` contacts, `prod:` produits, `fac:` factures, `dep:` dépenses, `rec:` recettes,
 `reg:` remboursements, `h:AAAA-MM-JJ:personne` heures, `jour:` remarques du jour, `t:` tâches,
 `cul:` cultures, `inv:` inventaire, `achat:` achats prévus, `ev:` événements du calendrier,
-`fiche:` fiches de culture, `msg:` messages, `lu:` jusqu'où chacun a lu, `cfg:discord:personne` webhook Discord de chacun.
+`fiche:` fiches de culture (avec `irr` : Kc et stades), `irr:` semaines d'irrigation, `msg:` messages, `lu:` jusqu'où chacun a lu, `cfg:discord:personne` webhook Discord de chacun.

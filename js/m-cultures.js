@@ -227,6 +227,7 @@ function majFiche(c) {
   if (old && old.saison && String(c.saison) < String(old.saison)) return; /* un vieux plan n'écrase pas des données plus récentes */
   const o = Object.assign({}, old || { nom: c.nom, cree: new Date().toISOString() }, { nom: old ? old.nom : c.nom, saison: String(c.saison || ''), majLe: todayISO() });
   for (const f of FICHE_CHAMPS) if (c[f] !== undefined && c[f] !== null && c[f] !== '') o[f] = JSON.parse(JSON.stringify(c[f]));
+  if (!o.couleur) o.couleur = couleurCulture(c, (c.ordre || 1) - 1);
   DB.put(k, o);
   if (c.key && c.fiche !== k) { const cc = DB.get(c.key); if (cc && cc.fiche !== k) DB.put(c.key, Object.assign({}, cc, { fiche: k })); }
 }
