@@ -38,7 +38,14 @@ function ecouterEnDirect() {
 function majMoi() { const b = $('me'); if (Sync.me) { b.hidden = false; b.textContent = nomDe(Sync.me); } else b.hidden = true; }
 
 async function startApp() {
-  if ('serviceWorker' in navigator && !LOCAL_MODE) { try { navigator.serviceWorker.register('sw.js'); } catch (e) { /* */ } }
+  if ('serviceWorker' in navigator && !LOCAL_MODE) {
+    try {
+      /* Nouvelle version de l'app installée : on recharge une fois pour l'utiliser tout de suite */
+      const avait = !!navigator.serviceWorker.controller; let fait = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (avait && !fait && !DB.dirty.size) { fait = true; location.reload(); } });
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => { setInterval(() => r.update(), 30 * 60000); });
+    } catch (e) { /* */ }
+  }
   if (LOCAL_MODE) {
     Sync.uid = 'local'; Sync.loadCache(); if (!Sync.me) Sync.me = 'nicolas';
     majMoi(); UI.status(); render(); return;

@@ -1,5 +1,5 @@
 /* Gamins de Talus : fonctionne hors ligne. Changer VERSION à chaque mise à jour du code. */
-const VERSION = 'gdt-2026-10-28-2';
+const VERSION = 'gdt-2026-10-28-3';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/supabase.js', 'lib/jspdf.umd.min.js', 'lib/qrcode.js',
@@ -20,7 +20,8 @@ self.addEventListener('fetch', (e) => {
   const req = e.request, url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return; /* les données (Supabase) ne passent jamais par le cache */
   /* Réseau d'abord (pour avoir toujours la dernière version), copie locale si hors ligne. */
-  e.respondWith(fetch(req).then((r) => {
+  /* « no-cache » : le navigateur redemande toujours au serveur si le fichier a changé (sinon il garde jusqu'à 10 min une ancienne version). */
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then((r) => {
     if (r.ok) { const cp = r.clone(); caches.open(VERSION).then((c) => c.put(req.mode === 'navigate' ? 'index.html' : req, cp)); }
     return r;
   }).catch(() => caches.match(req.mode === 'navigate' ? 'index.html' : req).then((hit) => hit || caches.match(req, { ignoreSearch: true }))));
