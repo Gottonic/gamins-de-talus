@@ -31,7 +31,9 @@ MODULES.finances = {
   titre: 'Finances',
   tuile() { const d = decompteActuel(); return { line: phraseDecompte(d) }; },
   render(sub) {
-    const t = tabs('finances', [['', "Vue d'ensemble"], ['depenses', 'Dépenses'], ['recettes', 'Recettes'], ['associes', 'Entre associés'], ['annee', "Fin d'année"]], sub);
+    const t = tabs('finances', [['', "Vue d'ensemble"], ['depenses', 'Dépenses'], ['recettes', 'Recettes'], ['inventaire', 'Inventaire'], ['achats', 'Achats prévus'], ['associes', 'Entre associés'], ['annee', "Fin d'année"]], sub);
+    if (sub === 'inventaire') return t + renderInventaire();
+    if (sub === 'achats') return t + renderAchats();
     if (sub === 'annee') return t + renderBouclement();
     if (sub === 'depenses') return t + renderDepenses();
     if (sub === 'recettes') return t + renderRecettes();

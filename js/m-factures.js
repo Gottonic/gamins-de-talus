@@ -69,21 +69,25 @@ function problemesBrouillon() {
 
 /* ---------- Écrans ---------- */
 MODULES.factures = {
-  titre: 'Factures',
+  titre: 'Ventes',
   tuile() {
     const f = factures(); const open = f.filter((x) => ['ouverte', 'retard'].includes(facStatut(x)));
     const late = f.filter((x) => facStatut(x) === 'retard');
-    if (late.length) return { line: `${late.length} en retard · ${chf(late.reduce((a, x) => a + x.total, 0))}`, warn: true };
-    if (open.length) return { line: `À encaisser : ${chf(open.reduce((a, x) => a + x.total, 0))}` };
-    return { line: f.length ? `${f.length} facture${f.length > 1 ? 's' : ''}, tout est payé` : 'Aucune facture' };
+    const rel = typeof prospects === 'function' ? prospects().filter(aRelancer).length : 0, relTxt = rel ? ` · ${rel} relance${rel > 1 ? 's' : ''}` : '';
+    if (late.length) return { line: `${late.length} facture${late.length > 1 ? 's' : ''} en retard · ${chf(late.reduce((a, x) => a + x.total, 0))}${relTxt}`, warn: true };
+    if (open.length) return { line: `À encaisser : ${chf(open.reduce((a, x) => a + x.total, 0))}${relTxt}`, warn: rel > 0 };
+    return { line: (f.length ? `${f.length} facture${f.length > 1 ? 's' : ''}, tout est payé` : 'Factures, produits, prospection') + relTxt, warn: rel > 0 };
   },
   render(sub, id) {
-    const t = tabs('factures', [['', 'Factures'], ['nouvelle', 'Nouvelle facture'], ['produits', 'Produits et prix']], sub === 'voir' ? '' : sub);
+    const pr = ['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub);
+    const np = prospects().filter((c) => !['clos', 'valide'].includes(groupeStatut(pStat(c)))).length;
+    const t = tabs('factures', [['', 'Factures'], ['nouvelle', 'Nouvelle facture'], ['produits', 'Produits et prix'], ['prospection', `Prospection${np ? ' · ' + np : ''}`]], sub === 'voir' ? '' : pr ? 'prospection' : sub);
+    if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'produits') return t + renderProduits();
     return t + renderListeFactures(sub === 'voir' ? id : '');
   },
-  after(sub) { if (sub === 'nouvelle') brancherBrouillon(); },
+  after(sub) { if (sub === 'nouvelle') brancherBrouillon(); if (['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub)) afterContactsProspection(sub); },
 };
 
 function renderListeFactures(selKey) {

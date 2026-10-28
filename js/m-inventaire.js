@@ -18,10 +18,8 @@ function ajouterInventaireDepuis(depKey) {
 MODULES.inventaire = {
   titre: 'Inventaire',
   tuile() { const y = Number(todayISO().slice(0, 4)), l = inventaire(); const v = l.reduce((a, i) => a + valeurFinAnnee(i, y, !!cfg().amortirDesAchat), 0); const p = achats().filter((a) => a.statut !== 'achete').length; return { line: `${l.length} objets · valeur ${chf(v)}${p ? ` · ${p} achats prévus` : ''}` }; },
-  render(sub) {
-    const t = tabs('inventaire', [['', 'Inventaire et amortissements'], ['achats', 'Achats prévus']], sub);
-    return t + (sub === 'achats' ? renderAchats() : renderInventaire());
-  },
+  /* L'inventaire est maintenant dans Finances : les anciennes adresses y mènent */
+  render(sub) { setTimeout(() => location.replace(sub === 'achats' ? '#/finances/achats' : '#/finances/inventaire'), 0); return ''; },
 };
 
 function renderInventaire() {

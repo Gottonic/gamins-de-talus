@@ -1,12 +1,20 @@
 /* Gamins de Talus — fin d'année : vérifications, résumé des comptes et archive à garder 10 ans
    (PDF des comptes, tableaux CSV, factures émises en PDF, justificatifs joints aux dépenses).
-   cfg:archive:AAAA = { le, par, fichiers, manquants } : quand l'archive a été téléchargée. Les justificatifs
+   cfg:archive:AAAA:personne = { le, fichiers, manquants } : qui a téléchargé l'archive, et quand (une ligne par personne). Les justificatifs
    ne sont retirés de l'app (après 2 ans) que si l'archive de leur année a été téléchargée. */
 'use strict';
 
 const BCL = { annee: '', enCours: false, etape: '' };
 const anneeBouclement = () => { const t = todayISO(), y = Number(t.slice(0, 4)); return String(Number(t.slice(5, 7)) <= 6 ? y - 1 : y); };
-const archiveDe = (y) => DB.get('cfg:archive:' + y);
+/* Qui a téléchargé l'archive de l'année y : { personne: { le, … } } */
+function archivesDe(y) {
+  const o = {}; for (const a of DB.all('cfg:archive:' + y + ':')) o[a.key.split(':').pop()] = a;
+  const vieux = DB.get('cfg:archive:' + y); if (vieux && vieux.par && !o[vieux.par]) o[vieux.par] = vieux;
+  return o;
+}
+const archiveDe = (y) => Object.keys(archivesDe(y)).length > 0;
+/* Les associés de l'année (part > 0 au 31.12) qui n'ont pas encore téléchargé l'archive */
+function archiveManquePour(y) { const P = parts(cfg(), y + '-12-31'), a = archivesDe(y); return personnes().filter((p) => P[p.k] > 0 && !a[p.k]); }
 
 /* Résultat de l'année et part de chacun (chaque montant partagé selon les associés à sa date ; amortissements au 31.12) */
 function comptesAnnee(y) {
@@ -38,7 +46,7 @@ function comptesAnnee(y) {
 
 function renderBouclement() {
   const ys = anneesFin(); if (!BCL.annee) BCL.annee = ys.includes(anneeBouclement()) ? anneeBouclement() : ys[0];
-  const y = BCL.annee, o = comptesAnnee(y), ar = archiveDe(y), ps = personnes();
+  const y = BCL.annee, o = comptesAnnee(y), ar = archivesDe(y), manque = archiveManquePour(y), ps = personnes();
   const fini = y < todayISO().slice(0, 4);
   const chk = (ok, txt, lien, act) => `<li class="${ok ? 'ok' : 'todo'}"><span class="ck">${ok ? '✓' : '!'}</span><span>${txt}</span>${!ok && lien ? `<a class="btn small" href="${lien}"${act ? ` data-act="${act}"` : ''}>Voir</a>` : ''}</li>`;
   return `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="bclAnnee" data-y="${x}">${x}</button>`).join('')}</div>
@@ -47,16 +55,17 @@ function renderBouclement() {
         <ul class="checklist">
           ${chk(fini, fini ? `L'année ${y} est terminée.` : `L'année ${y} n'est pas encore finie : l'archive sera provisoire.`)}
           ${chk(!o.sansJ.length, o.sansJ.length ? `<b>${o.sansJ.length} dépense${o.sansJ.length > 1 ? 's' : ''} sans justificatif</b> (${chf(o.sansJ.reduce((a, d) => a + num(d.montant), 0))})` : 'Toutes les dépenses ont leur justificatif.', '#/finances/depenses', 'goSansJ')}
-          ${chk(!o.investHorsInv.length, o.investHorsInv.length ? `${o.investHorsInv.length} investissement${o.investHorsInv.length > 1 ? 's' : ''} relié${o.investHorsInv.length > 1 ? 's' : ''} à aucun objet de l'inventaire : vérifie qu'ils y sont (sinon ils ne sont pas amortis)` : "Les investissements sont tous dans l'inventaire.", '#/inventaire')}
+          ${chk(!o.investHorsInv.length, o.investHorsInv.length ? `${o.investHorsInv.length} investissement${o.investHorsInv.length > 1 ? 's' : ''} relié${o.investHorsInv.length > 1 ? 's' : ''} à aucun objet de l'inventaire : vérifie qu'ils y sont (sinon ils ne sont pas amortis)` : "Les investissements sont tous dans l'inventaire.", '#/finances/inventaire')}
           ${chk(!o.ouvertes.length, o.ouvertes.length ? `${o.ouvertes.length} facture${o.ouvertes.length > 1 ? 's' : ''} pas encore payée${o.ouvertes.length > 1 ? 's' : ''} au 31.12 (${chf(o.ouvertes.reduce((a, f) => a + f.total, 0))}) : à noter comme « à recevoir »` : 'Toutes les factures émises sont payées.', '#/factures')}
           ${chk(true, `Heures ${y} : ${ps.map((p) => `${esc(p.nom)} ${fmtH(o.heures[p.k] || 0)} h`).join(', ')}.`)}
         </ul>
         <h3>L'archive de l'année</h3>
         <p class="hint">Un fichier .zip avec les comptes en PDF, les tableaux (dépenses, recettes, inventaire, heures), toutes les factures émises en PDF et tous les justificatifs joints (${o.nFichiers} fichier${o.nFichiers > 1 ? 's' : ''}).
-          C'est ce qu'il faut pour la déclaration d'impôts (et donc l'AVS, calculée sur le revenu déclaré). <b>À garder 10 ans</b>, par exemple dans votre Proton Drive.</p>
+          C'est ce qu'il faut pour la déclaration d'impôts et pour ce que la caisse AVS vous demande de déclarer. Chaque associé la télécharge une fois pour ses propres déclarations. <b>À garder 10 ans</b>, par exemple dans votre Proton Drive.</p>
         <div class="row"><button class="btn primary" type="button" data-act="bclZip"${BCL.enCours ? ' disabled' : ''}>${BCL.enCours ? esc(BCL.etape || 'Préparation…') : `Télécharger l'archive ${y}`}</button>
           <button class="btn" type="button" data-act="bclPdf"${BCL.enCours ? ' disabled' : ''}>Seulement le PDF des comptes</button></div>
-        <p class="hint">${ar ? `Archive téléchargée le ${fmtDate(String(ar.le).slice(0, 10))} par ${esc(nomDe(ar.par))}${ar.manquants ? ` (${ar.manquants} fichier(s) n'ont pas pu être ajoutés)` : ''}.` : "L'archive de cette année n'a pas encore été téléchargée."}
+        <p class="hint">${Object.keys(ar).length ? 'Téléchargée par ' + Object.entries(ar).map(([k, a]) => `${esc(nomDe(k))} le ${fmtDate(String(a.le).slice(0, 10))}${a.manquants ? ` (${a.manquants} fichier(s) manquant(s))` : ''}`).join(', ') + '.' : "L'archive de cette année n'a encore été téléchargée par personne."}
+          ${manque.length ? `<b>Pas encore téléchargée par ${esc(manque.map((p) => p.nom).join(', '))}.</b>` : ''}
           Conservation dans l'app : photos des messages 6 mois ; justificatifs 2 ans, et seulement une fois l'archive de leur année téléchargée.</p>
       </div>
       <div class="panel"><h2>Comptes ${y}</h2>
@@ -68,7 +77,7 @@ function renderBouclement() {
         <h3>Part du résultat de chacun</h3>
         <table class="list"><tbody>${ps.filter((p) => Math.abs(o.part[p.k]) > 0.004 || o.P31[p.k] > 0).map((p) => `<tr><td>${esc(p.nom)}</td><td class="r num">${money(o.part[p.k])}</td></tr>`).join('')}</tbody></table>
         <p class="hint">Investissements ${y} : ${chf(o.inv)} (amortis via l'inventaire) · valeur de l'inventaire au 31.12 : ${chf(o.valeurInv)}.
-          Chaque associé déclare sa part comme revenu d'activité indépendante. Ces chiffres sont une base de travail : faites-les valider par votre fiduciaire ou votre comptable.</p>
+          Chaque associé déclare sa part comme revenu d'activité indépendante (impôts et caisse AVS). Ces chiffres sont une base de travail : faites-les valider par votre fiduciaire ou votre comptable.</p>
       </div>
     </div>`;
 }
@@ -202,7 +211,7 @@ ACTIONS.bclZip = async () => {
     etape('Compression…');
     const blob = await z.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     downloadFile(base + '.zip', blob, 'application/zip');
-    DB.put('cfg:archive:' + o.y, { le: new Date().toISOString(), par: Sync.me || '', fichiers: fich.length - manquants.length, manquants: manquants.length });
+    DB.put('cfg:archive:' + o.y + ':' + (Sync.me || 'inconnu'), { le: new Date().toISOString(), fichiers: fich.length - manquants.length, manquants: manquants.length });
     toast(manquants.length ? `Archive téléchargée, mais ${manquants.length} fichier(s) manquent (voir LISEZ-MOI).` : 'Archive téléchargée. Range-la dans votre drive.', 6000);
   } catch (e) { console.error(e); toast("L'archive n'a pas pu être créée : " + (e.message || e), 6000); }
   BCL.enCours = false; BCL.etape = ''; render();

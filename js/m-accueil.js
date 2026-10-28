@@ -3,7 +3,7 @@
 
 const ICONS = {
   messages: '<svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>',
-  factures: '<svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3"/><path d="M9 10h6M9 14h6M9 18h3"/></svg>',
+  factures: '<svg viewBox="0 0 24 24"><path d="M3.5 9.5h17l-1.8 9.2a1.5 1.5 0 0 1-1.5 1.3H6.8a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M8 9.5l3-5.5M16 9.5l-3-5.5"/><path d="M9 13v3.5M12 13v3.5M15 13v3.5"/></svg>',
   finances: '<svg viewBox="0 0 24 24"><ellipse cx="9" cy="7" rx="5" ry="2.5"/><path d="M4 7v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V7"/><path d="M10 15.5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4c0-1.3-1.9-2.4-4.4-2.5"/><path d="M10 15.5v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5v-4"/></svg>',
   calendrier: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.5 14h2M11 14h2M14.5 14h2M7.5 17h2M11 17h2"/></svg>',
   taches: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 12.5l2.7 2.7L16.5 9"/></svg>',
@@ -12,7 +12,7 @@ const ICONS = {
   contacts: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.5.2 4.3 1.9 4.9 4.9"/></svg>',
   reglages: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
 };
-const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'inventaire', 'contacts'];
+const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'contacts'];
 
 function renderAccueil() {
   const h = new Date().getHours();
@@ -57,14 +57,18 @@ function renderAccueil() {
   if (pros.length) {
     const dus = pros.filter(aRelancer).sort((a, c) => String(a.prospection.relanceLe).localeCompare(c.prospection.relanceLe));
     const af = pros.filter((c) => groupeStatut(pStat(c)) === 'afaire').sort((a, c) => ((a.prospection || {}).priorite || 9) - ((c.prospection || {}).priorite || 9) || byName(a, c));
-    const items = dus.map((c) => ({ href: '#/contacts/prospect/' + encodeURIComponent(c.key), txt: 'Relancer ' + displayName(c), val: (c.prospection.horaires || '').slice(0, 26) || fmtDateCourt(c.prospection.relanceLe), bad: c.prospection.relanceLe < today }))
-      .concat(af.slice(0, Math.max(0, 5 - dus.length)).map((c) => ({ href: '#/contacts/prospect/' + encodeURIComponent(c.key), txt: `Appeler ${displayName(c)}`, val: `P${(c.prospection || {}).priorite || '–'} · ${((c.prospection || {}).lieu || '').slice(0, 18)}` })));
-    groupes.push({ mod: 'contacts', titre: 'Prospection', n: dus.length || af.length, items, vide: 'Rien à appeler.', plus: { href: '#/contacts/prospection', txt: `${af.length} à contacter · voir la prospection` } });
+    const items = dus.map((c) => ({ href: '#/factures/prospect/' + encodeURIComponent(c.key), txt: 'Relancer ' + displayName(c), val: (c.prospection.horaires || '').slice(0, 26) || fmtDateCourt(c.prospection.relanceLe), bad: c.prospection.relanceLe < today }))
+      .concat(af.slice(0, Math.max(0, 5 - dus.length)).map((c) => ({ href: '#/factures/prospect/' + encodeURIComponent(c.key), txt: `Appeler ${displayName(c)}`, val: `P${(c.prospection || {}).priorite || '–'} · ${((c.prospection || {}).lieu || '').slice(0, 18)}` })));
+    groupes.push({ mod: 'factures', titre: 'Prospection', n: dus.length || af.length, items, vide: 'Rien à appeler.', plus: { href: '#/factures/prospection', txt: `${af.length} à contacter · voir la prospection` } });
   }
-  /* De janvier à juin : rappeler de télécharger l'archive de l'année passée */
+  /* Archive de l'année passée : le rappel reste tant que chaque associé ne l'a pas téléchargée une fois */
   const yb = String(Number(y) - 1);
-  if (Number(today.slice(5, 7)) <= 6 && typeof archiveDe === 'function' && !archiveDe(yb) && depenses().some((x) => yearOf(x.date) === yb))
-    groupes.push({ mod: 'finances', titre: "Fin d'année " + yb, items: [{ href: '#/finances/annee', txt: `Boucler ${yb} : télécharger l'archive des comptes`, val: 'impôts', bad: Number(today.slice(5, 7)) >= 3 }] });
+  if (typeof archiveManquePour === 'function' && (depenses().some((x) => yearOf(x.date) === yb) || recettesToutes().some((x) => yearOf(x.date) === yb))) {
+    const manque = archiveManquePour(yb), moi = manque.some((p) => p.k === Sync.me);
+    if (manque.length) groupes.push({ mod: 'finances', titre: "Fin d'année " + yb, items: [moi
+      ? { href: '#/finances/annee', txt: `Télécharger l'archive des comptes ${yb}`, val: 'impôts', bad: Number(today.slice(5, 7)) >= 3 }
+      : { href: '#/finances/annee', txt: `Archive ${yb} pas encore téléchargée par ${manque.map((p) => p.nom).join(', ')}`, val: '' }] });
+  }
   const d = decompteActuel();
   if (d.transferts.length) groupes.push({ mod: 'finances', titre: 'Entre associés', items: d.transferts.map((t) => ({ href: '#/finances/associes', txt: `${nomDe(t.de)} doit à ${nomDe(t.a)}`, val: chf(t.montant) })) });
 
