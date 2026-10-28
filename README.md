@@ -16,7 +16,7 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 | Finances | Inventaire et amortissements, achats prévus. Fin d'année (chaque associé télécharge l'archive une fois) : vérifications, comptes en PDF et archive .zip (factures, justificatifs, tableaux) à garder 10 ans. Dépenses (photo du ticket ou PDF de la facture joint), recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
 | Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Onglet Heures : la semaine (une case = un clic pour noter) et le bilan de l'année, agenda |
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
-| Cultures | Plan par saison modifiable directement dans le tableau : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
+| Cultures | « Nos cultures » : une fiche par culture (rendement, prix, semaines, espacements, variété, fumure, notes) mise à jour depuis le plan et reprise pour les saisons suivantes, avec le bilan saison après saison. Plan par saison modifiable directement dans le tableau : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
 | Contacts | Clients, grossistes, restauration collective, fournisseurs, partenaires |
 | Réglages | Coordonnées, IBAN, associés et parts, export / import, corbeille |
 
@@ -113,4 +113,4 @@ Chaque élément est une ligne `clé → contenu JSON` dans la table `rows`. Pr�
 `cfg:` réglages, `ct:` contacts, `prod:` produits, `fac:` factures, `dep:` dépenses, `rec:` recettes,
 `reg:` remboursements, `h:AAAA-MM-JJ:personne` heures, `jour:` remarques du jour, `t:` tâches,
 `cul:` cultures, `inv:` inventaire, `achat:` achats prévus, `ev:` événements du calendrier,
-`msg:` messages, `lu:` jusqu'où chacun a lu, `cfg:discord:personne` webhook Discord de chacun.
+`fiche:` fiches de culture, `msg:` messages, `lu:` jusqu'où chacun a lu, `cfg:discord:personne` webhook Discord de chacun.

@@ -126,6 +126,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .fich-voir small { font-size: 11px; color: var(--muted); max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fich-x { position: absolute; top: -7px; right: -7px; width: 24px; height: 24px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; line-height: 1; }
 .clip { font-size: 13px; margin-left: 4px; }
+.fiche-choix { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.chip-cu { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.chip-cu:hover { border-color: var(--mod); background: var(--mod-soft); }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .checklist { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 8px; }
 .checklist li { display: flex; align-items: center; gap: 10px; font-size: 14.5px; }
 .checklist li > span:nth-child(2) { flex: 1; }
