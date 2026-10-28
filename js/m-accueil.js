@@ -71,12 +71,12 @@ function renderAccueil() {
   const tiles = ORDRE.filter((k) => MODULES[k]).map((k) => {
     const m = MODULES[k]; let t = { line: '' };
     try { t = m.tuile ? m.tuile() : t; } catch (e) { console.error(e); }
-    return `<a class="tile t-${k}" href="#/${k}"><span class="ic">${ICONS[k] || ''}</span><b>${esc(m.titre)}</b><span class="tline${t.warn ? ' warn' : ''}">${esc(t.line || '')}</span></a>`;
+    return `<a class="tile t-${k}" href="#/${k}"><span class="ic">${ICONS[k] || ''}</span><b>${esc(m.titre)}</b><span class="tline${t.warn ? ' warn' : ''}${t.clamp ? ' clamp' : ''}">${t.qui ? `<strong>${esc(t.qui)}</strong> ` : ''}${esc(t.line || '')}</span>${t.badge ? `<span class="badge" aria-label="${t.badge} non lu${t.badge > 1 ? 's' : ''}">${t.badge > 99 ? '99+' : t.badge}</span>` : ''}</a>`;
   }).join('');
   return `<section class="hello"><div><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></div>
     <button class="btn primary big" type="button" data-act="mesHeures"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Enregistrer mes heures</button></section>
-    ${kpis}
     <section class="tiles" aria-label="Modules">${tiles}</section>
-    ${todo}`;
+    ${todo}
+    ${kpis}`;
 }
 ACTIONS.goSansJ = () => { FIN.sansJ = true; FIN.annee = ''; FIN.type = ''; FIN.par = ''; FIN.q = ''; go('#/finances/depenses'); };

@@ -1,4 +1,4 @@
-/* Gamins de Talus — calendrier : mois, semaine (saisie des heures), agenda et bilan des heures.
+/* Gamins de Talus — calendrier : agenda, mois, heures (semaine + bilan de l'année).
    On y voit les heures travaillées, les jours off et vacances, les événements (travail, récolte, livraison,
    vente…, récurrents ou non) et les échéances des tâches et des factures. */
 'use strict';
@@ -64,10 +64,10 @@ MODULES.calendrier = {
   },
   render(sub) {
     if (sub === 'semaine') { setTimeout(() => location.replace('#/calendrier/heures'), 0); return ''; }
-    const t = tabs('calendrier', [['', 'Mois'], ['heures', 'Heures'], ['agenda', 'Agenda']], sub);
-    if (sub === 'agenda') return t + renderAgenda();
+    const t = tabs('calendrier', [['', 'Agenda'], ['mois', 'Mois'], ['heures', 'Heures']], sub === 'agenda' ? '' : sub);
+    if (sub === 'mois') return t + renderMois();
     if (sub === 'heures') return t + `<div class="row"><button class="btn primary" type="button" data-act="mesHeures">+ Enregistrer mes heures</button></div>` + renderSemaineHeures() + renderBilanHeures();
-    return t + renderMois();
+    return t + renderAgenda();
   },
   after(sub) {
     if (sub === 'heures') { const s = $('h-annee'); if (s) s.addEventListener('change', () => { HEU.annee = s.value; render(); }); return; }

@@ -15,8 +15,8 @@ MODULES.messages = {
   titre: 'Messages',
   tuile() {
     const n = nonLus().length, ms = messages(), der = ms[ms.length - 1];
-    if (n) return { line: `${n} message${n > 1 ? 's' : ''} non lu${n > 1 ? 's' : ''}`, warn: true };
-    return { line: der ? `${nomDe(der.de)} : ${trunc(der.texte, 40)}` : 'Discuter entre associés' };
+    if (!der) return { line: 'Discuter entre associés' };
+    return { qui: der.de === Sync.me ? 'Toi :' : nomDe(der.de) + ' :', line: trunc(der.texte.replace(/\s+/g, ' '), 90), clamp: true, badge: n };
   },
   render() { return renderMessages(); },
   after() {
