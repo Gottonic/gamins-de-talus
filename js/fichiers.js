@@ -81,3 +81,31 @@ ACTIONS.voirFichier = (el) => {
     <div class="row-end"><a class="btn${pdf ? ' primary' : ''}" data-fichier="${esc(c)}" target="_blank" rel="noopener">${pdf ? 'Ouvrir le PDF' : 'Ouvrir en grand / enregistrer'}</a></div></div>`);
   hydraterFichiers($('sheet'));
 };
+
+/* ---------- Durée de conservation dans l'app ----------
+   Photos des messages : 6 mois. Justificatifs : 2 ans, et seulement si l'archive de l'année de la dépense a été téléchargée.
+   Supabase n'autorise d'ailleurs à effacer que les fichiers assez vieux (règle dans schema.sql) : une erreur ici ne peut rien effacer d'autre.
+   Une fois par jour, le premier appareil connecté fait le ménage ; l'élément garde la trace « expire ». */
+async function nettoyerFichiers() {
+  if (LOCAL_MODE || !Sync.sb || !navigator.onLine || !Sync.uid) return;
+  if (ls.get('gdt-nettoyage') === todayISO()) return; ls.set('gdt-nettoyage', todayISO());
+  const avant = (mois) => { const d = new Date(); d.setMonth(d.getMonth() - mois); d.setDate(d.getDate() - 2); return d.toISOString(); };
+  const effacer = async (chemins) => {
+    if (!chemins.length) return new Set();
+    const { data, error } = await Sync.sb.storage.from(FICHIERS_SEAU).remove(chemins);
+    return error ? new Set() : new Set((data || []).map((x) => x.name));
+  };
+  try {
+    const m6 = avant(6), msgs = DB.all('msg:').filter((m) => m.photo && !m.photo.expire && String(m.cree) < m6);
+    const ok = await effacer(msgs.map((m) => m.photo.chemin));
+    for (const m of msgs) if (ok.has(m.photo.chemin)) { const o = DB.get(m.key); if (o) DB.put(m.key, Object.assign({}, o, { photo: Object.assign({}, o.photo, { expire: todayISO() }) })); }
+    const a2 = avant(24);
+    const deps = DB.all('dep:').filter((d) => DB.get('cfg:archive:' + yearOf(d.date)) && (d.fichiers || []).some((f) => !f.expire && f.ajoute && f.ajoute < a2));
+    const ok2 = await effacer(deps.flatMap((d) => d.fichiers.filter((f) => !f.expire && f.ajoute && f.ajoute < a2).map((f) => f.chemin)));
+    for (const d of deps) {
+      const o = DB.get(d.key); if (!o) continue;
+      const fs = (o.fichiers || []).map((f) => (ok2.has(f.chemin) ? Object.assign({}, f, { expire: todayISO() }) : f));
+      if (fs.some((f, i) => f !== o.fichiers[i])) DB.put(d.key, Object.assign({}, o, { fichiers: fs }));
+    }
+  } catch (e) { console.warn('Nettoyage des fichiers :', e); }
+}

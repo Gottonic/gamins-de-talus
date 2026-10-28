@@ -126,6 +126,13 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .fich-voir small { font-size: 11px; color: var(--muted); max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fich-x { position: absolute; top: -7px; right: -7px; width: 24px; height: 24px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; line-height: 1; }
 .clip { font-size: 13px; margin-left: 4px; }
+.checklist { list-style: none; padding: 0; margin: 0 0 8px; display: grid; gap: 8px; }
+.checklist li { display: flex; align-items: center; gap: 10px; font-size: 14.5px; }
+.checklist li > span:nth-child(2) { flex: 1; }
+.checklist .ck { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; font-weight: 800; flex: none; font-size: 13px; }
+.checklist .ok .ck { background: var(--soft); color: var(--accent); }
+.checklist .todo .ck { background: var(--late-soft); color: var(--late); }
+.photo-expiree { display: block; font-size: 13px; opacity: .8; font-style: italic; margin-bottom: 4px; }
 .steps { padding-left: 20px; margin: 0 0 14px; display: grid; gap: 6px; font-size: 14.5px; }
 .me { border: 0; background: var(--soft); border-radius: 999px; padding: 4px 10px; font-weight: 700; font-size: 13px; cursor: pointer; }
 
@@ -510,6 +517,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="lib/supabase.js"></script>
 <script src="lib/jspdf.umd.min.js"></script>
 <script src="lib/qrcode.js"></script>
+<script src="lib/jszip.min.js"></script>
 <script src="js/calc.js"></script>
 <script src="js/core.js"></script>
 <script src="js/fichiers.js"></script>
@@ -524,6 +532,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="js/m-inventaire.js"></script>
 <script src="js/m-reglages.js"></script>
 <script src="js/m-messages.js"></script>
+<script src="js/m-bouclement.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

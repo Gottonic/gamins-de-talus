@@ -31,7 +31,8 @@ MODULES.finances = {
   titre: 'Finances',
   tuile() { const d = decompteActuel(); return { line: phraseDecompte(d) }; },
   render(sub) {
-    const t = tabs('finances', [['', "Vue d'ensemble"], ['depenses', 'Dépenses'], ['recettes', 'Recettes'], ['associes', 'Entre associés']], sub);
+    const t = tabs('finances', [['', "Vue d'ensemble"], ['depenses', 'Dépenses'], ['recettes', 'Recettes'], ['associes', 'Entre associés'], ['annee', "Fin d'année"]], sub);
+    if (sub === 'annee') return t + renderBouclement();
     if (sub === 'depenses') return t + renderDepenses();
     if (sub === 'recettes') return t + renderRecettes();
     if (sub === 'associes') return t + renderAssocies();
@@ -131,7 +132,7 @@ ACTIONS.depEdit = (el) => {
 function fichiersDep() {
   if (!DEP.fichiers.length) return '';
   return `<div class="fich-list">${DEP.fichiers.map((x, i) => `<span class="fich">
-    <button type="button" class="fich-voir" data-act="voirFichier" data-fichier="${esc(x.chemin)}" data-titre="${esc(x.nom || '')}">${x.type === 'application/pdf' ? '<span class="fich-pdf">PDF</span>' : `<img data-fichier="${esc(x.chemin)}" alt="Justificatif">`}<small>${esc(trunc(x.nom || 'fichier', 22))}</small></button>
+    <button type="button" class="fich-voir" data-act="${x.expire ? 'aucun' : 'voirFichier'}" data-fichier="${esc(x.chemin)}" data-titre="${esc(x.nom || '')}">${x.expire ? '<span class="fich-pdf" style="color:var(--muted);font-size:11px;text-align:center">dans l\'archive</span>' : x.type === 'application/pdf' ? '<span class="fich-pdf">PDF</span>' : `<img data-fichier="${esc(x.chemin)}" alt="Justificatif">`}<small>${esc(trunc(x.nom || 'fichier', 22))}</small></button>
     <button type="button" class="fich-x" data-act="depFichierOff" data-i="${i}" aria-label="Retirer ce fichier">×</button></span>`).join('')}</div>`;
 }
 function majFichiersDep() {

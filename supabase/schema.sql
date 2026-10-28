@@ -100,7 +100,7 @@ grant execute on function public.ping() to anon, authenticated;
 -- 6. (Facultatif, pour la messagerie) Mises à jour en direct : les autres voient un message dès qu'il est envoyé.
 alter publication supabase_realtime add table public.rows;
 
--- 7. Photos des messages et justificatifs (stockage privé : seuls les membres voient et ajoutent ; personne n'efface).
+-- 7. Photos des messages et justificatifs (stockage privé : seuls les membres voient et ajoutent).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('fichiers', 'fichiers', false, 10485760, array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'application/pdf'])
 on conflict (id) do nothing;
@@ -108,3 +108,9 @@ drop policy if exists "fichiers : les membres lisent" on storage.objects;
 create policy "fichiers : les membres lisent" on storage.objects for select to authenticated using (bucket_id = 'fichiers' and public.est_membre());
 drop policy if exists "fichiers : les membres ajoutent" on storage.objects;
 create policy "fichiers : les membres ajoutent" on storage.objects for insert to authenticated with check (bucket_id = 'fichiers' and public.est_membre());
+-- Effacer : seulement ce qui a fait son temps (photos des messages > 6 mois, justificatifs > 2 ans). L'app ne peut rien effacer d'autre.
+drop policy if exists "fichiers : effacer ce qui a expiré" on storage.objects;
+create policy "fichiers : effacer ce qui a expiré" on storage.objects for delete to authenticated using (
+  bucket_id = 'fichiers' and public.est_membre() and (
+    (name like 'messages/%' and created_at < now() - interval '6 months') or
+    (name like 'justificatifs/%' and created_at < now() - interval '2 years')));

@@ -61,6 +61,10 @@ function renderAccueil() {
       .concat(af.slice(0, Math.max(0, 5 - dus.length)).map((c) => ({ href: '#/contacts/prospect/' + encodeURIComponent(c.key), txt: `Appeler ${displayName(c)}`, val: `P${(c.prospection || {}).priorite || '–'} · ${((c.prospection || {}).lieu || '').slice(0, 18)}` })));
     groupes.push({ mod: 'contacts', titre: 'Prospection', n: dus.length || af.length, items, vide: 'Rien à appeler.', plus: { href: '#/contacts/prospection', txt: `${af.length} à contacter · voir la prospection` } });
   }
+  /* De janvier à juin : rappeler de télécharger l'archive de l'année passée */
+  const yb = String(Number(y) - 1);
+  if (Number(today.slice(5, 7)) <= 6 && typeof archiveDe === 'function' && !archiveDe(yb) && depenses().some((x) => yearOf(x.date) === yb))
+    groupes.push({ mod: 'finances', titre: "Fin d'année " + yb, items: [{ href: '#/finances/annee', txt: `Boucler ${yb} : télécharger l'archive des comptes`, val: 'impôts', bad: Number(today.slice(5, 7)) >= 3 }] });
   const d = decompteActuel();
   if (d.transferts.length) groupes.push({ mod: 'finances', titre: 'Entre associés', items: d.transferts.map((t) => ({ href: '#/finances/associes', txt: `${nomDe(t.de)} doit à ${nomDe(t.a)}`, val: chf(t.montant) })) });
 

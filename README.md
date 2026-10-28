@@ -13,7 +13,7 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 |---|---|
 | Messages | Discussion entre associés, avec photos : non lus sur l'accueil, « vu par », notifications Discord au choix de chacun (bouton dans la messagerie) |
 | Factures | Factures QR (virement) ou payées comptant, PDF, suivi des paiements, produits et prix |
-| Finances | Dépenses (photo du ticket ou PDF de la facture joint), recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
+| Finances | Fin d'année : vérifications, comptes en PDF et archive .zip (factures, justificatifs, tableaux) à garder 10 ans. Dépenses (photo du ticket ou PDF de la facture joint), recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
 | Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Onglet Heures : la semaine (une case = un clic pour noter) et le bilan de l'année, agenda |
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
 | Cultures | Plan par saison modifiable directement dans le tableau : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
@@ -54,7 +54,9 @@ insert into public.membres (user_id, personne, nom) select id, 'marc', 'Marc' fr
 
 ### Photos et justificatifs (une fois)
 SQL Editor → coller la partie « 7. Photos des messages et justificatifs » de `supabase/schema.sql` → Run.
-Cela crée le stockage privé `fichiers` : seuls les membres voient et ajoutent des fichiers, personne ne peut en effacer.
+Cela crée le stockage privé `fichiers` : seuls les membres voient et ajoutent des fichiers. Supabase n'autorise à effacer
+que les photos de messages de plus de 6 mois et les justificatifs de plus de 2 ans ; l'app ne retire un justificatif
+que si l'archive de son année a été téléchargée (Finances → Fin d'année).
 Les photos sont réduites dans le téléphone avant l'envoi (messages : 1600 px ; justificatifs : 2600 px, lisibles comme un scan à ~200 dpi).
 Les PDF passent tels quels (10 Mo au plus). L'export JSON contient les chemins, pas les fichiers : ils restent dans Supabase → Storage.
 
