@@ -119,6 +119,7 @@ const NUTR = ['N', 'P', 'K', 'Mg'];
 const DEFAULT_PARAMS_CULTURES = {
   longueur: 19, facteurSurface: 1.1, partRevendeur: 0.6, dispoCompost: 1 / 3,
   teneurCompost: { N: 3, P: 1.5, K: 2.5, Mg: 3 },
+  correction: { N: 1, P: 1, K: 1, Mg: 1 },
   engrais: [
     { k: 'corne', nom: 'Raclure de corne', nutriment: 'N', teneur: 0.14 },
     { k: 'patentkali', nom: 'Patentkali', nutriment: 'K', teneur: 0.3 },
@@ -141,7 +142,8 @@ function culture(c, params) {
   };
   for (const n of NUTR) {
     const brut = num((c.besoins || {})[n]);
-    const corr = (c.correction || {})[n] == null || (c.correction || {})[n] === '' ? 1 : num(c.correction[n]);
+    const pc = p.correction || {}; /* correction d'analyse de sol : liée au champ, dans les hypothèses de la saison */
+    const corr = pc[n] == null || pc[n] === '' ? 1 : num(pc[n]);
     o.net[n] = brut * corr;
     o.apresCompost[n] = o.net[n] - num(c.compost) * num((p.teneurCompost || {})[n]) * num(p.dispoCompost);
     o.total[n] = Math.max(0, o.apresCompost[n]) * surface;            // g pour toute la culture

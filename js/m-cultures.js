@@ -35,6 +35,8 @@ function renderPlan() {
     /* Ligne modifiable : un champ par culture */
     const get = (c, f) => f.includes('.') ? ((c[f.split('.')[0]] || {})[f.split('.')[1]]) : c[f];
     const edit = (label, f, o = {}) => `<tr><td>${label}</td>${list.map((c, i) => { const v = get(c, f); const shown = v == null || v === '' ? '' : (o.txt ? v : String(v).replace('.', ',')); return `<td><input class="cell-in${o.txt ? ' txt' : ''}" id="ci-${i}-${f.replace('.', '_')}" data-cu="${esc(c.key)}" data-f="${f}" ${o.txt ? '' : 'inputmode="decimal"'} autocomplete="off" value="${esc(shown)}" placeholder="${esc(o.ph ? o.ph(c, os[i], eff[i]) : '')}" aria-label="${esc(label)} · ${esc(c.nom)}"></td>`; }).join('')}<td class="num tot">${o.tot ?? ''}</td></tr>`;
+    /* Ligne venant de la fiche (Nos cultures) : affichée, se modifie dans la fiche */
+    const fic = (label, f, o = {}) => `<tr class="fic"><td>${label}</td>${list.map((c, i) => { const v = get(c, f); const shown = o.fmt ? o.fmt(v, c, os[i]) : v == null || v === '' ? '—' : String(v).replace('.', ','); return `<td><button type="button" class="fic-cell" data-act="ficheEdit" data-key="${esc(ficheDe(c))}" title="Modifier dans la fiche ${esc(c.nom)}">${esc(shown)}</button></td>`; }).join('')}<td class="num tot">${o.tot ?? ''}</td></tr>`;
     const engr = (P.engrais || []);
     const table = `<div class="table-wrap"><table class="matrix"><thead><tr><th></th>${list.map((c, i) => `<th><button type="button" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button></th>`).join('')}<th>Total</th></tr></thead>
       ${grp('Surface', 4)}
@@ -43,28 +45,27 @@ function renderPlan() {
       ${calc('Surface m²', (c, o) => f1(o.surface), f1(T.surface))}
       ${calc('Part de la surface', (c, o) => T.surface ? Math.round(o.surface / T.surface * 100) + ' %' : '—', '100 %')}
       ${grp('Récolte et ventes', 9)}
-      ${edit('Rendement kg/m²', 'rendement')}
+      ${fic('Rendement kg/m²', 'rendement')}
       ${calc('Récolte prévue kg', (c, o) => f0(o.recolte), f0(T.recolte))}
       ${edit('Récolte réelle kg', 'recolteReelle', { ph: (c) => { const k = recolteNotee(c.key); return k ? f0(k) + ' cal.' : ''; }, tot: T.recolteReelle ? f0(T.recolteReelle) : '—' })}
-      ${edit('Prix direct CHF/kg', 'prixDirect')}
+      ${fic('Prix direct CHF/kg', 'prixDirect', { fmt: (v) => (v ? money(v) : '—') })}
       ${calc('Ventes directes CHF', (c, o) => f0(o.ventesDirect), f0(T.ventesDirect))}
       ${calc('CHF/m² direct', (c, o) => money(o.chfM2Direct))}
-      ${edit('Prix revendeur CHF/kg', 'prixRevendeur', { ph: (c, o) => money(o.prixRevendeur) + ' auto' })}
+      ${fic('Prix revendeur CHF/kg', 'prixRevendeur', { fmt: (v, c, o) => (v == null || v === '' ? money(o.prixRevendeur) + ' auto' : money(v)) })}
       ${calc('Ventes revendeur CHF', (c, o) => f0(o.ventesRevendeur), f0(T.ventesRevendeur))}
       ${calc('CHF/m² revendeur', (c, o) => money(o.chfM2Revendeur))}
       ${grp('Plantation', 7)}
-      ${edit('Semaine de plantation', 'semPlantation', { txt: true, ph: () => 'ex. 20' })}
-      ${edit('Semaines de récolte', 'semRecolte', { txt: true, ph: () => 'ex. 40-46' })}
-      ${edit('Lignes par planche', 'lignes')}
-      ${edit('Interplant cm', 'interplant')}
+      ${fic('Semaine de plantation', 'semPlantation')}
+      ${fic('Semaines de récolte', 'semRecolte')}
+      ${fic('Lignes par planche', 'lignes')}
+      ${fic('Interplant cm', 'interplant')}
       ${calc('Plantons', (c, o) => f0(o.plantons), f0(T.plantons))}
-      ${edit('Variété', 'variete', { txt: true })}
-      ${edit('Fournisseur', 'fournisseur', { txt: true })}
-      ${grp('Fumure', 22 + 2 * engr.length)}
-      ${NUTR.map((n) => edit(`Besoin brut ${n} g/m²`, 'besoins.' + n)).join('')}
-      ${NUTR.map((n) => edit(`Correction ${n} (analyse de sol)`, 'correction.' + n, { ph: () => '1' })).join('')}
+      ${fic('Variété', 'variete')}
+      ${fic('Fournisseur', 'fournisseur')}
+      ${grp('Fumure', 18 + 2 * engr.length)}
+      ${NUTR.map((n) => fic(`Besoin brut ${n} g/m²`, 'besoins.' + n)).join('')}
       ${NUTR.map((n) => calc(`Besoin net ${n} g/m²`, (c, o) => f1(o.net[n]))).join('')}
-      ${edit('Compost L/m²', 'compost')}
+      ${fic('Compost L/m²', 'compost')}
       ${calc('Compost m³', (c, o) => fmtNum(o.compostM3, 2), fmtNum(T.compostM3, 2))}
       ${NUTR.map((n) => calc(`Reste ${n} après compost g/m²`, (c, o) => f1(o.apresCompost[n]), '', (c, o) => o.excedent[n] ? 'neg' : '')).join('')}
       ${NUTR.map((n) => calc(`À apporter ${n} kg`, (c, o) => fmtNum(o.total[n] / 1000, 2), fmtNum(T.total[n] / 1000, 2))).join('')}
@@ -108,10 +109,9 @@ function renderPlan() {
         <div class="panel"><h2>Récolte prévue et réelle (kg)</h2>${bars}<h2 style="margin-top:8px">Ventes directes prévues (CHF)</h2>${ventes}</div>
       </div>
       <div class="panel"><h2>Plan ${s}</h2>
-        <p class="hint">Les cases blanches se modifient directement : tape la valeur, elle est enregistrée dès que tu quittes la case. Les lignes grisées sont calculées. Touche le nom d'une culture pour sa couleur, sa remarque ou pour la supprimer. Récolte réelle vide : somme des récoltes notées au calendrier (« cal. »).</p>
+        <p class="hint">Cases blanches : propres à cette saison (planches, longueur, récolte réelle), elles se modifient directement. Lignes vertes : données de la culture, qui viennent de « Nos cultures » ; touche une case pour modifier la fiche. Lignes grisées : calculées. Touche le nom d'une culture pour ses réglages de saison ou pour la retirer du plan. Récolte réelle vide : somme des récoltes notées au calendrier (« cal. »).</p>
         ${table}
-        <p class="hint">Ce que tu modifies ici (rendement, prix, semaines, espacements, variété, fumure…) est aussi enregistré dans la fiche de la culture (onglet « Nos cultures »), pour les années suivantes. Le nombre de planches et la récolte réelle restent propres à chaque saison.</p>
-        <p class="hint">Surface = planches × longueur × ${fmtNum(P.facteurSurface, 2)} (passe-pieds). Plantons = longueur ÷ interplant × lignes × planches. Prix revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du prix direct. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Engrais par planche : à vérifier avec vos calculs.</p></div>`;
+        <p class="hint">Surface = planches × longueur × ${fmtNum(P.facteurSurface, 2)} (passe-pieds). Plantons = longueur ÷ interplant × lignes × planches. Prix revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du prix direct. Corrections d'analyse de sol (hypothèses) : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Engrais par planche : à vérifier avec vos calculs.</p></div>`;
   }
 }
 function brancherPlan() {
@@ -127,7 +127,7 @@ function brancherPlan() {
       if ((f === 'semPlantation' || f === 'semRecolte') && raw && !parseSemaines(raw)) toast('Semaine non reconnue : écris par ex. 20 ou 40-46.');
       const o = JSON.parse(JSON.stringify(c));
       if (f.includes('.')) { const [a, b] = f.split('.'); o[a] = Object.assign({}, o[a] || {}); o[a][b] = v == null ? (a === 'correction' ? 1 : 0) : v; } else o[f] = v;
-      DB.put(k, o); majFiche(Object.assign({ key: k }, o));
+      DB.put(k, o);
       renderGardeFocus();
     }));
   }
@@ -138,41 +138,23 @@ ACTIONS.cuToggle = (el) => { const g = el.dataset.g; CU.fermes = CU.fermes.inclu
 ACTIONS.cuToutes = (el) => { CU.fermes = el.dataset.v === 'fermer' ? ['surface', 'r-colte-et-ventes', 'plantation', 'fumure'] : []; cuSave(); };
 document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('tr.grp[data-act]')) { e.preventDefault(); e.target.click(); } });
 
+/* Réglages d'une culture pour la saison : planches, longueur, récolte réelle, ordre, remarque. Le reste est dans sa fiche. */
 ACTIONS.cuEdit = (el) => {
-  const k = el.dataset.key || '', s = saisonCourante(), fk = el.dataset.fiche || '';
-  const base = { saison: s, lignes: 1, besoins: {}, correction: {}, ordre: cultures(s).length + 1 };
-  const c = k ? DB.get(k) : fk && DB.get(fk) ? Object.assign(base, valeursFiche(DB.get(fk)), { fiche: fk }) : base;
-  const b = c.besoins || {}, co = c.correction || {};
-  const n = (id, label, val, step, name) => inp(id, label, val ?? '', { name: name || id.slice(3), type: 'number', attrs: { step: step || 'any', inputmode: 'decimal' } });
-  openSheet(`${sheetHead(k ? c.nom : 'Nouvelle culture', 'Saison ' + (c.saison || s))}<form class="sbody form" data-form="cu"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="saison" value="${esc(c.saison || s)}"><input type="hidden" name="fiche" value="${esc(c.fiche || '')}">
-    ${!k && fk ? `<p class="banner" style="margin-top:0">Données reprises de la fiche « ${esc(c.nom)} ». Indique le nombre de planches pour ${esc(c.saison || s)}.</p>` : ''}
-    <div class="grid2">${inp('cu-nom', 'Culture', c.nom, { name: 'nom', req: true })}${n('cu-ordre', 'Ordre d\'affichage', c.ordre, '1')}</div>
-    <div class="field"><span class="flabel">Couleur</span><div class="seg">${CULT_PALETTE.map((x) => `<label style="--c:${x}"><input type="radio" name="couleur" value="${x}"${(c.couleur || couleurCulture(c, (c.ordre || 1) - 1)) === x ? ' checked' : ''}> <span class="blk" style="background:${x};width:18px;height:18px"></span></label>`).join('')}</div></div>
-    <h3>Surface et rendement</h3>
-    <div class="grid2">${n('cu-planches', 'Planches', c.planches, '1')}${n('cu-longueur', 'Longueur de planche m', c.longueur, 'any')}${n('cu-rendement', 'Rendement kg/m²', c.rendement)}${n('cu-recolteReelle', 'Récolte réelle kg', c.recolteReelle)}</div>
-    <p class="hint">Longueur vide : celle des hypothèses (${fmtNum(paramsCultures(c.saison || s).longueur, 1)} m).</p>
-    <h3>Prix</h3>
-    <div class="grid2">${n('cu-prixDirect', 'Prix direct CHF/kg', c.prixDirect)}${n('cu-prixRevendeur', 'Prix revendeur CHF/kg', c.prixRevendeur)}</div>
-    <p class="hint">Prix revendeur vide : calculé automatiquement depuis le prix direct.</p>
-    <h3>Plantation</h3>
-    <div class="grid2">${inp('cu-semP', 'Semaine de plantation', c.semPlantation, { name: 'semPlantation' })}${inp('cu-semR', 'Semaines de récolte', c.semRecolte, { name: 'semRecolte' })}
-      ${n('cu-lignes', 'Lignes par planche', c.lignes, '1')}${n('cu-interplant', 'Interplant cm', c.interplant)}
-      ${inp('cu-var', 'Variété', c.variete, { name: 'variete' })}${inp('cu-four', 'Fournisseur', c.fournisseur, { name: 'fournisseur' })}</div>
-    <h3>Fumure (g/m²)</h3>
-    <div class="grid2">${NUTR.map((x) => n('cu-b' + x, 'Besoin brut ' + x, b[x], 'any', 'b_' + x)).join('')}</div>
-    <div class="grid2">${NUTR.map((x) => n('cu-c' + x, 'Correction ' + x + ' (analyse)', co[x] ?? 1, 'any', 'c_' + x)).join('')}</div>
-    <div class="grid2">${n('cu-compost', 'Compost L/m²', c.compost)}</div>
-    ${txt('cu-rem', 'Remarque', c.remarque, { name: 'remarque' })}
-    <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette culture">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  const k = el.dataset.key || ''; if (!k || !DB.get(k)) { ACTIONS.cuAjouter(el); return; }
+  const c = DB.get(k), fk = ficheDe(c), n = (id, label, val, step) => inp(id, label, val ?? '', { name: id.slice(3), type: 'number', attrs: { step: step || 'any', inputmode: 'decimal' } });
+  openSheet(`${sheetHead(c.nom, 'Saison ' + c.saison)}<form class="sbody form" data-form="cu"><input type="hidden" name="key" value="${esc(k)}">
+    <div class="grid2">${n('cu-planches', 'Planches', c.planches, '1')}${n('cu-longueur', 'Longueur de planche m', c.longueur)}${n('cu-recolteReelle', 'Récolte réelle kg', c.recolteReelle)}${n('cu-ordre', "Ordre d'affichage", c.ordre, '1')}</div>
+    <p class="hint">Longueur vide : celle des hypothèses (${fmtNum(paramsCultures(c.saison).longueur, 1)} m). Récolte réelle vide : les récoltes notées au calendrier.</p>
+    ${txt('cu-rem', 'Remarque pour cette saison', c.remarque, { name: 'remarque' })}
+    <p class="hint">Rendement, prix, semaines, espacements, variété, fumure : dans la fiche de la culture. <a href="#/cultures/fiches/${encodeURIComponent(fk)}" data-act="go" data-href="#/cultures/fiches/${encodeURIComponent(fk)}">Ouvrir la fiche ${esc(c.nom)}</a></p>
+    <div class="row-end"><button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette culture du plan ${esc(c.saison)} (sa fiche reste)">Retirer du plan</button><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.cu = (v) => {
-  if (!v.nom) { toast('Le nom est obligatoire.'); return; }
-  const k = v.key || 'cul:' + uid('c'), old = DB.get(k) || {};
-  const o = Object.assign({}, old, { saison: v.saison, nom: v.nom, couleur: v.couleur || old.couleur || '', variete: v.variete, fournisseur: v.fournisseur, semPlantation: v.semPlantation, semRecolte: v.semRecolte, remarque: v.remarque });
-  if (v.fiche) o.fiche = v.fiche;
-  for (const f of ['ordre', 'planches', 'longueur', 'rendement', 'recolteReelle', 'prixDirect', 'prixRevendeur', 'lignes', 'interplant', 'compost']) o[f] = v[f] === '' ? (f === 'prixRevendeur' || f === 'longueur' || f === 'recolteReelle' ? null : 0) : num(v[f]);
-  o.besoins = {}; o.correction = {}; for (const x of NUTR) { o.besoins[x] = num(v['b_' + x]); o.correction[x] = v['c_' + x] === '' ? 1 : num(v['c_' + x]); }
-  DB.put(k, o); majFiche(Object.assign({ key: k }, o)); closeSheet(); toast('Culture enregistrée.');
+  const k = v.key, old = DB.get(k); if (!old) return;
+  const o = Object.assign({}, old, { remarque: v.remarque });
+  o.planches = num(v.planches); o.ordre = num(v.ordre) || old.ordre || 1;
+  for (const f of ['longueur', 'recolteReelle']) o[f] = v[f] === '' ? null : num(v[f]);
+  DB.put(k, o); closeSheet(); toast('Culture mise à jour.');
 };
 ACTIONS.cuParams = () => {
   const s = saisonCourante(), P = paramsCultures(s);
@@ -180,6 +162,9 @@ ACTIONS.cuParams = () => {
   openSheet(`${sheetHead('Hypothèses ' + s)}<form class="sbody form" data-form="cuParams"><input type="hidden" name="saison" value="${esc(s)}">
     <div class="grid2">${n('cp-l', 'Longueur de planche m', P.longueur, 'longueur')}${n('cp-f', 'Facteur de surface', P.facteurSurface, 'facteurSurface', '1,1 = +10 % pour les passe-pieds')}
       ${n('cp-r', 'Prix revendeur (part du direct)', P.partRevendeur, 'partRevendeur', '0,6 = 60 %')}${n('cp-d', 'Compost disponible 1re année', r2(P.dispoCompost * 1000) / 1000, 'dispoCompost', '0,333 = un tiers')}</div>
+    <h3>Corrections d'analyse de sol</h3>
+    <p class="hint">Liées au champ : multiplient les besoins de toutes les cultures (1 = pas de correction, 0,8 = −20 %).</p>
+    <div class="grid2">${NUTR.map((x) => n('cp-c' + x, x, (P.correction || {})[x] ?? 1, 'c_' + x)).join('')}</div>
     <h3>Teneur du compost (g/L)</h3>
     <div class="grid2">${NUTR.map((x) => n('cp-t' + x, x, P.teneurCompost[x], 't_' + x)).join('')}</div>
     <h3>Engrais</h3>
@@ -188,19 +173,20 @@ ACTIONS.cuParams = () => {
 };
 FORMS.cuParams = (v) => {
   const P = paramsCultures(v.saison);
-  const o = { longueur: num(v.longueur) || 19, facteurSurface: num(v.facteurSurface) || 1, partRevendeur: num(v.partRevendeur), dispoCompost: num(v.dispoCompost), teneurCompost: {}, engrais: [] };
+  const o = { longueur: num(v.longueur) || 19, facteurSurface: num(v.facteurSurface) || 1, partRevendeur: num(v.partRevendeur), dispoCompost: Math.abs(num(v.dispoCompost) - r2(P.dispoCompost * 1000) / 1000) < 1e-9 ? P.dispoCompost : num(v.dispoCompost), teneurCompost: {}, engrais: [] };
   for (const x of NUTR) o.teneurCompost[x] = num(v['t_' + x]);
+  o.correction = {}; for (const x of NUTR) o.correction[x] = v['c_' + x] === '' ? 1 : num(v['c_' + x]);
   (P.engrais || []).forEach((e, i) => o.engrais.push({ k: e.k, nom: v['en_' + i] || e.nom, nutriment: v['nu_' + i] || e.nutriment, teneur: num(v['te_' + i]) }));
   DB.put('cfg:cultures:' + v.saison, o); closeSheet(); toast('Hypothèses enregistrées.');
 };
 ACTIONS.cuDupliquer = () => {
   const s = saisonCourante(), ns = String(Number(s) + 1);
   if (cultures(ns).length) { CU.saison = ns; render(); toast(`Le plan ${ns} existe déjà.`); return; }
-  confirmSheet(`Préparer le plan ${ns} ?`, `Les ${cultures(s).length} cultures de ${s} sont copiées dans un nouveau plan ${ns} (sans les récoltes réelles), que tu peux ensuite modifier. Le plan ${s} reste intact.`, 'cuDupOk', 'Créer le plan ' + ns, { s, ns });
+  confirmSheet(`Préparer le plan ${ns} ?`, `Les ${cultures(s).length} cultures de ${s} sont placées dans un nouveau plan ${ns}, avec les mêmes planches et les données à jour de leurs fiches (sans les récoltes réelles). Le plan ${s} reste intact.`, 'cuDupOk', 'Créer le plan ' + ns, { s, ns });
 };
 ACTIONS.cuDupOk = (el) => {
   const { s, ns } = el.dataset;
-  for (const c of cultures(s)) { const o = Object.assign({}, c); delete o.key; o.saison = ns; o.recolteReelle = null; DB.put('cul:' + uid('c'), o); }
+  for (const c of cultures(s)) { const f = DB.get(ficheDe(c)); const o = Object.assign({}, c, f ? valeursFiche(f) : {}, { fiche: ficheDe(c) }); delete o.key; delete o.correction; o.saison = ns; o.recolteReelle = null; o.remarque = ''; DB.put('cul:' + uid('c'), o); }
   const P = DB.get('cfg:cultures:' + s); if (P) DB.put('cfg:cultures:' + ns, P);
   CU.saison = ns; closeSheet(); toast(`Plan ${ns} créé.`); render();
 };
@@ -209,8 +195,9 @@ ACTIONS.cuDupOk = (el) => {
 /* ================= Nos cultures : une fiche par culture, réutilisée d'une année à l'autre =================
    fiche:<nom> = { nom, couleur, rendement, prixDirect, prixRevendeur, semPlantation, semRecolte, lignes, interplant,
                    variete, fournisseur, besoins, compost, notes, saison (d'où viennent les données), majLe }
-   Chaque modification d'une culture dans un plan met à jour sa fiche (si le plan est au moins aussi récent que la fiche).
-   Ne vont pas dans la fiche : planches, longueur, récolte réelle, corrections d'analyse de sol, ordre (propres à la saison). */
+   Les cultures se créent ici ; le plan d'une saison les place (planches, longueur, récolte réelle, ordre, remarque) et garde une copie
+   de leurs données. Modifier une fiche met à jour les plans de l'année en cours et des suivantes, jamais les plans passés.
+   Les corrections d'analyse de sol sont liées au champ : elles sont dans les hypothèses de la saison. */
 const FICHE_CHAMPS = ['couleur', 'rendement', 'prixDirect', 'prixRevendeur', 'semPlantation', 'semRecolte', 'lignes', 'interplant', 'variete', 'fournisseur', 'besoins', 'compost'];
 const fiches = () => DB.all('fiche:').sort((a, b) => String(a.nom).localeCompare(b.nom, 'fr'));
 const cleFiche = (nom) => 'fiche:' + (String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'culture');
@@ -251,7 +238,7 @@ function renderFiches(id) {
     const h = historiqueFiche(sel.key), b = sel.besoins || {};
     const v = (x, u) => (x == null || x === '' ? '—' : esc(typeof x === 'number' ? fmtNum(x, 2).replace(/[.,]00$/, '') : x) + (u ? ' ' + u : ''));
     droite = `<div class="panel"><div class="between"><h2><span class="sw" style="background:${sel.couleur || '#999'}"></span>${esc(sel.nom)}</h2>
-        <div class="row">${!dans.has(sel.key) ? `<button class="btn primary small" type="button" data-act="cuEdit" data-fiche="${esc(sel.key)}">Ajouter au plan ${esc(s)}</button>` : ''}<button class="btn small" type="button" data-act="ficheEdit" data-key="${esc(sel.key)}">Modifier</button></div></div>
+        <div class="row">${!dans.has(sel.key) ? `<button class="btn primary small" type="button" data-act="cuAjouter" data-fiche="${esc(sel.key)}">Ajouter au plan ${esc(s)}</button>` : ''}<button class="btn small" type="button" data-act="ficheEdit" data-key="${esc(sel.key)}">Modifier</button></div></div>
       <table class="list"><tbody>
         <tr><td>Rendement</td><td class="r">${v(sel.rendement, 'kg/m²')}</td></tr>
         <tr><td>Prix direct / revendeur</td><td class="r">${v(sel.prixDirect, 'CHF/kg')} / ${sel.prixRevendeur == null || sel.prixRevendeur === '' ? 'auto' : v(sel.prixRevendeur, 'CHF/kg')}</td></tr>
@@ -270,23 +257,36 @@ function renderFiches(id) {
     </div>`;
   }
   return `<div class="split"><div class="panel"><div class="between"><h2>Nos cultures</h2><button class="btn primary small" type="button" data-act="ficheEdit">+ Fiche</button></div>
-      <p class="hint">Une fiche par culture, qui se met à jour quand vous modifiez le plan. Pour un nouveau plan, « + Culture » reprend ces données.</p>
+      <p class="hint">Chaque culture se crée ici, avec ses données. Dans le plan de culture, on la place et on indique ses planches pour la saison.</p>
       ${l.length ? `<div class="items">${l.map(ligne).join('')}</div>` : '<p class="empty">Aucune fiche pour l\'instant.</p>'}</div>
     <div id="ct-right">${droite}</div></div>`;
 }
-/* « + Culture » : choisir une culture connue (avec ses données) ou en créer une nouvelle */
-ACTIONS.cuAjouter = () => {
+/* « + Culture » : on choisit une culture de « Nos cultures » et on la place dans le plan */
+ACTIONS.cuAjouter = (el) => {
+  creerFichesManquantes(); const choisie = (el && el.dataset && el.dataset.fiche) || '';
   const s = saisonCourante(), dans = new Set(cultures(s).map((c) => ficheDe(c))), dispo = fiches().filter((f) => !dans.has(f.key));
-  if (!dispo.length) { ACTIONS.cuEdit({ dataset: {} }); return; }
-  openSheet(`${sheetHead('Ajouter une culture', 'Plan ' + s)}<div class="sbody">
-    <p class="hint">Choisis une culture : ses données (rendement, prix, semaines, espacements, fumure…) sont reprises. Il ne reste qu'à indiquer le nombre de planches.</p>
-    <div class="fiche-choix">${dispo.map((f, i) => `<button type="button" class="chip-cu" data-act="cuDepuisFiche" data-fiche="${esc(f.key)}"><span class="sw" style="background:${f.couleur || CULT_PALETTE[i % CULT_PALETTE.length]}"></span>${esc(f.nom)}</button>`).join('')}</div>
-    <div class="row-end"><button class="btn" type="button" data-act="cuDepuisFiche" data-fiche="">Une culture nouvelle</button></div></div>`);
+  if (!dispo.length) {
+    openSheet(`${sheetHead('Ajouter une culture', 'Plan ' + s)}<div class="sbody"><p>${fiches().length ? 'Toutes vos cultures sont déjà dans ce plan.' : "Vous n'avez pas encore de culture."} Crée d'abord la culture dans « Nos cultures », puis place-la ici.</p>
+      <div class="row-end"><button class="btn primary" type="button" data-act="ficheNouvelle">Créer une culture</button></div></div>`);
+    return;
+  }
+  const n = (id, label, val, step) => inp(id, label, val ?? '', { name: id.slice(3), type: 'number', attrs: { step: step || 'any', inputmode: 'decimal' } });
+  openSheet(`${sheetHead('Ajouter une culture', 'Plan ' + s)}<form class="sbody form" data-form="cuPlacer"><input type="hidden" name="saison" value="${esc(s)}">
+    ${sel('cu-fiche', 'Culture', choisie, [['', 'Choisir…']].concat(dispo.map((f) => [f.key, f.nom])), { name: 'fiche' })}
+    <div class="grid2">${n('cu-planches', 'Planches', '', '1')}${n('cu-longueur', 'Longueur de planche m', '')}</div>
+    <p class="hint">Rendement, prix, semaines, espacements et fumure viennent de la fiche. Longueur vide : celle des hypothèses (${fmtNum(paramsCultures(s).longueur, 1)} m).
+      Culture absente de la liste ? <a href="#" data-act="ficheNouvelle">Crée-la dans « Nos cultures »</a>.</p>
+    <div class="row-end"><button class="btn primary" type="submit">Placer dans le plan</button></div></form>`);
 };
-ACTIONS.cuDepuisFiche = (el) => { closeSheet(); ACTIONS.cuEdit({ dataset: { fiche: el.dataset.fiche || '' } }); };
+FORMS.cuPlacer = (v) => {
+  const f = DB.get(v.fiche); if (!f) { toast('Choisis une culture dans la liste.'); return; }
+  const s = v.saison;
+  const o = Object.assign({ saison: s, fiche: v.fiche, ordre: cultures(s).length + 1, recolteReelle: null }, valeursFiche(f), { planches: num(v.planches), longueur: v.longueur === '' ? null : num(v.longueur) });
+  DB.put('cul:' + uid('c'), o); closeSheet(); toast(`${f.nom} placé dans le plan ${s}.`);
+};
+ACTIONS.ficheNouvelle = () => { closeSheet(); go('#/cultures/fiches'); setTimeout(() => ACTIONS.ficheEdit({ dataset: {} }), 60); };
 ACTIONS.ficheEdit = (el) => {
   const k = el.dataset.key || '', f = k ? DB.get(k) : { lignes: 1, besoins: {} }, b = f.besoins || {}, s = saisonCourante();
-  const cul = k ? cultures(s).find((c) => ficheDe(c) === k) : null;
   const n = (id, label, val, name) => inp(id, label, val ?? '', { name, type: 'number', attrs: { step: 'any', inputmode: 'decimal' } });
   openSheet(`${sheetHead(k ? 'Fiche ' + f.nom : 'Nouvelle fiche de culture')}<form class="sbody form" data-form="fiche"><input type="hidden" name="key" value="${esc(k)}">
     ${inp('fi-nom', 'Culture', f.nom, { name: 'nom', req: true })}
@@ -299,7 +299,7 @@ ACTIONS.ficheEdit = (el) => {
     <div class="grid2">${NUTR.map((x) => n('fi-b' + x, 'Besoin brut ' + x + ' g/m²', b[x], 'b_' + x)).join('')}</div>
     ${txt('fi-notes', 'Notes de culture', f.notes, { name: 'notes', rows: 4 })}
     <p class="hint">Les notes restent dans la fiche (conseils, maladies, ce qui a marché…).</p>
-    ${cul ? `<label class="row" style="font-size:14px"><input type="checkbox" name="appliquer" checked> Appliquer aussi au plan ${esc(s)} (sans toucher au nombre de planches)</label>` : ''}
+    <p class="hint">Les plans de ${todayISO().slice(0, 4)} et des années suivantes prennent ces valeurs ; les plans passés gardent celles de leur saison.</p>
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette fiche (les plans ne changent pas)">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.fiche = (v) => {
@@ -312,9 +312,7 @@ FORMS.fiche = (v) => {
   o.prixRevendeur = v.prixRevendeur === '' ? null : num(v.prixRevendeur);
   o.besoins = {}; for (const x of NUTR) o.besoins[x] = num(v['b_' + x]);
   DB.put(k, o);
-  if (v.appliquer) {
-    const c = cultures(s).find((x) => ficheDe(x) === k);
-    if (c) { const cc = Object.assign({}, DB.get(c.key), valeursFiche(o), { fiche: k }); DB.put(c.key, cc); }
-  }
+  const an = todayISO().slice(0, 4);
+  for (const c of DB.all('cul:')) if (ficheDe(c) === k && String(c.saison) >= an) DB.put(c.key, Object.assign({}, DB.get(c.key), valeursFiche(o), { fiche: k }));
   closeSheet(); toast('Fiche enregistrée.'); go('#/cultures/fiches/' + encodeURIComponent(k));
 };
