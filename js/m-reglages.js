@@ -51,19 +51,45 @@ FORMS.cfgEnt = (v) => {
 
 function renderRegAssocies() {
   const s = cfg(), ps = personnes();
+  const inv26 = typeof bilanAnnee === 'function' ? bilanAnnee('2026').invest : 0;
+  const val26 = DB.all('inv:').filter((i) => yearOf(i.dateAchat) === '2026').reduce((a, i) => a + valeurFinAnnee(i, 2026, !!s.amortirDesAchat), 0);
   return `<form class="panel form" data-form="cfgAss"><h2>Associés et partage</h2>
-    <p class="hint">Les dépenses et les recettes sont partagées selon ces parts. Le décompte « qui doit quoi » en dépend.</p>
-    ${ps.map((p, i) => `<div class="grid2">${inp('pa-n' + i, 'Nom', p.nom, { name: 'nom_' + i })}${inp('pa-p' + i, 'Part', p.part ?? 1, { name: 'part_' + i, type: 'number', attrs: { step: 'any', min: 0 }, sub: '1 et 1 = moitié-moitié' })}</div>`).join('')}
+    <p class="hint">Les dépenses et les recettes sont partagées selon ces parts. Le décompte « qui doit quoi » en dépend.
+      « Associé dès le » : avant cette date, la personne ne partage ni les dépenses ni les recettes (elle peut quand même noter ses heures et avoir des tâches). Vide = depuis le début.</p>
+    ${ps.map((p, i) => `<fieldset class="pers"><legend>${esc(p.nom)} <span class="meta">identifiant : ${esc(p.k)}</span></legend><div class="grid2">
+      ${inp('pa-n' + i, 'Prénom', p.nom, { name: 'nom_' + i })}${inp('pa-p' + i, 'Part', p.part ?? 1, { name: 'part_' + i, type: 'number', attrs: { step: 'any', min: 0 }, sub: '1, 1 et 1 = un tiers chacun · 0 = pas associé' })}
+      ${inp('pa-d' + i, 'Associé dès le', p.associeDes || '', { name: 'des_' + i, type: 'date' })}
+      ${inp('pa-r' + i, 'Reprise de parts CHF', p.reprise || '', { name: 'rep_' + i, type: 'number', attrs: { step: '0.05', min: 0, inputmode: 'decimal' }, sub: 'Ce que la personne rachète en entrant. Partagé entre les associés d\'avant, compté dès la date d\'entrée.' })}
+    </div></fieldset>`).join('')}
+    ${ps.some((p) => p.associeDes) ? `<p class="hint">Repères pour la reprise : investissements 2026 ${chf(inv26)} (un tiers : ${chf(inv26 / 3)}) ·
+      valeur restante fin 2026 des objets achetés en 2026 ${chf(val26)} (un tiers : ${chf(val26 / 3)}).</p>` : ''}
+    <h3>Ajouter une personne</h3>
+    ${inp('pa-new', 'Prénom', '', { name: 'nouveau', attrs: { placeholder: 'Ex. Marc', autocomplete: 'off' }, sub: 'Elle apparaît dans les heures, les tâches et le calendrier, sans part dans les comptes. Pour en faire un associé : sa part et sa date d\'entrée, ci-dessus.' })}
     <h3>Objectifs et calculs</h3>
     ${inp('pa-obj', 'Objectif de revenu annuel CHF', s.objectifAnnuel, { name: 'objectifAnnuel', type: 'number', attrs: { step: 100, min: 0 }, sub: 'Sert à calculer « objectif par heure » dans les heures.' })}
     <label class="row" style="font-size:14px"><input type="checkbox" name="amortirDesAchat"${s.amortirDesAchat ? ' checked' : ''}> Amortir dès l'année d'achat (sinon, comme l'ancien tableur : dès l'année suivante)</label>
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`;
 }
+const cleDePrenom = (n) => String(n).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '') || 'personne';
 FORMS.cfgAss = (v) => {
-  const ps = personnes().map((p, i) => ({ k: p.k, nom: v['nom_' + i] || p.nom, part: num(v['part_' + i]) }));
+  const ps = personnes().map((p, i) => {
+    const o = Object.assign({}, p, { nom: (v['nom_' + i] || '').trim() || p.nom, part: num(v['part_' + i]) });
+    if (v['des_' + i]) o.associeDes = v['des_' + i]; else delete o.associeDes;
+    const r = num(v['rep_' + i]); if (r > 0) o.reprise = r2(r); else delete o.reprise;
+    return o;
+  });
+  const avant = personnes();
+  const sansDate = ps.find((p, i) => p.part > 0 && !p.associeDes && !(num(avant[i].part ?? 1) > 0));
+  if (sansDate) { toast(`Indique la date à partir de laquelle ${sansDate.nom} est associé·e, sinon il partagerait aussi les comptes du passé.`); return; }
+  const nv = String(v.nouveau || '').trim();
+  if (nv) {
+    let k = cleDePrenom(nv), n = 2; const base = k;
+    while (ps.some((p) => p.k === k) || k === 'ensemble') k = base + n++;
+    ps.push({ k, nom: nv, part: 0 });
+  }
   if (!ps.some((p) => p.part > 0)) { toast('Au moins une part doit être positive.'); return; }
   DB.put('cfg:reglages', Object.assign({}, DB.get('cfg:reglages') || {}, { personnes: ps, objectifAnnuel: num(v.objectifAnnuel), amortirDesAchat: !!v.amortirDesAchat }));
-  toast('Réglages enregistrés.');
+  toast(nv ? `${nv} est ajouté·e.` : 'Réglages enregistrés.'); render();
 };
 
 /* ---------- Données ---------- */

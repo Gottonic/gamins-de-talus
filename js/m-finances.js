@@ -13,7 +13,14 @@ const FIN = { annee: '', type: '', par: '', q: '', sansJ: false };
 const sansJustificatif = (d) => !String(d.justificatif || '').replace(/[-–—\s.]/g, '');
 const anneesFin = () => { const s = new Set([todayISO().slice(0, 4)]); for (const d of depenses()) s.add(yearOf(d.date)); for (const r of recettesToutes()) s.add(yearOf(r.date)); return [...s].filter(Boolean).sort().reverse(); };
 
-function decompteActuel() { return decompte(depenses(), recettesToutes(), reglements(), cfg()); }
+function decompteActuel() { return decompte(depenses(), recettesToutes(), reglements(), cfg(), todayISO()); }
+/* « Nicolas 50 % / Noé 50 % », et les entrées d'associés à venir */
+function phrasePartage() {
+  const today = todayISO(), P = parts(cfg(), today), ps = personnes();
+  const now = ps.filter((p) => P[p.k] > 0).map((p) => `${esc(p.nom)} ${Math.round(P[p.k] * 100)} %`).join(', ');
+  const fut = ps.filter((p) => p.associeDes && p.associeDes > today).map((p) => `${esc(p.nom)} associé dès le ${fmtDate(p.associeDes)}`);
+  return now + (fut.length ? ' · ' + fut.join(', ') : '');
+}
 function phraseDecompte(d) {
   if (!d.transferts.length) return 'Vous êtes quittes.';
   return d.transferts.map((t) => `${nomDe(t.de)} doit ${chf(t.montant)} à ${nomDe(t.a)}`).join(' · ');
@@ -62,7 +69,7 @@ function renderBilan() {
     <div class="split">
       <div class="panel"><div class="between"><h2>Entre associés</h2><a class="btn small" href="#/finances/associes">Détail</a></div>
         <p style="margin:0;font-size:18px"><b>${esc(phraseDecompte(d))}</b></p>
-        <p class="hint">Calculé sur toutes les dépenses, recettes et remboursements depuis le début, avec un partage ${personnes().map((p) => esc(p.nom)).join(' / ')} ${Object.values(parts(cfg())).map((x) => Math.round(x * 100) + ' %').join(' / ')}.</p>
+        <p class="hint">Calculé sur toutes les dépenses, recettes et remboursements depuis le début, avec un partage selon la date de chaque montant. Aujourd'hui : ${phrasePartage()}.</p>
         ${d.transferts.length ? `<div class="row"><button class="btn primary" type="button" data-act="regEdit" data-de="${d.transferts[0].de}" data-a="${d.transferts[0].a}" data-m="${d.transferts[0].montant}">Enregistrer le remboursement</button></div>` : ''}
       </div>
       <div class="panel"><h2>Dépenses ${y} par catégorie</h2>${Object.keys(b.cat).length ? `<div class="bars">${Object.entries(b.cat).sort((a, c) => c[1] - a[1]).map(([k, v]) => `<div class="bar-row"><span>${esc(k)}</span><span class="bar-track"><span class="bar-fill b3" style="width:${(v / maxCat * 100).toFixed(1)}%"></span></span><span class="num">${money(v)}</span></div>`).join('')}</div>` : '<p class="empty">Aucune dépense cette année.</p>'}</div>
@@ -164,16 +171,16 @@ ACTIONS.recCsv = () => {
 
 /* ---------- Entre associés ---------- */
 function renderAssocies() {
-  const d = decompteActuel(), ps = personnes(), P = parts(cfg());
+  const d = decompteActuel(), ps = personnes();
   const row = (lab, f, sign) => `<tr><td>${lab}</td>${ps.map((p) => `<td class="r num">${sign && d[f][p.k] ? sign : ''}${money(d[f][p.k])}</td>`).join('')}</tr>`;
   const regs = reglements().sort((a, b) => String(b.date).localeCompare(a.date));
   return `<div class="split"><div class="panel"><h2>Qui doit quoi</h2>
       <p style="margin:0;font-size:20px"><b>${esc(phraseDecompte(d))}</b></p>
       ${d.transferts.length ? `<div class="row"><button class="btn primary" type="button" data-act="regEdit" data-de="${d.transferts[0].de}" data-a="${d.transferts[0].a}" data-m="${d.transferts[0].montant}">Enregistrer ce remboursement</button></div>` : ''}
       <div class="table-wrap"><table class="list"><thead><tr><th></th>${ps.map((p) => `<th class="r">${esc(p.nom)}</th>`).join('')}</tr></thead><tbody>
-        ${row('A payé des dépenses', 'paye')}${row('Sa part des dépenses', 'partDep')}${row('A encaissé des recettes', 'encaisse')}${row('Sa part des recettes', 'partRec')}${row('A remboursé', 'verse')}${row('A été remboursé', 'recu')}
+        ${row('A payé des dépenses', 'paye')}${row('Sa part des dépenses', 'partDep')}${row('A encaissé des recettes', 'encaisse')}${row('Sa part des recettes', 'partRec')}${row('A remboursé', 'verse')}${row('A été remboursé', 'recu')}${ps.some((p) => d.reprise[p.k]) ? row('Reprise de parts (doit)', 'reprise') : ''}
       </tbody><tfoot><tr><td>Solde (positif : doit recevoir)</td>${ps.map((p) => `<td class="r num">${money(d.solde[p.k])}</td>`).join('')}</tr></tfoot></table></div>
-      <p class="hint">Partage : ${ps.map((p) => `${esc(p.nom)} ${Math.round(P[p.k] * 100)} %`).join(', ')} (modifiable dans les Réglages). Dépenses depuis le début : ${chf(d.totalDep)} · recettes : ${chf(d.totalRec)}.</p></div>
+      <p class="hint">Partage aujourd'hui : ${phrasePartage()} (modifiable dans les Réglages ; chaque montant est partagé selon les associés à sa date). Dépenses depuis le début : ${chf(d.totalDep)} · recettes : ${chf(d.totalRec)}.</p></div>
     <div class="panel"><div class="between"><h2>Remboursements</h2><a class="btn small" href="#" data-act="regEdit">+ Remboursement</a></div>
       ${regs.length ? `<div class="items">${regs.map((g) => `<a class="item" href="#" data-act="regEdit" data-key="${esc(g.key)}"><span class="who"><strong>${esc(nomDe(g.de))} → ${esc(nomDe(g.a))}</strong><span class="meta">${fmtDate(g.date)}${g.remarque ? ' · ' + esc(g.remarque) : ''}</span></span><span class="amt">${chf(g.montant)}</span></a>`).join('')}</div>` : '<p class="empty">Aucun remboursement enregistré.</p>'}</div></div>`;
 }

@@ -41,6 +41,16 @@ insert into public.membres (user_id, personne, nom) select id, 'noe', 'Noé' fro
 
 Seules les personnes de la table `membres` voient les données, même si quelqu'un d'autre arrivait à se connecter.
 
+### Ajouter une personne plus tard (ex. Marc)
+1. Dans l'app : **Réglages → Associés → Ajouter une personne**. Elle a d'abord une part de 0 (heures, tâches, calendrier seulement).
+   Pour en faire un associé : sa part, la date d'entrée et, s'il y a lieu, le montant de la reprise de parts.
+   Chaque dépense et recette est partagée selon les associés à sa date : le passé ne change pas.
+2. Supabase → **Authentication → Users → Add user** (Auto Confirm User), puis dans le SQL Editor, avec l'identifiant affiché dans les Réglages :
+
+```sql
+insert into public.membres (user_id, personne, nom) select id, 'marc', 'Marc' from auth.users where email = 'ADRESSE-DE-MARC' on conflict do nothing;
+```
+
 ### 4. Activer le site
 GitHub → dépôt `gamins-de-talus` → **Settings** → **Pages** → Source : **Deploy from a branch**, branche `main`, dossier `/ (root)` → **Save**.
 

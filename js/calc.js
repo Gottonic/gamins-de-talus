@@ -8,11 +8,17 @@ const yearOf = (iso) => (iso ? String(iso).slice(0, 4) : '');
 
 /* ---------- Personnes et parts ---------- */
 const DEFAULT_PERSONNES = [{ k: 'nicolas', nom: 'Nicolas' }, { k: 'noe', nom: 'Noé' }];
-function parts(cfg) {
+/* Parts de chacun à une date donnée. Une personne avec « associeDes » (AAAA-MM-JJ) ne partage
+   les dépenses et les recettes qu'à partir de cette date ; avant, sa part est 0.
+   Sans date : toutes les personnes. Si toutes les parts sont à 0, partage égal. */
+function estAssocie(p, date) { return !p.associeDes || !date || String(date) >= p.associeDes; }
+function parts(cfg, date) {
   const ps = (cfg && cfg.personnes && cfg.personnes.length ? cfg.personnes : DEFAULT_PERSONNES);
-  const raw = ps.map((p) => Math.max(0, num(p.part == null ? 1 : p.part)));
-  const tot = raw.reduce((a, b) => a + b, 0) || ps.length;
-  const o = {}; ps.forEach((p, i) => { o[p.k] = (raw[i] || (tot === ps.length ? 1 : 0)) / tot; });
+  const elig = ps.filter((p) => estAssocie(p, date));
+  const raw = elig.map((p) => Math.max(0, num(p.part == null ? 1 : p.part)));
+  const tot = raw.reduce((a, b) => a + b, 0);
+  const o = {}; ps.forEach((p) => { o[p.k] = 0; });
+  elig.forEach((p, i) => { o[p.k] = tot > 0 ? raw[i] / tot : 1 / elig.length; });
   return o;
 }
 
@@ -38,29 +44,42 @@ function recettesUnifiees(recettes, factures, cfg) {
 
 /* Décompte entre associés, depuis le début.
    solde > 0 : la personne doit recevoir de l'argent ; solde < 0 : elle en doit. */
-function decompte(depenses, recettesU, reglements, cfg) {
-  const P = parts(cfg), ks = Object.keys(P);
+function decompte(depenses, recettesU, reglements, cfg, today) {
+  const ps = (cfg && cfg.personnes && cfg.personnes.length ? cfg.personnes : DEFAULT_PERSONNES);
+  const ks = ps.map((p) => p.k), memo = {};
+  const P = (date) => memo[date] || (memo[date] = parts(cfg, date || ''));
   const z = () => Object.fromEntries(ks.map((k) => [k, 0]));
-  const o = { paye: z(), partDep: z(), encaisse: z(), partRec: z(), verse: z(), recu: z(), solde: z(), totalDep: 0, totalRec: 0 };
+  const o = { paye: z(), partDep: z(), encaisse: z(), partRec: z(), verse: z(), recu: z(), reprise: z(), solde: z(), totalDep: 0, totalRec: 0 };
   for (const d of depenses) {
-    const m = num(d.montant); o.totalDep += m;
+    const m = num(d.montant), pp = P(d.date); o.totalDep += m;
     if (d.par in o.paye) o.paye[d.par] += m;
-    ks.forEach((k) => { o.partDep[k] += m * P[k]; });
+    ks.forEach((k) => { o.partDep[k] += m * pp[k]; });
   }
   for (const r of recettesU) {
-    const m = num(r.montant); o.totalRec += m;
+    const m = num(r.montant), pp = P(r.date); o.totalRec += m;
     if (r.par in o.encaisse) o.encaisse[r.par] += m;
-    ks.forEach((k) => { o.partRec[k] += m * P[k]; });
+    ks.forEach((k) => { o.partRec[k] += m * pp[k]; });
   }
   for (const g of reglements) {
     const m = num(g.montant);
     if (g.de in o.verse) o.verse[g.de] += m;
     if (g.a in o.recu) o.recu[g.a] += m;
   }
+  /* Reprise de parts : un nouvel associé rachète une part de ce qui a été investi avant lui.
+     Il le doit aux associés d'avant, selon leurs parts la veille de son entrée. Compté dès la date d'entrée. */
+  for (const p of ps) {
+    const m = num(p.reprise);
+    if (!(m > 0) || !p.associeDes || (today && today < p.associeDes)) continue;
+    const veille = new Date(p.associeDes + 'T12:00:00Z'); veille.setUTCDate(veille.getUTCDate() - 1);
+    const av = parts(cfg, veille.toISOString().slice(0, 10)); av[p.k] = 0;
+    const tot = ks.reduce((a, k) => a + av[k], 0); if (!(tot > 0)) continue;
+    o.reprise[p.k] += m;
+    ks.forEach((k) => { o.reprise[k] -= m * av[k] / tot; });
+  }
   ks.forEach((k) => {
-    o.solde[k] = (o.paye[k] - o.partDep[k]) - (o.encaisse[k] - o.partRec[k]) + o.verse[k] - o.recu[k];
+    o.solde[k] = (o.paye[k] - o.partDep[k]) - (o.encaisse[k] - o.partRec[k]) + o.verse[k] - o.recu[k] - o.reprise[k];
   });
-  for (const f of ['paye', 'partDep', 'encaisse', 'partRec', 'verse', 'recu', 'solde']) ks.forEach((k) => { o[f][k] = Math.round(o[f][k] * 1000) / 1000; });
+  for (const f of ['paye', 'partDep', 'encaisse', 'partRec', 'verse', 'recu', 'reprise', 'solde']) ks.forEach((k) => { o[f][k] = Math.round(o[f][k] * 1000) / 1000; });
   o.totalDep = r2(o.totalDep); o.totalRec = r2(o.totalRec);
   // Qui doit combien à qui (cas de 2 associés, ou plus : du plus endetté au plus créancier)
   const deb = ks.filter((k) => o.solde[k] < -0.004).map((k) => ({ k, v: -o.solde[k] })).sort((a, b) => b.v - a.v);
@@ -196,4 +215,4 @@ function totalHeures(heures, filtre) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { r2, num, yearOf, parts, DEFAULT_PERSONNES, factureStatut, factureTotal, recettesUnifiees, decompte, valeurFinAnnee, amortissementAnnee, NUTR, DEFAULT_PARAMS_CULTURES, culture, totauxCultures, isoDate, lundiDe, addDays, semaineISO, totalHeures, lundiSemaine, parseSemaines, periodeCulture, occurrences };
+if (typeof module !== 'undefined') module.exports = { r2, num, yearOf, parts, estAssocie, DEFAULT_PERSONNES, factureStatut, factureTotal, recettesUnifiees, decompte, valeurFinAnnee, amortissementAnnee, NUTR, DEFAULT_PARAMS_CULTURES, culture, totauxCultures, isoDate, lundiDe, addDays, semaineISO, totalHeures, lundiSemaine, parseSemaines, periodeCulture, occurrences };
