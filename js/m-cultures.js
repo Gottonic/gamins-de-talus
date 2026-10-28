@@ -66,11 +66,13 @@ function renderPlan() {
       ${NUTR.map((n) => fic(`Besoin brut ${n} g/m²`, 'besoins.' + n)).join('')}
       ${NUTR.map((n) => calc(`Besoin net ${n} g/m²`, (c, o) => f1(o.net[n]))).join('')}
       ${fic('Compost L/m²', 'compost')}
+      ${calc('Compost L/planche', (c, o) => f0(o.compostLParPlanche))}
       ${calc('Compost m³', (c, o) => fmtNum(o.compostM3, 2), fmtNum(T.compostM3, 2))}
       ${NUTR.map((n) => calc(`Reste ${n} après compost g/m²`, (c, o) => f1(o.apresCompost[n]), '', (c, o) => o.excedent[n] ? 'neg' : '')).join('')}
       ${NUTR.map((n) => calc(`À apporter ${n} kg`, (c, o) => fmtNum(o.total[n] / 1000, 2), fmtNum(T.total[n] / 1000, 2))).join('')}
       ${engr.map((e) => calc(`${esc(e.nom)} kg`, (c, o) => fmtNum(o.engrais[e.k] ? o.engrais[e.k].kg : 0, 1), fmtNum(T.engrais[e.k] || 0, 1))).join('')}
       ${engr.map((e) => calc(`${esc(e.nom)} kg/planche`, (c, o) => fmtNum(o.engrais[e.k] ? o.engrais[e.k].kgParPlanche : 0, 2))).join('')}
+      ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).map((n) => calc(`${n} non couvert par les engrais kg`, (c, o) => (o.nonCouvert[n] > 0.5 ? fmtNum(o.nonCouvert[n] / 1000, 2) : '—'), fmtNum(T.nonCouvert[n] / 1000, 2), (c, o) => (o.nonCouvert[n] > 0.5 ? 'neg' : ''))).join('')}
     </tbody></table></div>
     <div class="row"><button class="btn small" type="button" data-act="cuToutes" data-v="ouvrir">Tout ouvrir</button><button class="btn small" type="button" data-act="cuToutes" data-v="fermer">Tout fermer</button></div>`;
 
@@ -108,10 +110,16 @@ function renderPlan() {
         <div class="panel"><h2>Planches</h2><div class="blocks">${blocks}</div><div class="legend">${legend}</div></div>
         <div class="panel"><h2>Récolte prévue et réelle (kg)</h2>${bars}<h2 style="margin-top:8px">Ventes directes prévues (CHF)</h2>${ventes}</div>
       </div>
+      <div class="panel"><h2>Fumure ${s} : à apporter</h2>
+        <div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Planches</th><th class="r">Compost L/planche</th>${engr.map((e) => `<th class="r">${esc(e.nom)} kg/planche</th>`).join('')}${engr.map((e) => `<th class="r">${esc(e.nom)} kg</th>`).join('')}</tr></thead><tbody>
+          ${list.map((c, i) => `<tr><td style="white-space:nowrap"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</td><td class="r num">${f0(c.planches)}</td><td class="r num">${f0(os[i].compostLParPlanche)}</td>${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kgParPlanche || 0, 2)}</td>`).join('')}${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kg || 0, 1)}</td>`).join('')}</tr>`).join('')}
+        </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(list.reduce((a, c) => a + num(c.planches), 0))}</td><td class="r num">${fmtNum(T.compostM3, 1)} m³</td>${engr.map(() => '<td></td>').join('')}${engr.map((e) => `<td class="r num">${fmtNum(T.engrais[e.k] || 0, 1)}</td>`).join('')}</tr></tfoot></table></div>
+        ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).length ? `<p class="banner">Pas couvert par vos engrais : ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).map((n) => `${n} ${fmtNum(T.nonCouvert[n] / 1000, 1)} kg`).join(', ')}. Ajoute un engrais qui en contient dans les hypothèses, ou augmente le compost.</p>` : ''}
+        <p class="hint">Une planche = ${fmtNum(P.longueur, 1)} m × ${fmtNum(P.facteurSurface, 2)} m (avec le passe-pied) = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m². Besoin brut × correction du sol − compost (${Math.round(num(P.dispoCompost) * 100)} % disponible la 1re année) = reste à couvrir par les engrais, dans l'ordre de la liste des hypothèses.</p></div>
       <div class="panel"><h2>Plan ${s}</h2>
         <p class="hint">Cases blanches : propres à cette saison (planches, longueur, récolte réelle), elles se modifient directement. Lignes vertes : données de la culture, qui viennent de « Nos cultures » ; touche une case pour modifier la fiche. Lignes grisées : calculées. Touche le nom d'une culture pour ses réglages de saison ou pour la retirer du plan. Récolte réelle vide : somme des récoltes notées au calendrier (« cal. »).</p>
         ${table}
-        <p class="hint">Surface = planches × longueur × ${fmtNum(P.facteurSurface, 2)} (passe-pieds). Plantons = longueur ÷ interplant × lignes × planches. Prix revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du prix direct. Corrections d'analyse de sol (hypothèses) : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Engrais par planche : à vérifier avec vos calculs.</p></div>`;
+        <p class="hint">Surface = planches × longueur × largeur avec passe-pied (${fmtNum(P.facteurSurface, 2)} m). Plantons = longueur ÷ interplant × lignes × planches. Prix revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du prix direct. Corrections d'analyse de sol (hypothèses) : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Chaque engrais couvre le reste de son nutriment principal ; ce qu'il apporte en plus (ex. Mg) est déduit des autres.</p></div>`;
   }
 }
 function brancherPlan() {
@@ -160,7 +168,7 @@ ACTIONS.cuParams = () => {
   const s = saisonCourante(), P = paramsCultures(s);
   const n = (id, label, val, name, sub) => inp(id, label, val ?? '', { name, type: 'number', attrs: { step: 'any', inputmode: 'decimal' }, sub });
   openSheet(`${sheetHead('Hypothèses ' + s)}<form class="sbody form" data-form="cuParams"><input type="hidden" name="saison" value="${esc(s)}">
-    <div class="grid2">${n('cp-l', 'Longueur de planche m', P.longueur, 'longueur')}${n('cp-f', 'Facteur de surface', P.facteurSurface, 'facteurSurface', '1,1 = +10 % pour les passe-pieds')}
+    <div class="grid2">${n('cp-l', 'Longueur de planche m', P.longueur, 'longueur')}${n('cp-f', 'Largeur planche + passe-pied m', P.facteurSurface, 'facteurSurface', `Une planche = longueur × largeur = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m²`)}
       ${n('cp-r', 'Prix revendeur (part du direct)', P.partRevendeur, 'partRevendeur', '0,6 = 60 %')}${n('cp-d', 'Compost disponible 1re année', r2(P.dispoCompost * 1000) / 1000, 'dispoCompost', '0,333 = un tiers')}</div>
     <h3>Corrections d'analyse de sol</h3>
     <p class="hint">Liées au champ : multiplient les besoins de toutes les cultures (1 = pas de correction, 0,8 = −20 %).</p>
@@ -168,7 +176,10 @@ ACTIONS.cuParams = () => {
     <h3>Teneur du compost (g/L)</h3>
     <div class="grid2">${NUTR.map((x) => n('cp-t' + x, x, P.teneurCompost[x], 't_' + x)).join('')}</div>
     <h3>Engrais</h3>
-    ${(P.engrais || []).map((e, i) => `<div class="grid2">${inp('cp-en' + i, 'Engrais', e.nom, { name: 'en_' + i })}${sel('cp-nu' + i, 'Apporte', e.nutriment, NUTR.map((x) => [x, x]), { name: 'nu_' + i })}${n('cp-te' + i, 'Teneur (0,14 = 14 %)', e.teneur, 'te_' + i)}</div>`).join('')}
+    <p class="hint">Dans l'ordre d'utilisation. Teneurs en fraction : 0,14 = 14 %. Le nutriment principal décide de la dose ; les autres teneurs sont déduites des besoins restants. Utilise les mêmes unités que les besoins (par ex. K₂O ou K). Nom vide = engrais retiré.</p>
+    ${(P.engrais || []).concat([{ k: '', nom: '', nutriment: 'P' }]).map((e, i) => { const t = teneursEngrais(e); return `<div class="engr-row${e.k ? '' : ' nouveau'}"><input type="hidden" name="ek_${i}" value="${esc(e.k)}">
+      <div class="grid2">${inp('cp-en' + i, e.k ? 'Engrais' : 'Nouvel engrais', e.nom, { name: 'en_' + i, attrs: e.k ? {} : { placeholder: 'ex. Phosphate naturel' } })}${sel('cp-nu' + i, 'Nutriment principal', e.nutriment, NUTR.map((x) => [x, x]), { name: 'nu_' + i })}</div>
+      <div class="grid4">${NUTR.map((x) => n('cp-t' + x + i, x, t[x] ?? '', 'tn_' + x + '_' + i)).join('')}</div></div>`; }).join('')}
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.cuParams = (v) => {
@@ -176,7 +187,14 @@ FORMS.cuParams = (v) => {
   const o = { longueur: num(v.longueur) || 19, facteurSurface: num(v.facteurSurface) || 1, partRevendeur: num(v.partRevendeur), dispoCompost: Math.abs(num(v.dispoCompost) - r2(P.dispoCompost * 1000) / 1000) < 1e-9 ? P.dispoCompost : num(v.dispoCompost), teneurCompost: {}, engrais: [] };
   for (const x of NUTR) o.teneurCompost[x] = num(v['t_' + x]);
   o.correction = {}; for (const x of NUTR) o.correction[x] = v['c_' + x] === '' ? 1 : num(v['c_' + x]);
-  (P.engrais || []).forEach((e, i) => o.engrais.push({ k: e.k, nom: v['en_' + i] || e.nom, nutriment: v['nu_' + i] || e.nutriment, teneur: num(v['te_' + i]) }));
+  for (let i = 0; ('en_' + i) in v; i++) {
+    const nom = String(v['en_' + i] || '').trim(); if (!nom) continue;
+    const teneurs = {}; for (const x of NUTR) if (v['tn_' + x + '_' + i] !== '' && v['tn_' + x + '_' + i] != null) teneurs[x] = num(v['tn_' + x + '_' + i]);
+    const nu = v['nu_' + i] || 'N';
+    let k = v['ek_' + i] || nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '') || 'engrais';
+    while (o.engrais.some((x) => x.k === k)) k += '2';
+    o.engrais.push({ k, nom, nutriment: nu, teneur: num(teneurs[nu]), teneurs });
+  }
   DB.put('cfg:cultures:' + v.saison, o); closeSheet(); toast('Hypothèses enregistrées.');
 };
 ACTIONS.cuDupliquer = () => {

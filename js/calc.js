@@ -125,6 +125,8 @@ const DEFAULT_PARAMS_CULTURES = {
     { k: 'patentkali', nom: 'Patentkali', nutriment: 'K', teneur: 0.3 },
   ],
 };
+/* Teneurs d'un engrais : { N, P, K, Mg } (0,14 = 14 %). Ancien format : un seul nutriment + teneur. */
+function teneursEngrais(e) { const t = Object.assign({}, e.teneurs || {}); if (e.nutriment && t[e.nutriment] == null) t[e.nutriment] = num(e.teneur); return t; }
 function culture(c, params) {
   const p = Object.assign({}, DEFAULT_PARAMS_CULTURES, params || {});
   const longueur = num(c.longueur) || num(p.longueur);
@@ -149,23 +151,31 @@ function culture(c, params) {
     o.total[n] = Math.max(0, o.apresCompost[n]) * surface;            // g pour toute la culture
     o.excedent[n] = o.apresCompost[n] < 0;
   }
-  o.engrais = {};
+  /* Engrais, dans l'ordre de la liste : chacun couvre le reste de son nutriment principal ;
+     ce qu'il apporte en plus (ex. Mg du Patentkali) est déduit des autres besoins. */
+  o.engrais = {}; o.nonCouvert = {};
+  const reste = {}; NUTR.forEach((n) => { reste[n] = o.total[n]; });
   for (const e of p.engrais || []) {
-    const kg = num(e.teneur) > 0 ? o.total[e.nutriment] / num(e.teneur) / 1000 : 0;
-    o.engrais[e.k] = { kg, kgParPlanche: planches > 0 ? kg / planches : 0 };
+    const t = teneursEngrais(e), tp = num(t[e.nutriment]);
+    const kg = tp > 0 ? reste[e.nutriment] / tp / 1000 : 0;
+    NUTR.forEach((n) => { reste[n] = Math.max(0, reste[n] - kg * 1000 * num(t[n])); });
+    o.engrais[e.k] = { kg, kgParPlanche: planches > 0 ? kg / planches : 0, gM2: surface > 0 ? kg * 1000 / surface : 0 };
   }
+  NUTR.forEach((n) => { o.nonCouvert[n] = reste[n]; });
+  o.surfaceParPlanche = longueur * num(p.facteurSurface);
+  o.compostLParPlanche = num(c.compost) * o.surfaceParPlanche;
   return o;
 }
 function totauxCultures(list, params) {
-  const t = { surface: 0, recolte: 0, ventesDirect: 0, ventesRevendeur: 0, plantons: 0, compostM3: 0, total: { N: 0, P: 0, K: 0, Mg: 0 }, engrais: {}, recolteReelle: 0 };
+  const t = { surface: 0, recolte: 0, ventesDirect: 0, ventesRevendeur: 0, plantons: 0, compostM3: 0, total: { N: 0, P: 0, K: 0, Mg: 0 }, nonCouvert: { N: 0, P: 0, K: 0, Mg: 0 }, engrais: {}, recolteReelle: 0 };
   const p = Object.assign({}, DEFAULT_PARAMS_CULTURES, params || {});
   for (const c of list) {
     const o = culture(c, p);
     t.surface += o.surface; t.recolte += o.recolte; t.ventesDirect += o.ventesDirect; t.ventesRevendeur += o.ventesRevendeur;
     t.plantons += o.plantons; t.compostM3 += o.compostM3; t.recolteReelle += num(c.recolteReelle);
-    NUTR.forEach((n) => { t.total[n] += o.total[n]; });
+    NUTR.forEach((n) => { t.total[n] += o.total[n]; t.nonCouvert[n] += o.nonCouvert[n]; });
+    for (const k in o.engrais) t.engrais[k] = (t.engrais[k] || 0) + o.engrais[k].kg;
   }
-  for (const e of p.engrais || []) t.engrais[e.k] = num(e.teneur) > 0 ? t.total[e.nutriment] / num(e.teneur) / 1000 : 0;
   return t;
 }
 
@@ -217,4 +227,4 @@ function totalHeures(heures, filtre) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { r2, num, yearOf, parts, estAssocie, DEFAULT_PERSONNES, factureStatut, factureTotal, recettesUnifiees, decompte, valeurFinAnnee, amortissementAnnee, NUTR, DEFAULT_PARAMS_CULTURES, culture, totauxCultures, isoDate, lundiDe, addDays, semaineISO, totalHeures, lundiSemaine, parseSemaines, periodeCulture, occurrences };
+if (typeof module !== 'undefined') module.exports = { r2, num, yearOf, parts, estAssocie, teneursEngrais, DEFAULT_PERSONNES, factureStatut, factureTotal, recettesUnifiees, decompte, valeurFinAnnee, amortissementAnnee, NUTR, DEFAULT_PARAMS_CULTURES, culture, totauxCultures, isoDate, lundiDe, addDays, semaineISO, totalHeures, lundiSemaine, parseSemaines, periodeCulture, occurrences };
