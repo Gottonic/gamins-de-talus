@@ -40,7 +40,8 @@ function comptesAnnee(y) {
   const lies = new Set(inv.map((i) => i.depenseId).filter(Boolean));
   o.investHorsInv = invest.filter((d) => !lies.has(d.key));
   o.sansJ = deps.filter(sansJustificatif);
-  o.nFichiers = deps.reduce((a, d) => a + (d.fichiers || []).filter((f) => !f.expire).length, 0);
+  o.blY = factures().filter((f) => yearOf(f.date) === y && f.blNumero).sort((a, b) => String(a.blNumero).localeCompare(String(b.blNumero)));
+  o.nFichiers = deps.reduce((a, d) => a + (d.fichiers || []).filter((f) => !f.expire).length, 0) + o.blY.reduce((a, f) => a + (f.blSigne || []).filter((x) => !x.expire).length, 0);
   return o;
 }
 
@@ -60,13 +61,13 @@ function renderBouclement() {
           ${chk(true, `Heures ${y} : ${ps.map((p) => `${esc(p.nom)} ${fmtH(o.heures[p.k] || 0)} h`).join(', ')}.`)}
         </ul>
         <h3>L'archive de l'année</h3>
-        <p class="hint">Un fichier .zip avec les comptes en PDF, les tableaux (dépenses, recettes, inventaire, heures), toutes les factures émises en PDF et tous les justificatifs joints (${o.nFichiers} fichier${o.nFichiers > 1 ? 's' : ''}).
+        <p class="hint">Un fichier .zip avec les comptes en PDF, les tableaux (dépenses, recettes, inventaire, heures), toutes les factures émises et les bulletins de livraison en PDF (avec la photo signée quand il y en a une), et tous les justificatifs joints (${o.nFichiers} fichier${o.nFichiers > 1 ? 's' : ''}).
           C'est ce qu'il faut pour la déclaration d'impôts et pour ce que la caisse AVS vous demande de déclarer. Chaque associé la télécharge une fois pour ses propres déclarations. <b>À garder 10 ans</b>, par exemple dans votre Proton Drive.</p>
         <div class="row"><button class="btn primary" type="button" data-act="bclZip"${BCL.enCours ? ' disabled' : ''}>${BCL.enCours ? esc(BCL.etape || 'Préparation…') : `Télécharger l'archive ${y}`}</button>
           <button class="btn" type="button" data-act="bclPdf"${BCL.enCours ? ' disabled' : ''}>Seulement le PDF des comptes</button></div>
         <p class="hint">${Object.keys(ar).length ? 'Téléchargée par ' + Object.entries(ar).map(([k, a]) => `${esc(nomDe(k))} le ${fmtDate(String(a.le).slice(0, 10))}${a.manquants ? ` (${a.manquants} fichier(s) manquant(s))` : ''}`).join(', ') + '.' : "L'archive de cette année n'a encore été téléchargée par personne."}
           ${manque.length ? `<b>Pas encore téléchargée par ${esc(manque.map((p) => p.nom).join(', '))}.</b>` : ''}
-          Conservation dans l'app : photos des messages 6 mois ; justificatifs 2 ans, et seulement une fois l'archive de leur année téléchargée.</p>
+          Conservation dans l'app : photos des messages 6 mois ; justificatifs et bulletins signés 2 ans, et seulement une fois l'archive de leur année téléchargée.</p>
       </div>
       <div class="panel"><h2>Comptes ${y}</h2>
         <table class="list"><tbody>
@@ -190,6 +191,16 @@ ACTIONS.bclZip = async () => {
     etape('Factures…');
     for (const f of o.facturesY) { try { dir.file(`Factures émises/${nomZip(invoiceFileName(f).replace(/\.pdf$/, '') + (f.statut === 'annulee' ? ' (annulée)' : ''))}.pdf`, invoicePdfBlob(f)); } catch (e) { console.error(e); } }
     const manquants = [], vus = {};
+    etape('Bulletins…');
+    for (const f of o.blY) {
+      const nb = nomZip(bulletinFileName(f).replace(/\.pdf$/, '') + (f.statut === 'annulee' ? ' (annulée)' : ''));
+      try { dir.file(`Bulletins de livraison/${nb}.pdf`, bulletinPdfBlob(f, !!f.blPrix)); } catch (e) { console.error(e); }
+      const sg = (f.blSigne || []).filter((x) => !x.expire);
+      for (let i = 0; i < sg.length; i++) {
+        try { dir.file(`Bulletins de livraison/${nb} - signé${sg.length > 1 ? ' (' + (i + 1) + ')' : ''}.${sg[i].chemin.split('.').pop() || 'jpg'}`, await telechargerFichier(sg[i].chemin)); }
+        catch (e) { manquants.push(`Bulletin ${f.blNumero} signé (${sg[i].nom || sg[i].chemin})`); }
+      }
+    }
     const fich = o.deps.flatMap((d) => (d.fichiers || []).filter((x) => !x.expire).map((x, i, arr) => ({ d, x, i, n: arr.length })));
     let k = 0;
     for (const { d, x, i, n } of fich) {
@@ -202,7 +213,7 @@ ACTIONS.bclZip = async () => {
     dir.file('LISEZ-MOI.txt', [
       `${c.nom} — archive des comptes ${o.y}`, `Établie le ${fmtDate(todayISO())} par ${nomDe(Sync.me)} depuis l'app Gamins de Talus.`, '',
       `Comptes ${o.y}.pdf : compte de résultat, part de chaque associé, inventaire et amortissements, heures, liste des recettes et des dépenses.`,
-      'Tableaux/ : les mêmes données en CSV (s\'ouvrent dans un tableur).', 'Factures émises/ : chaque facture envoyée aux clients, en PDF.',
+      'Tableaux/ : les mêmes données en CSV (s\'ouvrent dans un tableur).', 'Factures émises/ : chaque facture envoyée aux clients, en PDF.', 'Bulletins de livraison/ : chaque bulletin en PDF, suivi de la photo du bulletin signé par le client quand elle a été prise.',
       'Justificatifs/ : tickets et factures des dépenses, nommés « date, n° de dépense, objet, montant ».', '',
       'À conserver 10 ans (obligation légale de conservation des pièces comptables en Suisse).',
       manquants.length ? '\nFichiers qui n\'ont pas pu être ajoutés :\n- ' + manquants.join('\n- ') : '',
@@ -211,7 +222,7 @@ ACTIONS.bclZip = async () => {
     etape('Compression…');
     const blob = await z.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
     downloadFile(base + '.zip', blob, 'application/zip');
-    DB.put('cfg:archive:' + o.y + ':' + (Sync.me || 'inconnu'), { le: new Date().toISOString(), fichiers: fich.length - manquants.length, manquants: manquants.length });
+    DB.put('cfg:archive:' + o.y + ':' + (Sync.me || 'inconnu'), { le: new Date().toISOString(), fichiers: o.nFichiers - manquants.length, manquants: manquants.length });
     toast(manquants.length ? `Archive téléchargée, mais ${manquants.length} fichier(s) manquent (voir LISEZ-MOI).` : 'Archive téléchargée. Range-la dans votre drive.', 6000);
   } catch (e) { console.error(e); toast("L'archive n'a pas pu être créée : " + (e.message || e), 6000); }
   BCL.enCours = false; BCL.etape = ''; render();

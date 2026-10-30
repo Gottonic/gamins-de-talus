@@ -83,7 +83,7 @@ ACTIONS.voirFichier = (el) => {
 };
 
 /* ---------- Durée de conservation dans l'app ----------
-   Photos des messages : 6 mois. Justificatifs : 2 ans, et seulement si l'archive de l'année de la dépense a été téléchargée.
+   Photos des messages : 6 mois. Justificatifs et bulletins signés : 2 ans, et seulement si l'archive de leur année a été téléchargée.
    Supabase n'autorise d'ailleurs à effacer que les fichiers assez vieux (règle dans schema.sql) : une erreur ici ne peut rien effacer d'autre.
    Une fois par jour, le premier appareil connecté fait le ménage ; l'élément garde la trace « expire ». */
 async function nettoyerFichiers() {
@@ -118,6 +118,14 @@ async function nettoyerFichiers() {
       const o = DB.get(d.key); if (!o) continue;
       const fs = (o.fichiers || []).map((f) => (ok2.has(f.chemin) ? Object.assign({}, f, { expire: todayISO() }) : f));
       if (fs.some((f, i) => f !== o.fichiers[i])) DB.put(d.key, Object.assign({}, o, { fichiers: fs }));
+    }
+    /* Bulletins signés (ventes) : même règle que les justificatifs */
+    const ventes = DB.all('fac:').filter((f) => typeof archiveDe === 'function' && archiveDe(yearOf(f.date)) && (f.blSigne || []).some((x) => !x.expire && x.ajoute && x.ajoute < a2));
+    const ok3 = await effacer(ventes.flatMap((f) => f.blSigne.filter((x) => !x.expire && x.ajoute && x.ajoute < a2).map((x) => x.chemin)));
+    for (const f of ventes) {
+      const o = DB.get(f.key); if (!o) continue;
+      const fs = (o.blSigne || []).map((x) => (ok3.has(x.chemin) ? Object.assign({}, x, { expire: todayISO() }) : x));
+      if (fs.some((x, i) => x !== o.blSigne[i])) DB.put(f.key, Object.assign({}, o, { blSigne: fs }));
     }
   } catch (e) { console.warn('Nettoyage des fichiers :', e); }
 }

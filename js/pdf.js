@@ -109,8 +109,10 @@ function drawInvoice(cv, inv) {
     const sx = 20, sy = ny + 8, sw = 62, sh = 16;
     cv.line(sx, sy, sx + sw, sy, { w: 0.6 }); cv.line(sx, sy + sh, sx + sw, sy + sh, { w: 0.6 }); cv.line(sx, sy, sx, sy + sh, { w: 0.6 }); cv.line(sx + sw, sy, sx + sw, sy + sh, { w: 0.6 });
     cv.text('ACQUITTÉE', sx + sw / 2, sy + 7.5, { size: 15, bold: true, align: 'center' });
-    cv.text('payée comptant le ' + fmtDate(inv.payeeLe || inv.date), sx + sw / 2, sy + 12.5, { size: 8.5, align: 'center' });
-    cv.text('Reçu par :', 118, sy + 4, { size: 8.5 }); cv.line(118, sy + sh, 190, sy + sh, { w: 0.3 }); cv.text('Signature', 118, sy + sh + 4, { size: 7 });
+    const especes = !inv.payeePar || inv.payeePar === 'especes';
+    cv.text((inv.payeePar === 'twint' ? 'payée par TWINT le ' : inv.payeePar === 'virement' ? 'payée par virement le ' : 'payée comptant le ') + fmtDate(inv.payeeLe || inv.date), sx + sw / 2, sy + 12.5, { size: 8.5, align: 'center' });
+    /* « Reçu par » + signature : seulement pour l'argent liquide (TWINT et virement laissent déjà une trace à la banque) */
+    if (especes) { cv.text('Reçu par :', 118, sy + 4, { size: 8.5 }); cv.line(118, sy + sh, 190, sy + sh, { w: 0.3 }); cv.text('Signature', 118, sy + sh + 4, { size: 7 }); }
     return;
   }
   const y0 = 192;

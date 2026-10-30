@@ -130,10 +130,10 @@ function renderDetailFacture(f, dbl) {
   if (s === 'payee' && f.paiement !== 'especes') acts.push(`<button class="btn" type="button" data-act="facReopen" data-key="${esc(f.key)}">Remettre en ouverte</button>`);
   if (s !== 'annulee' && (s !== 'payee' || f.paiement === 'especes')) acts.push(`<button class="btn danger" type="button" data-act="facCancel" data-key="${esc(f.key)}">Annuler</button>`);
   const warn = dbl[f.numero] > 1 && s !== 'annulee' ? `<div class="errors">Deux factures portent le numéro ${esc(f.numero)} (créées en même temps, hors ligne ?). <button class="btn link" type="button" data-act="facRenum" data-key="${esc(f.key)}">Donner un nouveau numéro à celle-ci</button></div>` : '';
-  const enc = s === 'payee' ? `<p class="hint">Encaissée par ${esc(nomDe(f.encaissePar || cfg().compteDe))}${f.payeePar === 'especes' ? ', en espèces' : ', par virement'}.</p>` : '';
+  const enc = s === 'payee' ? `<p class="hint">Encaissée par ${esc(nomDe(f.encaissePar || cfg().compteDe))}${f.payeePar === 'especes' ? ', en espèces' : f.payeePar === 'twint' ? ', par TWINT' : ', par virement'}.</p>` : '';
   const mv = mouvements().filter((m) => m.ref === f.key);
   const stockTxt = mv.length ? `<p class="hint">Stock : ${mv.map((m) => `${esc((DB.get(m.prod) || {}).nom || '?')} ${fmtQ(num(m.qte), (DB.get(m.prod) || {}).unite)}`).join(', ')}.</p>` : f.stock === false ? '<p class="hint">Cette vente ne touche pas au stock.</p>' : '';
-  return `<div class="panel"><h3 style="margin-top:0">${esc(nomVente(f))}${f.numero && f.blNumero ? ' · ' + esc(f.blNumero) : ''}</h3><div class="row">${acts.join('')}<span class="pill ${s}">${esc(facLabel(f))}</span></div>${warn}${enc}${stockTxt}
+  return `<div class="panel"><h3 style="margin-top:0">${esc(nomVente(f))}${f.numero && f.blNumero ? ' · ' + esc(f.blNumero) : ''}</h3><div class="row">${acts.join('')}<span class="pill ${s}">${esc(facLabel(f))}</span></div>${warn}${enc}${stockTxt}${f.blNumero ? blSigneHtml(f) : ''}
     <div class="paper">${f.numero ? invoiceSvg(f) : bulletinSvg(f, true)}</div></div>`;
 }
 
@@ -283,6 +283,36 @@ ACTIONS.blPdfOk = (el) => {
   const k = el.dataset.key; let f = DB.get(k); if (!f) return;
   if (!f.blNumero) { f = Object.assign({}, f, { blNumero: prochainBL(f.date) }); DB.put(k, f); }
   closeSheet(); downloadFile(bulletinFileName(f), bulletinPdfBlob(f, el.dataset.prix === '1'));
+};
+/* Photo du bulletin signé par le client : preuve de livraison. Rangée avec les justificatifs (même durée de conservation),
+   et mise dans l'archive de fin d'année. f.blSigne = [{ chemin, nom, type, ajoute, par, expire? }] */
+function blSigneHtml(f) {
+  const fs = f.blSigne || [];
+  const vign = fs.map((x, i) => `<span class="fich">
+    <button type="button" class="fich-voir" data-act="${x.expire ? 'aucun' : 'voirFichier'}" data-fichier="${esc(x.chemin)}" data-titre="${esc('Bulletin ' + f.blNumero + ' signé')}">${x.expire ? '<span class="fich-pdf" style="color:var(--muted);font-size:11px;text-align:center">dans l\'archive</span>' : x.type === 'application/pdf' ? '<span class="fich-pdf">PDF</span>' : `<img data-fichier="${esc(x.chemin)}" alt="Bulletin signé">`}<small>${esc(fmtDate(String(x.ajoute || '').slice(0, 10)))}</small></button>
+    ${x.expire ? '' : `<button type="button" class="fich-x" data-act="blSigneOff" data-key="${esc(f.key)}" data-i="${i}" aria-label="Retirer cette photo">×</button>`}</span>`).join('');
+  return `<div class="bl-signe"><span class="flabel">Bulletin signé</span>${fs.length ? `<div class="fich-list">${vign}</div>` : '<p class="hint" style="margin:2px 0 6px">Pas encore de photo. Utile pour les clients livrés régulièrement : c\'est votre preuve de livraison.</p>'}
+    <label class="btn small justif-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>${fs.length ? 'Ajouter une page' : 'Photo du bulletin signé'}<input type="file" accept="image/*,application/pdf" data-bl-signe="${esc(f.key)}" hidden></label>
+    <span class="sub" id="bl-signe-etat"></span></div>`;
+}
+document.addEventListener('change', async (e) => {
+  const inp = e.target; if (!inp || !inp.dataset || !inp.dataset.blSigne) return;
+  const k = inp.dataset.blSigne, file = inp.files && inp.files[0]; inp.value = ''; if (!file) return;
+  const et = $('bl-signe-etat'); if (et) et.textContent = 'Envoi de la photo…';
+  try {
+    const p = await preparerFichier(file, 'justif');
+    const chemin = await Fichiers.envoyer(p.blob, cheminFichier('justificatifs', p.ext));
+    if (!LOCAL_MODE) Fichiers.liens[chemin] = { url: URL.createObjectURL(p.blob), exp: Date.now() + 50 * 60000 };
+    const f = DB.get(k); if (!f) return;
+    DB.put(k, Object.assign({}, f, { blSigne: (f.blSigne || []).concat([{ chemin, nom: p.nom, type: p.type, ajoute: new Date().toISOString(), par: Sync.me || '' }]) }));
+    toast('Bulletin signé enregistré.'); render();
+  } catch (err) { if (et) et.textContent = ''; toast("La photo n'est pas partie : " + err.message, 6000); }
+});
+ACTIONS.blSigneOff = (el) => confirmSheet('Retirer cette photo ?', 'La photo du bulletin signé sera retirée de cette vente.', 'blSigneOffOk', 'Retirer', { key: el.dataset.key, i: el.dataset.i });
+ACTIONS.blSigneOffOk = (el) => {
+  const k = el.dataset.key, f = DB.get(k); closeSheet(); if (!f) return;
+  const fs = (f.blSigne || []).slice(); fs.splice(Number(el.dataset.i), 1);
+  DB.put(k, Object.assign({}, f, { blSigne: fs })); render();
 };
 /* Faire la facture d'une vente enregistrée sans facture */
 ACTIONS.venteFacturer = (el) => {
