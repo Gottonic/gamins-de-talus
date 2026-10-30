@@ -13,17 +13,19 @@ MODULES.cultures = {
   tuile() { const s = saisonCourante(), l = cultures(s); if (!l.length) return { line: 'Aucun plan' }; const t = totauxCultures(l, paramsCultures(s)); return { line: `${s} · ${l.length} cultures · ${f0(t.surface)} m²` }; },
   render(sub, id) {
     creerFichesManquantes();
-    const t = tabs('cultures', [['', 'Plan de culture'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['journal', 'Journal'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
     if (sub === 'fiches') return t + renderFiches(id);
+    if (sub === 'planches') return t + renderPlanches();
+    if (sub === 'journal') return t + renderJournal();
     return t + renderPlan();
   },
-  after(sub) { if (sub !== 'fiches') brancherPlan(); },
+  after(sub) { if (sub === 'planches') brancherPlanches(); else if (!sub) brancherPlan(); },
 };
 function renderPlan() {
   {
     const s = saisonCourante(), ss = saisons(), list = cultures(s), P = paramsCultures(s);
     const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
-    const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
+    const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture » : tu peux la choisir dans « Nos cultures », avec ses données des années passées.</p></div>';
     const eff = list.map((c) => Object.assign({}, c, { recolteReelle: c.recolteReelle == null || c.recolteReelle === '' ? recolteNotee(c.key) : c.recolteReelle }));
     const os = eff.map((c) => culture(c, P)), T = totauxCultures(eff, P), cols = list.length;
@@ -107,7 +109,7 @@ function renderPlan() {
       </div>
       <div class="panel"><h2>Planning ${s}</h2>${gantt}<p class="hint">Clair : en place depuis la plantation · foncé : semaines de récolte. Le trait rouge marque cette semaine.</p></div>
       <div class="split">
-        <div class="panel"><h2>Planches</h2><div class="blocks">${blocks}</div><div class="legend">${legend}</div></div>
+        <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Où ?</a></div><div class="blocks">${blocks}</div><div class="legend">${legend}</div></div>
         <div class="panel"><h2>Récolte prévue et réelle (kg)</h2>${bars}<h2 style="margin-top:8px">Ventes directes prévues (CHF)</h2>${ventes}</div>
       </div>
       <div class="panel"><h2>Fumure ${s} : à apporter</h2>
@@ -204,7 +206,7 @@ ACTIONS.cuDupliquer = () => {
 };
 ACTIONS.cuDupOk = (el) => {
   const { s, ns } = el.dataset;
-  for (const c of cultures(s)) { const f = DB.get(ficheDe(c)); const o = Object.assign({}, c, f ? valeursFiche(f) : {}, { fiche: ficheDe(c) }); delete o.key; delete o.correction; o.saison = ns; o.recolteReelle = null; o.remarque = ''; DB.put('cul:' + uid('c'), o); }
+  for (const c of cultures(s)) { const f = DB.get(ficheDe(c)); const o = Object.assign({}, c, f ? valeursFiche(f) : {}, { fiche: ficheDe(c) }); delete o.key; delete o.correction; o.saison = ns; o.recolteReelle = null; o.remarque = ''; delete o.emplacements; DB.put('cul:' + uid('c'), o); }
   const P = DB.get('cfg:cultures:' + s); if (P) DB.put('cfg:cultures:' + ns, P);
   CU.saison = ns; closeSheet(); toast(`Plan ${ns} créé.`); render();
 };
@@ -269,6 +271,7 @@ function renderFiches(id) {
       </tbody></table>
       ${sel.notes ? `<h3>Notes</h3><p style="white-space:pre-wrap">${esc(sel.notes)}</p>` : ''}
       <p class="hint">Données de la saison ${esc(sel.saison || '—')}${sel.majLe ? ', mises à jour le ' + fmtDate(sel.majLe) : ''}.</p>
+      ${(() => { const js = journal().filter((j) => j.fiche === sel.key).slice(0, 6); return `<div class="between"><h3>Journal</h3><button class="btn small" type="button" data-act="jnlNouveau" data-fiche="${esc(sel.key)}">+ Note</button></div>${js.length ? js.map((j) => `<p class="hint" style="margin:4px 0"><b>${fmtDate(j.date)}</b> ${esc(typeJnl(j.type))} · ${esc(trunc(j.texte, 140))}</p>`).join('') : '<p class="hint">Aucune note.</p>'}`; })()}
       <h3>Saison après saison</h3>
       ${h.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Saison</th><th class="r">Planches</th><th class="r">Surface m²</th><th class="r">Prévu kg</th><th class="r">Réel kg</th><th class="r">Rendement réel</th></tr></thead><tbody>
         ${h.map((x) => `<tr><td>${esc(x.saison)}</td><td class="r num">${f0(x.planches)}</td><td class="r num">${f1(x.surface)}</td><td class="r num">${f0(x.prevu)}</td><td class="r num">${x.reel ? f0(x.reel) : '—'}</td><td class="r num">${x.rdtReel ? fmtNum(x.rdtReel, 2) + ' kg/m²' : '—'}${x.rdtReel && x.rdtPrevu ? ` <span class="hint">(prévu ${fmtNum(x.rdtPrevu, 1)})</span>` : ''}</td></tr>`).join('')}</tbody></table></div>`
