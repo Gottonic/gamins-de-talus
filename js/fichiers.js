@@ -76,6 +76,13 @@ const cheminFichier = (dossier, ext) => `${dossier}/${todayISO().slice(0, 7)}/${
 /* Grande vue d'une photo, ou ouverture d'un PDF */
 ACTIONS.voirFichier = (el) => {
   const c = el.dataset.fichier, pdf = /\.pdf$/i.test(c);
+  /* Un PDF s'ouvre tout de suite dans un nouvel onglet (l'onglet est ouvert d'abord, sinon le navigateur le bloque) */
+  if (pdf) {
+    const u0 = Fichiers.enCache(c); if (u0) { window.open(u0, '_blank', 'noopener'); return; }
+    const w = window.open('', '_blank');
+    Fichiers.liensPour([c]).then(() => { const u = Fichiers.enCache(c); if (u && w) w.location.href = u; else { if (w) w.close(); toast("Le PDF n'a pas pu s'ouvrir (réseau ?)."); } });
+    return;
+  }
   openSheet(`${sheetHead(pdf ? 'Document' : 'Photo', el.dataset.titre || '')}<div class="sbody">
     ${pdf ? '<p class="hint">PDF : il s\'ouvre dans un nouvel onglet.</p>' : `<img class="grande-photo" data-fichier="${esc(c)}" alt="${esc(el.dataset.titre || 'Photo')}">`}
     <div class="row-end"><a class="btn${pdf ? ' primary' : ''}" data-fichier="${esc(c)}" target="_blank" rel="noopener">${pdf ? 'Ouvrir le PDF' : 'Ouvrir en grand / enregistrer'}</a></div></div>`);
