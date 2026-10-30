@@ -69,6 +69,9 @@ function renderAccueil() {
   /* Récoltes prévues au calendrier, pas encore enregistrées */
   const rae = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => pourMoi(r.qui)) : [];
   if (rae.length) groupes.push({ mod: 'cultures', titre: 'Récoltes à enregistrer', n: rae.length, items: rae.slice(0, 5).map((r) => ({ act: 'recolteEv', data: { key: r.key, occ: r.occ }, txt: r.titre, val: r.occ === today ? "aujourd'hui" : 'depuis le ' + fmtDateCourt(r.occ), fort: r.occ === today, bad: r.occ < today })) });
+  /* Garanties qui se terminent dans le mois : c'est le moment de signaler un défaut */
+  const gFin = typeof garanties === 'function' ? garanties().filter((d) => d.garantie <= addDays(today, 30)) : [];
+  if (gFin.length) groupes.push({ mod: 'finances', titre: 'Garanties qui se terminent', n: gFin.length, items: gFin.slice(0, 4).map((d) => ({ act: 'depEdit', data: { key: d.key }, txt: `🛡️ ${d.objet}`, val: `jusqu'au ${fmtDateCourt(d.garantie)}`, bad: true })) });
   const sansJ = depenses().filter((x) => sansJustificatif(x) && pourMoi(x.par)).sort((a, c) => String(c.date).localeCompare(String(a.date)));
   if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
     plus: sansJ.length > 4 ? { href: '#/finances/depenses', txt: `Voir les ${sansJ.length} dépenses sans justificatif` } : null, avant: () => { FIN.sansJ = true; } });

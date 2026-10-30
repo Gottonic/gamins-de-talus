@@ -9,6 +9,14 @@ const recettesDirectes = () => DB.all('rec:');
 const reglements = () => DB.all('reg:');
 const recettesToutes = () => recettesUnifiees(recettesDirectes(), factures(), cfg());
 const FIN = { annee: '', type: '', par: '', q: '', sansJ: false };
+/* Garanties : sur la dépense de l'achat (garantie = date de fin, garantieNote = n° de série, vendeur…). Le justificatif
+   d'une dépense sous garantie reste dans l'app tant que la garantie court (c'est la preuve d'achat). */
+const sousGarantie = (d, t) => !!d.garantie && d.garantie >= (t || todayISO());
+const garanties = () => depenses().filter((d) => sousGarantie(d)).sort((a, b) => String(a.garantie).localeCompare(String(b.garantie)));
+function finGarantieTxt(g) {
+  const j = Math.round((new Date(g + 'T12:00:00') - new Date(todayISO() + 'T12:00:00')) / 86400000);
+  return j <= 0 ? "se termine aujourd'hui" : j < 45 ? `encore ${j} jour${j > 1 ? 's' : ''}` : j < 730 ? `encore ${Math.round(j / 30.4)} mois` : `encore ${fmtNum(j / 365.25, 1)} ans`;
+}
 /* Un justificatif manque si le champ est vide ou ne contient qu'un tiret (« --- » dans l'ancien tableur). */
 const sansJustificatif = (d) => !(d.fichiers && d.fichiers.length) && !String(d.justificatif || '').replace(/[-–—\s.]/g, '');
 const DEP = { fichiers: [], key: '' };
@@ -98,7 +106,7 @@ function renderDepenses() {
   if (FIN.type) list = list.filter((d) => (d.type || 'charge') === FIN.type);
   if (FIN.par) list = list.filter((d) => d.par === FIN.par);
   if (FIN.q) { const q = FIN.q.toLowerCase(); list = list.filter((d) => [d.objet, d.categorie, d.justificatif, d.remarque, money(d.montant)].join(' ').toLowerCase().includes(q)); }
-  const nSansJ = depenses().filter(sansJustificatif);
+  const nSansJ = depenses().filter(sansJustificatif), gs = garanties();
   if (FIN.sansJ) list = list.filter(sansJustificatif);
   const tot = list.reduce((a, d) => a + num(d.montant), 0);
   const banner = nSansJ.length ? `<div class="banner"><span><b>${nSansJ.length} dépense${nSansJ.length > 1 ? 's' : ''} sans justificatif</b> (${chf(nSansJ.reduce((a, d) => a + num(d.montant), 0))}). Sans ticket ni facture, la dépense ne peut pas être justifiée en comptabilité.</span>
@@ -111,7 +119,8 @@ function renderDepenses() {
       ${sel('fin-par', 'Payé par', FIN.par, [['', 'Tous']].concat(persOptions()))}
     </div>
     ${banner}
-    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Objet</th><th>Catégorie</th><th>Payé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}</td><td>${esc(d.categorie || '—')}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
+    ${gs.length ? `<details class="garanties"${gs.some((d) => d.garantie <= addDays(todayISO(), 60)) ? ' open' : ''}><summary>🛡️ <b>${gs.length} achat${gs.length > 1 ? 's' : ''} sous garantie</b></summary><div class="items">${gs.map((d) => `<button type="button" class="item" data-act="depEdit" data-key="${esc(d.key)}"><span class="who"><strong>${esc(d.objet)}</strong><span class="meta">acheté le ${fmtDate(d.date)} · ${chf(d.montant)}${d.garantieNote ? ' · ' + esc(d.garantieNote) : ''}${(d.fichiers || []).length ? ' · 📎 preuve d\'achat' : ' · ⚠️ pas de ticket joint'}</span></span><span class="num${d.garantie <= addDays(todayISO(), 60) ? ' bad' : ''}">jusqu'au ${fmtDate(d.garantie)}<br><span class="hint">${esc(finGarantieTxt(d.garantie))}</span></span></button>`).join('')}</div></details>` : ''}
+    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Objet</th><th>Catégorie</th><th>Payé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}${sousGarantie(d) ? ` <span class="clip" title="Garantie jusqu'au ${fmtDate(d.garantie)}">🛡️</span>` : ''}</td><td>${esc(d.categorie || '—')}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="4">${list.length} dépense${list.length > 1 ? 's' : ''}</td><td class="r num">${money(tot)}</td></tr></tfoot></table></div>` : '<p class="empty">Aucune dépense ne correspond.</p>'}
   </div>`;
 }
@@ -135,6 +144,10 @@ ACTIONS.depEdit = (el) => {
       <span class="sub" id="dp-just-etat">${sansJustificatif(d) ? '<span class="pill nojust">Manquant</span> Sans justificatif, la dépense ne compte pas en comptabilité.' : ''}</span></div>
     ${inp('dp-just', 'Référence du justificatif (facultatif)', d.justificatif, { name: 'justificatif', attrs: { placeholder: 'N° de facture, nom du scan…' } })}
     ${inp('dp-rem', 'Remarque', d.remarque, { name: 'remarque' })}
+    <div class="field"><span class="flabel">🛡️ Garantie (facultatif)</span>
+      <div class="row">${['1', '2', '3', '5'].map((n) => `<button type="button" class="chip" data-act="depGarantie" data-ans="${n}">${n} an${n > 1 ? 's' : ''}</button>`).join('')}<button type="button" class="chip" data-act="depGarantie" data-ans="0">Aucune</button></div>
+      <div class="grid2">${inp('dp-gar', "Garantie jusqu'au", d.garantie || '', { name: 'garantie', type: 'date' })}${inp('dp-garn', 'Pour la garantie (facultatif)', d.garantieNote || '', { name: 'garantieNote', attrs: { placeholder: 'n° de série, vendeur, conditions…', maxlength: 120 } })}</div>
+      <span class="sub">Le ticket ou la facture joints ci-dessus servent de preuve d'achat : ils restent dans l'app tant que la garantie court. Tu peux aussi y joindre le certificat de garantie.</span></div>
     ${!inInv ? `<label class="row" style="font-size:14px"><input type="checkbox" name="versInventaire"${el._pre && el._pre.type === 'investissement' ? ' checked' : ''}> Ajouter à l'inventaire (pour l'amortir)</label>` : '<p class="hint">Cet achat est dans l\'inventaire.</p>'}
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette dépense">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const f = $('dp-file'); if (f) f.addEventListener('change', () => { joindreDep(f.files[0]); f.value = ''; });
@@ -162,11 +175,15 @@ async function joindreDep(file) {
     majFichiersDep(); toast('Justificatif joint.');
   } catch (e) { if (et) et.textContent = ''; majFichiersDep(); toast("Le justificatif n'est pas parti : " + e.message, 6000); }
 }
+ACTIONS.depGarantie = (el) => {
+  const g = $('dp-gar'), d = ($('dp-date') && $('dp-date').value) || todayISO(), n = Number(el.dataset.ans);
+  if (g) g.value = n ? addDays(ajouterMois(d, 12 * n), -1) : '';
+};
 ACTIONS.depFichierOff = (el) => { DEP.fichiers.splice(Number(el.dataset.i), 1); majFichiersDep(); };
 FORMS.dep = (v) => {
   const m = num(v.montant); if (!(m > 0) || !v.date || !v.objet) { toast('Date, montant et objet sont obligatoires.'); return; }
   const k = v.key || 'dep:' + uid('d'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '', n: 1 + Math.max(0, ...depenses().map((x) => x.n || 0)) };
-  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), objet: v.objet, type: v.type || 'charge', categorie: v.categorie, par: v.par, justificatif: v.justificatif, fichiers: DEP.fichiers.slice(), remarque: v.remarque, pour: typeof lirePour === 'function' ? lirePour(v.pour) : old.pour || null }));
+  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), objet: v.objet, type: v.type || 'charge', categorie: v.categorie, par: v.par, justificatif: v.justificatif, fichiers: DEP.fichiers.slice(), remarque: v.remarque, garantie: v.garantie || '', garantieNote: v.garantie ? String(v.garantieNote || '').trim() : '', pour: typeof lirePour === 'function' ? lirePour(v.pour) : old.pour || null }));
   if (v.versInventaire) ajouterInventaireDepuis(k);
   closeSheet(); toast((v.key ? 'Dépense mise à jour.' : 'Dépense ajoutée.') + (sansJustificatif({ justificatif: v.justificatif, fichiers: DEP.fichiers }) ? ' Attention : justificatif manquant.' : ''), 4500);
 };

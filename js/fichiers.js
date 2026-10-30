@@ -119,7 +119,8 @@ async function nettoyerFichiers() {
     const ok = await effacer(msgs.map((m) => m.photo.chemin));
     for (const m of msgs) if (ok.has(m.photo.chemin)) { const o = DB.get(m.key); if (o) DB.put(m.key, Object.assign({}, o, { photo: Object.assign({}, o.photo, { expire: todayISO() }) })); }
     const a2 = avant(24);
-    const deps = DB.all('dep:').filter((d) => typeof archiveDe === 'function' && archiveDe(yearOf(d.date)) && (d.fichiers || []).some((f) => !f.expire && f.ajoute && f.ajoute < a2));
+    /* Sauf une dépense encore sous garantie : son ticket est la preuve d'achat */
+    const deps = DB.all('dep:').filter((d) => typeof archiveDe === 'function' && archiveDe(yearOf(d.date)) && !(d.garantie && d.garantie >= todayISO()) && (d.fichiers || []).some((f) => !f.expire && f.ajoute && f.ajoute < a2));
     const ok2 = await effacer(deps.flatMap((d) => d.fichiers.filter((f) => !f.expire && f.ajoute && f.ajoute < a2).map((f) => f.chemin)));
     for (const d of deps) {
       const o = DB.get(d.key); if (!o) continue;
