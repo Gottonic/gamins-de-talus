@@ -11,7 +11,6 @@
 
 const mouvements = () => DB.all('mvt:');
 const misesEnVente = () => DB.all('self:').sort((a, b) => String(b.date).localeCompare(String(a.date)));
-const STK = { voirTout: false };
 const TYPES_MVT = { recolte: 'Récolte', vente: 'Vente', self: 'Mis en vente directe', retour: 'Invendus repris', perte: 'Perte', ajout: 'Ajout', inventaire: 'Compté' };
 
 /* Quantité en stock : dernier comptage + mouvements suivants. null = quantité pas suivie. */

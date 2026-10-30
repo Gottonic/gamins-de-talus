@@ -246,4 +246,3 @@ FORMS.reg = (v) => {
 ACTIONS.delItem = (el) => confirmSheet('Supprimer ' + (el.dataset.what || 'cet élément') + ' ?', 'Il reste récupérable dans la corbeille (Réglages → Données).', 'delItemOk', 'Supprimer', { key: el.dataset.key });
 ACTIONS.delItemOk = (el) => { DB.del(el.dataset.key); closeSheet(); toast('Supprimé. Récupérable dans la corbeille.'); };
 
-function attentionFinances() { const d = decompteActuel(); return d.transferts.filter((t) => t.montant >= 50).map((t) => ({ href: '#/finances/associes', txt: `${nomDe(t.de)} doit de l'argent à ${nomDe(t.a)}`, val: chf(t.montant), info: true })); }

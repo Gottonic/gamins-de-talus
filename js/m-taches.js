@@ -106,7 +106,3 @@ FORMS.ta = (v) => {
   DB.put(v.key, o); closeSheet();
   if (v.statut === 'termine' && was !== 'termine' && o.rep) repeterSiBesoin(v.key, o); else toast('Tâche enregistrée.');
 };
-function attentionTaches() {
-  return taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && (t.urgent || tacheEnRetard(t))).slice(0, 5)
-    .map((t) => ({ href: '#/taches', txt: (t.urgent ? 'Urgent : ' : 'En retard : ') + t.titre, val: t.echeance ? fmtDateCourt(t.echeance) : '' }));
-}

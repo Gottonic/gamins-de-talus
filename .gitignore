@@ -1,3 +1,4 @@
 *.json.bak
 gdt-reprise*.json
 *sauvegarde*.json
+node_modules/

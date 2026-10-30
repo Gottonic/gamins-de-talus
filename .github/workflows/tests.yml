@@ -1,0 +1,16 @@
+# À chaque modification : ouvre tous les écrans de l'app avec des données fictives et vérifie quelques calculs.
+name: Test de l'app
+on:
+  push:
+    branches: [main]
+    paths: ['index.html', 'js/**', 'sw.js', 'tests/**', '.github/workflows/tests.yml']
+  workflow_dispatch:
+jobs:
+  fumee:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
+      - run: node tests/fumee.mjs
