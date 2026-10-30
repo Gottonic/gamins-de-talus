@@ -1,5 +1,5 @@
 /* Gamins de Talus : fonctionne hors ligne. Changer VERSION à chaque mise à jour du code. */
-const VERSION = 'gdt-2026-10-30-20';
+const VERSION = 'gdt-2026-10-30-21';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/supabase.js', 'lib/jspdf.umd.min.js', 'lib/qrcode.js', 'lib/jszip.min.js',
