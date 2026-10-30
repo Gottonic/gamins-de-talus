@@ -93,7 +93,7 @@ FORMS.cfgAss = (v) => {
 };
 
 /* ---------- Données ---------- */
-const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'fiche:': 'Fiches cultures', 'irr:': 'Irrigation (semaines)', 'msg:': 'Messages', 'lu:': 'Messages lus', 'cfg:': 'Réglages' };
+const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'fiche:': 'Fiches cultures', 'irr:': 'Irrigation (semaines)', 'msg:': 'Messages', 'mail:': 'Mails', 'mvt:': 'Mouvements de stock', 'self:': 'Mises en vente', 'jnl:': 'Journal de cultures', 'drv:': 'Drive', 'lu:': 'Messages lus', 'cfg:': 'Réglages' };
 const prefixOf = (k) => Object.keys(PREFIX_LABEL).find((p) => k.startsWith(p)) || '';
 function libelleDe(k, d) { d = d || {}; return d.numero ? 'Facture ' + d.numero : d.texte ? trunc(d.texte, 60) : d.objet || d.titre || d.nom || d.organisation || d.client || d.remarque || (d.date ? fmtDate(d.date) : '') || k; }
 
@@ -101,6 +101,7 @@ function renderDonnees() {
   const counts = {}; for (const k in DB.data) { const p = prefixOf(k); counts[p] = (counts[p] || 0) + 1; }
   const trash = Object.entries(DB.trash).sort((a, b) => String(b[1]._supprimeLe || '').localeCompare(String(a[1]._supprimeLe || '')));
   return `<div class="split"><div class="panel"><h2>Sauvegarde</h2>
+      <div id="usage-box"></div>
       <p class="hint">Toutes les données sont dans la base Supabase, avec l'historique de chaque modification. Pour une copie chez toi, exporte un fichier de temps en temps (par exemple chaque mois).</p>
       <div class="table-wrap"><table class="list"><tbody>${Object.entries(PREFIX_LABEL).filter(([p]) => counts[p]).map(([p, l]) => `<tr><td>${l}</td><td class="r num">${counts[p]}</td></tr>`).join('')}</tbody></table></div>
       <div class="row"><button class="btn primary" type="button" data-act="exportJson">Exporter tout (fichier JSON)</button></div>
@@ -109,9 +110,9 @@ function renderDonnees() {
       <input type="file" id="imp-file" accept=".json,application/json">
       <div id="imp-res"></div></div>
     <div class="panel"><h2>Corbeille</h2>
-      ${trash.length ? `<div class="items">${trash.slice(0, 60).map(([k, d]) => `<div class="item" style="cursor:default"><span class="who"><strong>${esc(trunc(libelleDe(k, d), 60))}</strong><span class="meta">${esc(PREFIX_LABEL[prefixOf(k)] || '')}${d._supprimeLe ? ' · supprimé le ' + fmtDate(d._supprimeLe.slice(0, 10)) : ''}${d._supprimePar ? ' par ' + esc(nomDe(d._supprimePar)) : ''}</span></span><button class="btn small" type="button" data-act="restore" data-key="${esc(k)}">Restaurer</button></div>`).join('')}</div>`
+      ${trash.length ? `<div class="items">${trash.slice(0, 60).map(([k, d]) => `<div class="item" style="cursor:default"><span class="who"><strong>${esc(trunc(libelleDe(k, d), 60))}</strong><span class="meta">${esc(PREFIX_LABEL[prefixOf(k)] || '')}${d._supprimeLe ? ' · supprimé le ' + fmtDate(d._supprimeLe.slice(0, 10)) : ''}${d._supprimePar ? ' par ' + esc(nomDe(d._supprimePar)) : ''}${d._supprimeLe ? ' · effacé pour de bon le ' + fmtDate(addDays(d._supprimeLe.slice(0, 10), 183)) : ''}</span></span><button class="btn small" type="button" data-act="restore" data-key="${esc(k)}">Restaurer</button></div>`).join('')}</div>`
         : '<p class="empty">La corbeille est vide.</p>'}
-      <p class="hint">Rien n'est jamais effacé définitivement de la base : chaque version reste dans l'historique Supabase (table rows_history).</p></div></div>`;
+      <p class="hint">Ce qui est dans la corbeille depuis 6 mois est effacé pour de bon, historique compris (chaque nuit, par Supabase). Avant ça, tout se restaure.</p></div></div>`;
 }
 ACTIONS.restore = (el) => { if (DB.restore(el.dataset.key)) toast('Restauré.'); };
 ACTIONS.exportJson = () => {

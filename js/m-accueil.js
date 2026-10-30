@@ -15,6 +15,11 @@ const ICONS = {
 };
 const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'irrigation', 'contacts'];
 
+/* Ce que l'accueil montre : « moi » (ce qui me concerne, par défaut) ou « tous » ; mémorisé sur l'appareil */
+const ACC = { vue: ls.get('gdt-accueil-vue') || 'moi' };
+const pourMoi = (qui) => ACC.vue !== 'moi' || !Sync.me || !qui || qui === 'ensemble' || qui === Sync.me;
+ACTIONS.accVue = (el) => { ACC.vue = el.dataset.v; ls.set('gdt-accueil-vue', ACC.vue); render(); };
+
 function renderAccueil() {
   const h = new Date().getHours();
   const salut = h < 11 ? 'Bonjour' : h < 18 ? 'Salut' : 'Bonsoir';
@@ -29,7 +34,7 @@ function renderAccueil() {
     <a class="kpi t-factures" href="#/factures"><span class="k">À encaisser</span><span class="v">${chf(ouvertes.reduce((a, f) => a + f.total, 0))}</span>
       <span class="s ${retard.length ? 'bad' : ''}">${ouvertes.length ? `${ouvertes.length} facture${ouvertes.length > 1 ? 's' : ''} ouverte${ouvertes.length > 1 ? 's' : ''}${retard.length ? `, dont ${retard.length} en retard` : ''}` : 'Toutes les factures sont payées'}</span></a>
     <a class="kpi t-finances" href="#/finances"><span class="k">Résultat ${y}</span><span class="v">${chf(b.resultat)}</span><span class="s">Recettes ${chf(b.rec)} · charges ${chf(b.charges)}</span></a>
-    <a class="kpi t-calendrier" href="#/calendrier/heures"><span class="k">Heures cette semaine</span><span class="v">${fmtH(hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
+    <a class="kpi t-calendrier" href="#/calendrier/heures"><span class="k">${ACC.vue === 'moi' && Sync.me ? 'Mes heures cette semaine' : 'Heures cette semaine'}</span><span class="v">${fmtH(ACC.vue === 'moi' && Sync.me ? hs[Sync.me] || 0 : hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
   </section>`;
 
   /* --- Ce qui est à faire --- */
@@ -37,10 +42,12 @@ function renderAccueil() {
   const nl = typeof nonLus === 'function' ? nonLus() : [];
   if (nl.length) groupes.push({ mod: 'messages', titre: 'Messages non lus', n: nl.length, items: nl.slice(-4).reverse().map((m) => ({ href: '#/messages', txt: `${nomDe(m.de)} : ${trunc(apercuMsg(m), 60)}`, val: fmtDateCourt(isoDate(new Date(m.cree))) })),
     plus: { href: '#/messages', txt: 'Ouvrir la messagerie' } });
+  const ml = typeof mailsATraiter === 'function' ? mailsATraiter().filter((m) => ACC.vue !== 'moi' || !m.par || m.par === Sync.me) : [];
+  if (ml.length) groupes.push({ mod: 'messages', titre: 'Mails à traiter', n: ml.length, items: ml.slice(0, 4).map((m) => ({ href: '#/messages/mails', txt: `${(m.de && (m.de.nom || m.de.adresse)) || '?'} : ${trunc(m.objet || '(sans objet)', 50)}`, val: m.par ? nomDe(m.par) : fmtDateCourt(String(m.date || '').slice(0, 10)), bad: !m.par })), plus: { href: '#/messages/mails', txt: 'Voir les mails' } });
   if (ouvertes.length) groupes.push({ mod: 'factures', titre: 'Factures impayées', n: ouvertes.length, items: ouvertes.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
     .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });
   /* Tâches : d'abord urgentes et en retard, puis les prochaines échéances, puis les autres tâches ouvertes */
-  const ouvT = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu');
+  const ouvT = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && pourMoi(t.responsable));
   const rang = (t) => (t.urgent || (t.echeance && t.echeance < today) ? 0 : t.echeance ? 1 : 2);
   const tch = ouvT.sort((a, c) => rang(a) - rang(c) || String(a.echeance || '9').localeCompare(String(c.echeance || '9')) || String(a.cree || '').localeCompare(String(c.cree || '')));
   groupes.push({ mod: 'taches', titre: 'Tâches urgentes et prochaines', n: ouvT.length, vide: 'Aucune tâche ouverte.',
@@ -48,9 +55,9 @@ function renderAccueil() {
     plus: ouvT.length > 7 ? { href: '#/taches', txt: `Voir les ${ouvT.length} tâches` } : null });
   /* Calendrier des 7 prochains jours */
   const prochains = []; const it7 = itemsPeriode(today, addDays(today, 6));
-  for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today)) prochains.push({ href: '#/calendrier', txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : '') });
+  for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ href: '#/calendrier', txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : '') });
   groupes.push({ mod: 'calendrier', titre: 'Ces 7 prochains jours', n: prochains.length, vide: 'Rien de prévu au calendrier.', items: prochains.slice(0, 7), plus: { href: '#/calendrier/agenda', txt: "Voir l'agenda" } });
-  const sansJ = depenses().filter(sansJustificatif).sort((a, c) => String(c.date).localeCompare(String(a.date)));
+  const sansJ = depenses().filter((x) => sansJustificatif(x) && pourMoi(x.par)).sort((a, c) => String(c.date).localeCompare(String(a.date)));
   if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
     plus: sansJ.length > 4 ? { href: '#/finances/depenses', txt: `Voir les ${sansJ.length} dépenses sans justificatif` } : null, avant: () => { FIN.sansJ = true; } });
   /* Prospection : relances prévues jusqu'à aujourd'hui, sinon les prospects prioritaires à contacter */
@@ -71,9 +78,11 @@ function renderAccueil() {
       : { href: '#/finances/annee', txt: `Archive ${yb} pas encore téléchargée par ${manque.map((p) => p.nom).join(', ')}`, val: '' }] });
   }
   const d = decompteActuel();
-  if (d.transferts.length) groupes.push({ mod: 'finances', titre: 'Entre associés', items: d.transferts.map((t) => ({ href: '#/finances/associes', txt: `${nomDe(t.de)} doit à ${nomDe(t.a)}`, val: chf(t.montant) })) });
+  const trs = d.transferts.filter((t) => ACC.vue !== 'moi' || !Sync.me || t.de === Sync.me || t.a === Sync.me);
+  if (trs.length) groupes.push({ mod: 'finances', titre: 'Entre associés', items: trs.map((t) => ({ href: '#/finances/associes', txt: `${nomDe(t.de)} doit à ${nomDe(t.a)}`, val: chf(t.montant) })) });
 
-  const todo = `<section class="panel"><h2>À traiter</h2><div class="todo">${groupes.map((g) => `<div class="grp t-${g.mod}"><h3>${esc(g.titre)}${g.n ? `<span class="n">${g.n}</span>` : ''}</h3>
+  const vue = Sync.me ? `<div class="seg-mini" role="group" aria-label="Afficher"><button type="button" class="${ACC.vue === 'moi' ? 'on' : ''}" data-act="accVue" data-v="moi">Pour moi</button><button type="button" class="${ACC.vue !== 'moi' ? 'on' : ''}" data-act="accVue" data-v="tous">Tout le monde</button></div>` : '';
+  const todo = `<section class="panel"><div class="between"><h2>À traiter</h2>${vue}</div><div class="todo">${groupes.map((g) => `<div class="grp t-${g.mod}"><h3>${esc(g.titre)}${g.n ? `<span class="n">${g.n}</span>` : ''}</h3>
       ${g.items.length ? g.items.map((it) => `<a class="it${it.bad ? ' bad' : ''}" href="${it.href}"${g.avant ? ' data-act="goSansJ"' : ''}><span>${esc(it.txt)}</span><span class="num">${esc(it.val)}</span></a>`).join('') : `<p class="none">${esc(g.vide || 'Rien.')}</p>`}
       ${g.plus ? `<a class="btn link" href="${g.plus.href}"${g.avant ? ' data-act="goSansJ"' : ''}>${esc(g.plus.txt)}</a>` : ''}</div>`).join('')}</div></section>`;
 

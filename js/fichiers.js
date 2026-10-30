@@ -95,8 +95,20 @@ async function nettoyerFichiers() {
     const { data, error } = await Sync.sb.storage.from(FICHIERS_SEAU).remove(chemins);
     return error ? new Set() : new Set((data || []).map((x) => x.name));
   };
+  /* Corbeille : ce qui y est depuis plus de 6 mois est effacé pour de bon par Supabase (chaque nuit) ; on l'oublie aussi ici,
+     et on efface les fichiers du Drive correspondants (la règle de Supabase ne l'autorise que pour eux). */
+  try {
+    const lim = avant(6), vieux = Object.entries(DB.trash).filter(([, d]) => d._supprimeLe && d._supprimeLe < lim);
+    const fichiersDrive = vieux.filter(([k, d]) => k.startsWith('drv:') && d.chemin).map(([, d]) => d.chemin);
+    if (fichiersDrive.length) await effacer(fichiersDrive);
+    for (const [k] of vieux) delete DB.trash[k];
+    if (vieux.length) Sync.persist();
+  } catch (e) { console.warn('Corbeille :', e); }
   try {
     const m6 = avant(6), msgs = DB.all('msg:').filter((m) => m.photo && !m.photo.expire && String(m.cree) < m6);
+    /* Photos des messages déjà à la corbeille : on les efface aussi au bout de 6 mois */
+    const tr = Object.values(DB.trash).filter((m) => m && m.photo && m.photo.chemin && !m.photo.expire && String(m.cree || '') < m6).map((m) => m.photo.chemin);
+    if (tr.length) await effacer(tr);
     const ok = await effacer(msgs.map((m) => m.photo.chemin));
     for (const m of msgs) if (ok.has(m.photo.chemin)) { const o = DB.get(m.key); if (o) DB.put(m.key, Object.assign({}, o, { photo: Object.assign({}, o.photo, { expire: todayISO() }) })); }
     const a2 = avant(24);
