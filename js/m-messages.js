@@ -34,7 +34,15 @@ MODULES.messages = {
   after(sub) {
     if (sub === 'mails') { if (typeof releverMails === 'function') releverMails(); return; }
     marquerLu();
-    const box = $('msg-list'); if (box) box.scrollTop = box.scrollHeight;
+    /* Toujours ouvrir sur le dernier message, même quand les photos se chargent après coup */
+    const box = $('msg-list');
+    if (box) {
+      let colle = true; const enBas = () => { box.scrollTop = box.scrollHeight; };
+      enBas(); requestAnimationFrame(enBas);
+      box.addEventListener('scroll', () => { colle = box.scrollHeight - box.scrollTop - box.clientHeight < 80; }, { passive: true });
+      box.addEventListener('load', () => { if (colle) enBas(); }, true);
+      if (window.ResizeObserver) { const ro = new ResizeObserver(() => { if (colle) enBas(); }); [...box.children].forEach((c) => ro.observe(c)); }
+    }
     const t = $('msg-txt');
     if (t) {
       const grow = () => { t.style.height = 'auto'; t.style.height = Math.min(220, t.scrollHeight + 2) + 'px'; };
@@ -289,8 +297,16 @@ async function releverMails(force) {
   if (LOCAL_MODE || !Sync.sb || !navigator.onLine) return;
   const last = Number(ls.get('gdt-releve-mails') || 0); if (!force && Date.now() - last < 180000) return;
   ls.set('gdt-releve-mails', String(Date.now()));
-  try { const { error } = await Sync.sb.functions.invoke('mails', { body: {} }); if (error) throw error; await Sync.pull(); if (force) toast('Boîte relevée.'); }
-  catch (e) { if (force) toast('Relève impossible : ' + ((e && e.message) || e) + ' (fonction « mails » installée dans Supabase ?)', 7000); }
+  try {
+    const { error } = await Sync.sb.functions.invoke('mails', { body: {} });
+    if (error) { /* Lire le vrai message renvoyé par la fonction plutôt que « non-2xx status code » */
+      let msg = error.message, code = '';
+      try { const r = error.context; code = r && r.status ? ` (${r.status})` : ''; const b = await r.clone().json(); if (b && b.erreur) msg = b.erreur; } catch (_) { try { const t = await error.context.text(); if (t) msg = t.slice(0, 200); } catch (__) {} }
+      throw new Error(msg + code);
+    }
+    await Sync.pull(); if (force) toast('Boîte relevée.');
+  }
+  catch (e) { await Sync.pull().catch(() => {}); if (force) toast('Relève impossible : ' + ((e && e.message) || e), 9000); }
 }
 function renderMails() {
   const c = cfgMails(), etat = DB.get('cfg:mails:etat') || {}, all = mails();
