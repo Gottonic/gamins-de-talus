@@ -17,34 +17,85 @@ MODULES.drive = {
   render(sub, id) { DRV.dossier = sub === 'd' && id && DB.get(id) ? id : ''; return renderDrive(); },
   after() {
     const f = $('drv-file'); if (f) f.addEventListener('change', () => envoyerDrive([...f.files]));
-    const z = $('drv-zone'); if (z) { z.addEventListener('dragover', (e) => { e.preventDefault(); z.classList.add('drag'); }); z.addEventListener('dragleave', () => z.classList.remove('drag')); z.addEventListener('drop', (e) => { e.preventDefault(); z.classList.remove('drag'); envoyerDrive([...e.dataTransfer.files]); }); }
+    glisserDeposer($('drv-zone'));
     chargerUsage();
   },
 };
 function renderDrive() {
   const d = DRV.dossier, l = enfants(d), fil = chemin(d);
-  const bc = `<nav class="fil"><a href="#/drive">Drive</a>${fil.map((x) => ` / <a href="#/drive/d/${encodeURIComponent(x.key)}">${esc(x.nom)}</a>`).join('')}</nav>`;
+  const bc = `<nav class="fil"><a href="#/drive" data-drop="" draggable="false">Drive</a>${fil.map((x) => ` / <a href="#/drive/d/${encodeURIComponent(x.key)}" data-drop="${esc(x.key)}" draggable="false">${esc(x.nom)}</a>`).join('')}</nav>`;
   const ligne = (x) => x.type === 'dossier'
-    ? `<div class="drv-it"><a class="drv-nom" href="#/drive/d/${encodeURIComponent(x.key)}">${ICO(x)} <b>${esc(x.nom)}</b></a><span class="hint">${enfants(x.key).length} élément${enfants(x.key).length > 1 ? 's' : ''}</span><button class="btn small" type="button" data-act="drvMenu" data-key="${esc(x.key)}" aria-label="Options">⋯</button></div>`
-    : `<div class="drv-it">${/^image\/|pdf/.test(x.mime) ? `<button type="button" class="drv-nom" data-act="voirFichier" data-fichier="${esc(x.chemin)}" data-titre="${esc(x.nom)}">${ICO(x)} ${esc(x.nom)}</button>` : `<a class="drv-nom" data-fichier="${esc(x.chemin)}" download="${esc(x.nom)}" target="_blank" rel="noopener">${ICO(x)} ${esc(x.nom)}</a>`}
+    ? `<div class="drv-it" draggable="true" data-drag="${esc(x.key)}" data-drop="${esc(x.key)}"><a class="drv-nom" href="#/drive/d/${encodeURIComponent(x.key)}" draggable="false">${ICO(x)} <b>${esc(x.nom)}</b></a><span class="hint">${enfants(x.key).length} élément${enfants(x.key).length > 1 ? 's' : ''}</span><button class="btn small" type="button" data-act="drvMenu" data-key="${esc(x.key)}" aria-label="Options">⋯</button></div>`
+    : `<div class="drv-it" draggable="true" data-drag="${esc(x.key)}">${/^image\/|pdf/.test(x.mime) ? `<button type="button" class="drv-nom" data-act="voirFichier" data-fichier="${esc(x.chemin)}" data-titre="${esc(x.nom)}">${ICO(x)} ${esc(x.nom)}</button>` : `<a class="drv-nom" data-fichier="${esc(x.chemin)}" download="${esc(x.nom)}" target="_blank" rel="noopener" draggable="false">${ICO(x)} ${esc(x.nom)}</a>`}
         <span class="hint">${tailleTxt(x.taille)} · ${fmtDate(String(x.le || '').slice(0, 10))}${x.par ? ' · ' + esc(nomDe(x.par)) : ''}</span><button class="btn small" type="button" data-act="drvMenu" data-key="${esc(x.key)}" aria-label="Options">⋯</button></div>`;
   const ancien = cfg().drive ? `<p class="hint">Ancien lien : <a href="${esc(cfg().drive)}" target="_blank" rel="noopener noreferrer">Proton Drive</a></p>` : '';
   return `<div id="usage-box"></div>
     <div class="panel" id="drv-zone"><div class="between">${bc}<div class="row"><button class="btn small" type="button" data-act="drvDossier">+ Dossier</button><label class="btn primary small">Ajouter des fichiers<input id="drv-file" type="file" multiple hidden></label></div></div>
       ${DRV.envoi ? `<p class="banner">${esc(DRV.envoi)}</p>` : ''}
-      ${l.length ? `<div class="drv-liste">${l.map(ligne).join('')}</div>` : `<p class="empty">${d ? 'Dossier vide.' : 'Le Drive est vide.'} Glisse des fichiers ici ou utilise « Ajouter des fichiers » (25 Mo au plus par fichier).</p>`}
+      ${l.length ? `<div class="drv-liste">${l.map(ligne).join('')}</div>` : `<p class="empty">${d ? 'Dossier vide.' : 'Le Drive est vide.'} Glisse des fichiers ou des dossiers ici, ou utilise « Ajouter des fichiers » (25 Mo au plus par fichier).</p>`}
+      ${l.length ? '<p class="hint drv-aide">Sur ordinateur : glisse des fichiers ou des dossiers depuis ton ordinateur pour les ajouter (sur un dossier pour les mettre dedans), et glisse un élément sur un dossier ou sur le chemin en haut pour le déplacer.</p>' : ''}
       ${ancien}</div>`;
 }
-async function envoyerDrive(files) {
+/* Glisser-déposer (ordinateur) : des fichiers ou dossiers de l'ordinateur → ajoutés (dans le dossier visé s'il y en a un) ;
+   un élément du Drive → déplacé dans le dossier visé (ligne de dossier ou chemin en haut). */
+const TYPE_DRV = 'application/x-gdt-drv';
+function glisserDeposer(z) {
+  if (!z) return;
+  const interne = (e) => [...(e.dataTransfer && e.dataTransfer.types || [])].includes(TYPE_DRV);
+  const cible = (e) => e.target.closest && e.target.closest('[data-drop]');
+  const nettoyer = () => { z.classList.remove('drag'); z.querySelectorAll('.drop, .glisse').forEach((x) => x.classList.remove('drop', 'glisse')); };
+  z.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-drag]'); if (!it) return; e.dataTransfer.setData(TYPE_DRV, it.dataset.drag); e.dataTransfer.effectAllowed = 'move'; it.classList.add('glisse'); });
+  z.addEventListener('dragend', nettoyer);
+  z.addEventListener('dragover', (e) => {
+    const c = cible(e), i = interne(e);
+    z.querySelectorAll('.drop').forEach((x) => { if (x !== c) x.classList.remove('drop'); });
+    if (i && !c) { e.dataTransfer.dropEffect = 'none'; return; }
+    e.preventDefault(); e.dataTransfer.dropEffect = i ? 'move' : 'copy';
+    if (c) c.classList.add('drop'); z.classList.toggle('drag', !i && !c);
+  });
+  z.addEventListener('dragleave', (e) => { if (!z.contains(e.relatedTarget)) nettoyer(); });
+  z.addEventListener('drop', (e) => {
+    e.preventDefault(); const c = cible(e), dest = c ? c.dataset.drop || '' : DRV.dossier, i = interne(e), k = i ? e.dataTransfer.getData(TYPE_DRV) : '';
+    /* Les dossiers de l'ordinateur se lisent tout de suite, avant que le navigateur ne vide le dépôt */
+    const entrees = i ? [] : [...(e.dataTransfer.items || [])].map((x) => x.webkitGetAsEntry && x.webkitGetAsEntry()).filter(Boolean);
+    const files = i ? [] : [...e.dataTransfer.files];
+    nettoyer();
+    if (i) deplacerDrv(k, dest); else if (entrees.some((x) => x.isDirectory)) envoyerArbre(entrees, dest); else envoyerDrive(files, dest);
+  });
+}
+function deplacerDrv(k, dest) {
+  const x = DB.get(k); if (!x || k === dest || (x.parent || '') === (dest || '')) return;
+  if (dest && chemin(dest).some((c) => c.key === k)) { toast('Impossible de mettre un dossier dans lui-même.'); return; }
+  DB.put(k, Object.assign({}, x, { parent: dest || '' })); toast(`« ${x.nom} » déplacé dans ${dest ? '« ' + DB.get(dest).nom + ' »' : 'le Drive (racine)'}.`);
+}
+/* Un dossier (et ses sous-dossiers) glissé depuis l'ordinateur : mêmes dossiers recréés dans le Drive, puis les fichiers */
+function dossierDrv(parent, nom) {
+  const x = enfants(parent).find((d) => d.type === 'dossier' && d.nom === nom); if (x) return x.key;
+  const k = 'drv:' + uid('d'); DB.put(k, { type: 'dossier', nom, parent: parent || '', par: Sync.me || '', le: new Date().toISOString() }); return k;
+}
+async function envoyerArbre(entrees, dest) {
+  const liste = [];
+  const lireDossier = (dir) => new Promise((ok, ko) => { const r = dir.createReader(), out = []; const lot = () => r.readEntries((xs) => { if (!xs.length) ok(out); else { out.push(...xs); lot(); } }, ko); lot(); });
+  const parcourir = async (en, parent) => {
+    if (en.name.startsWith('.')) return; // .DS_Store et fichiers cachés
+    if (en.isFile) liste.push({ f: await new Promise((ok, ko) => en.file(ok, ko)), parent });
+    else { const id = dossierDrv(parent, en.name); for (const s of await lireDossier(en)) await parcourir(s, id); }
+  };
+  try { for (const en of entrees) await parcourir(en, dest); } catch (e) { toast('Lecture du dossier impossible : ' + e.message, 7000); }
+  envoyerDrive(liste, dest);
+}
+async function envoyerDrive(files, dest) {
   if (!files.length) return;
+  if (dest === undefined) dest = DRV.dossier;
   let ok = 0; const err = [];
-  for (const [i, f] of files.entries()) {
+  for (const [i, x] of files.entries()) {
+    const f = x instanceof Blob ? x : x.f, parent = x instanceof Blob ? dest : x.parent;
     DRV.envoi = `Envoi ${i + 1}/${files.length} : ${f.name}…`; render();
     try {
       if (f.size > DRIVE_MAX) throw new Error('plus de 25 Mo');
       const ext = (f.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin';
       const ch = await Fichiers.envoyer(f, `drive/${uid('f')}.${ext}`);
-      DB.put('drv:' + uid('d'), { type: 'fichier', nom: f.name, parent: DRV.dossier, chemin: ch, taille: f.size, mime: f.type || '', par: Sync.me || '', le: new Date().toISOString() });
+      DB.put('drv:' + uid('d'), { type: 'fichier', nom: f.name, parent: parent || '', chemin: ch, taille: f.size, mime: f.type || '', par: Sync.me || '', le: new Date().toISOString() });
       ok++;
     } catch (e) { err.push(`${f.name} (${e.message})`); }
   }
