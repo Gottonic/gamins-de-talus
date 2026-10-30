@@ -315,7 +315,7 @@ function renderMails() {
   const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', 'Je m\'en occupe'], ['traites', 'Traités'], ['tous', 'Tous']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
   if (!all.length && !etat.derniere) return `<div class="panel"><h2>Mails</h2><p>Les mails reçus sur votre adresse commune (${esc(c.adresse || 'Infomaniak')}) apparaîtront ici : qui s'en occupe, ce qui est traité, en lien avec vos contacts.</p>
     <p class="hint">Il reste à installer la fonction « mails » dans Supabase (voir le README, partie « Mails »). Ensuite, la boîte est relevée chaque fois que quelqu'un ouvre cette page, et toutes les 10 minutes par Supabase.</p>
-    <div class="row"><button class="btn" type="button" data-act="mailRelever">Essayer de relever maintenant</button><button class="btn" type="button" data-act="mailCfg">Réglages</button></div></div>`;
+    <div class="row"><a class="btn primary" href="${esc(c.webmail)}" target="_blank" rel="noopener">✉️ Nouveau mail</a><button class="btn" type="button" data-act="mailRelever">Essayer de relever maintenant</button><button class="btn" type="button" data-act="mailCfg">Réglages</button></div></div>`;
   const carte = (m) => {
     const ct = contactDuMail(m.de && m.de.adresse), vus = Object.keys(m.vus || {}).filter((p) => p !== m.par);
     const etatTxt = m.statut === 'traite' ? `✓ traité${m.par ? ' par ' + nomDe(m.par) : ''}` : m.statut === 'ignore' ? 'ignoré' : m.statut === 'encours' ? `${m.par === Sync.me ? 'Tu t\'en occupes' : nomDe(m.par) + ' s\'en occupe'}` : 'personne ne s\'en occupe encore';
@@ -331,8 +331,8 @@ function renderMails() {
         ${!['traite', 'ignore'].includes(m.statut || '') ? `<button class="btn small" type="button" data-act="mailStatut" data-s="traite" data-key="${esc(m.key)}">✓ Traité</button>` : `<button class="btn small" type="button" data-act="mailStatut" data-s="" data-key="${esc(m.key)}">Remettre à traiter</button>`}
         <button class="btn small" type="button" data-act="mailPlus" data-key="${esc(m.key)}" aria-label="Plus d'options">⋯</button></div></div>`;
   };
-  return `<div class="panel"><div class="between"><h2>Mails${c.adresse ? ' · ' + esc(c.adresse) : ''}</h2><div class="row"><button class="btn small" type="button" data-act="mailRelever">Relever</button><button class="btn small" type="button" data-act="mailCfg">Réglages</button></div></div>
-    <p class="hint">Dernière relève ${esc(depuis(etat.derniere))}${etat.erreur ? ` · <span class="bad">problème : ${esc(etat.erreur)}</span>` : ''}. « Je m'en occupe » et « Je vais juste vérifier » ouvrent la boîte Infomaniak dans un nouvel onglet.</p>
+  return `<div class="panel"><div class="between"><h2>Mails${c.adresse ? ' · ' + esc(c.adresse) : ''}</h2><div class="row"><a class="btn primary small" href="${esc(c.webmail)}" target="_blank" rel="noopener">✉️ Nouveau mail</a><button class="btn small" type="button" data-act="mailRelever">Relever</button><button class="btn small" type="button" data-act="mailCfg">Réglages</button></div></div>
+    <p class="hint">« Nouveau mail » ouvre la boîte Infomaniak (bouton « Nouveau message » en haut à gauche). <a href="mailto:">Ou avec l'app mail de cet appareil</a>. Dernière relève ${esc(depuis(etat.derniere))}${etat.erreur ? ` · <span class="bad">problème : ${esc(etat.erreur)}</span>` : ''}. « Je m'en occupe » et « Je vais juste vérifier » ouvrent la boîte Infomaniak dans un nouvel onglet.</p>
     <div class="chips">${chips}</div>
     ${list.length ? list.slice(0, 80).map(carte).join('') : '<p class="empty">Rien ici.</p>'}</div>`;
 }

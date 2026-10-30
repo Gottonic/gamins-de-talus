@@ -5,9 +5,13 @@
 //   (facultatifs : IMAP_HOST = mail.infomaniak.com, IMAP_PORT = 993, CRON_SECRET).
 // Seuls l'expéditeur, l'objet, la date et le début du texte (1500 caractères) sont copiés. Rien n'est modifié dans la boîte
 // (lecture seule : les mails restent « non lus » chez Infomaniak).
+// Envoi : { envoyer: { a, objet, texte, pieces: [{ nom, type, base64 }] } } par un membre connecté → envoyé par le SMTP
+// d'Infomaniak (port 465, mêmes identifiants), et une copie est rangée dans le dossier « Envoyés » de la boîte.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { ImapFlow } from 'npm:imapflow@1';
 import PostalMime from 'npm:postal-mime@2';
+import nodemailer from 'npm:nodemailer@6.9.16';
+import MailComposer from 'npm:nodemailer@6.9.16/lib/mail-composer/index.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -70,6 +74,27 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
   return nouveaux.length;
 }
 
+/* Envoi d'un mail (facture…) avec pièces jointes, puis copie dans « Envoyés » */
+export async function envoyerMail(env: (k: string) => string | undefined, m: any, nomExp = 'Gamins de Talus') {
+  const user = env('IMAP_USER')!, pass = env('IMAP_PASSWORD')!;
+  if (!m || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(m.a || '').trim())) throw new Error('adresse du destinataire invalide');
+  const mail = { from: { name: nomExp, address: user }, to: String(m.a).trim(), cc: m.cc || undefined, subject: String(m.objet || '').slice(0, 200), text: String(m.texte || ''),
+    attachments: (m.pieces || []).slice(0, 5).map((x: any) => ({ filename: String(x.nom || 'document.pdf'), contentType: x.type || 'application/pdf', content: x.base64, encoding: 'base64' })) };
+  const brut: Uint8Array = await new MailComposer(mail).compile().build();
+  const port = Number(env('SMTP_PORT') || 465);
+  const t = nodemailer.createTransport({ host: env('SMTP_HOST') || 'mail.infomaniak.com', port, secure: (env('SMTP_SECURE') || (port === 465 ? 'true' : 'false')) === 'true', auth: { user, pass }, tls: { rejectUnauthorized: (env('IMAP_TLS_STRICT') || 'true') !== 'false' } });
+  await t.sendMail({ envelope: { from: user, to: [mail.to].concat(m.cc ? [m.cc] : []) }, raw: brut });
+  /* Copie dans le dossier « Envoyés » (si ça échoue, le mail est quand même parti) */
+  let copie = false;
+  try {
+    const c = new ImapFlow({ host: env('IMAP_HOST') || 'mail.infomaniak.com', port: Number(env('IMAP_PORT') || 993), secure: (env('IMAP_SECURE') || 'true') !== 'false', auth: { user, pass }, logger: false, tls: { rejectUnauthorized: (env('IMAP_TLS_STRICT') || 'true') !== 'false' } });
+    await c.connect();
+    try { const l = await c.list(); const d = l.find((x: any) => x.specialUse === '\\Sent') || l.find((x: any) => /^(sent|envoy)/i.test(x.name)); if (d) { await c.append(d.path, brut, ['\\Seen']); copie = true; } }
+    finally { await c.logout().catch(() => {}); }
+  } catch (_) { /* pas grave */ }
+  return { ok: true, copie };
+}
+
 if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const env = (k: string) => Deno.env.get(k);
@@ -84,6 +109,12 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     if (!m) return json({ erreur: 'pas membre' }, 403);
   }
   if (!env('IMAP_USER') || !env('IMAP_PASSWORD')) return json({ erreur: 'IMAP_USER et IMAP_PASSWORD manquent dans les secrets' }, 500);
+  const corps = await req.json().catch(() => ({}));
+  if (corps && corps.envoyer) {
+    if (cron && h && h === cron) return json({ erreur: 'envoi réservé aux membres' }, 403);
+    try { return json(await envoyerMail(env, corps.envoyer, corps.envoyer.nomExp || 'Gamins de Talus')); }
+    catch (e) { return json({ erreur: 'Envoi impossible : ' + String((e as any).response || (e as Error).message || e).slice(0, 300) }, 500); }
+  }
   try { return json({ nouveaux: await relever(sb, env) }); }
   catch (e) {
     const msg = String((e && (e as any).responseText) || (e as Error).message || e).slice(0, 300);

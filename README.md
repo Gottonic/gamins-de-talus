@@ -90,6 +90,10 @@ Supabase → SQL Editor → coller tout `supabase/mise-a-jour-2026-10-30-histori
 l'état des mails, l'irrigation de la semaine et la date de sauvegarde ne sont plus copiés dans l'historique (et les copies
 déjà accumulées sont effacées). Rien d'autre n'est touché.
 
+### Envoyer les factures par mail depuis l'app
+Recoller `supabase/functions/mails/index.ts` dans la fonction `mails` et redéployer. L'envoi passe par le SMTP d'Infomaniak
+(port 465) avec les mêmes secrets `IMAP_USER` / `IMAP_PASSWORD` ; une copie est rangée dans « Envoyés ».
+
 ### Notifications sur téléphone et ordinateur (30.10.2026, 3e partie)
 1. Supabase → Edge Functions → **Deploy a new function** → **Via Editor** → nom `notifier` → coller
    `supabase/functions/notifier/index.ts` → Deploy, puis désactiver **Verify JWT**.

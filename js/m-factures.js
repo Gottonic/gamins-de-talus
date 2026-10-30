@@ -162,6 +162,7 @@ function renderListeFactures(selKey) {
 function renderDetailFacture(f, dbl) {
   const s = facStatut(f), acts = [];
   acts.push(`<button class="btn primary" type="button" data-act="papiersPdf" data-key="${esc(f.key)}">Facture & bulletin PDF</button>`);
+  if ((f.numero || f.blNumero) && s !== 'annulee' && s !== 'groupee') acts.push(`<button class="btn" type="button" data-act="facMail" data-key="${esc(f.key)}">✉️ Envoyer par mail</button>`);
   if (s !== 'annulee' && s !== 'groupee' && !(f.regroupe || []).length) acts.push(`<button class="btn" type="button" data-act="venteModifier" data-key="${esc(f.key)}">Modifier</button>`);
   if (s === 'ouverte' || s === 'retard') acts.push(`<button class="btn" type="button" data-act="facPaid" data-key="${esc(f.key)}">Marquer comme payée</button>`);
   if (s === 'payee' && f.paiement !== 'especes') acts.push(`<button class="btn" type="button" data-act="facReopen" data-key="${esc(f.key)}">Remettre en ouverte</button>`);
@@ -170,10 +171,11 @@ function renderDetailFacture(f, dbl) {
   const warn = dbl[f.numero] > 1 && s !== 'annulee' ? `<div class="errors">Deux factures portent le numéro ${esc(f.numero)} (créées en même temps, hors ligne ?). <button class="btn link" type="button" data-act="facRenum" data-key="${esc(f.key)}">Donner un nouveau numéro à celle-ci</button></div>` : '';
   const grp = s === 'groupee' ? (() => { const g = DB.get(f.groupe); return `<p class="hint">Reprise dans la facture du mois <a href="#/factures/voir/${encodeURIComponent(f.groupe)}">${esc((g && g.numero) || '')}</a> : c'est elle qui sera payée.</p>`; })()
     : (f.regroupe || []).length ? `<p class="hint">Regroupe ${f.regroupe.length} vente${f.regroupe.length > 1 ? 's' : ''} : ${f.regroupe.map((k) => { const x = DB.get(k) || {}; return `<a href="#/factures/voir/${encodeURIComponent(k)}">${esc(x.blNumero || fmtDateCourt(x.date || ''))}</a>`; }).join(', ')}.</p>` : '';
+  const envoi = (f.envois || []).length ? `<p class="hint">✉️ Envoyée par mail ${f.envois.map((e) => `le ${fmtDate(String(e.le).slice(0, 10))} à ${esc(e.a)}${e.par ? ' (' + esc(nomDe(e.par)) + ')' : ''}`).join(', ')}.</p>` : '';
   const enc = s === 'payee' ? `<p class="hint">Encaissée par ${esc(nomDe(f.encaissePar || cfg().compteDe))}${f.payeePar === 'especes' ? ', en espèces' : f.payeePar === 'twint' ? ', par TWINT' : ', par virement'}.</p>` : '';
   const mv = mouvements().filter((m) => m.ref === f.key);
   const stockTxt = mv.length ? `<p class="hint">Stock : ${mv.map((m) => `${esc((DB.get(m.prod) || {}).nom || '?')} ${fmtQ(num(m.qte), (DB.get(m.prod) || {}).unite)}`).join(', ')}.</p>` : f.stock === false && !(f.regroupe || []).length ? '<p class="hint">Cette vente ne touche pas au stock.</p>' : '';
-  return `<div class="panel"><h3 style="margin-top:0">${esc(nomVente(f))}${f.numero && f.blNumero ? ' · ' + esc(f.blNumero) : ''}</h3><div class="row">${acts.join('')}<span class="pill ${s}">${esc(facLabel(f))}</span></div>${warn}${grp}${enc}${stockTxt}${f.blNumero ? blSigneHtml(f) : ''}
+  return `<div class="panel"><h3 style="margin-top:0">${esc(nomVente(f))}${f.numero && f.blNumero ? ' · ' + esc(f.blNumero) : ''}</h3><div class="row">${acts.join('')}<span class="pill ${s}">${esc(facLabel(f))}</span></div>${warn}${grp}${envoi}${enc}${stockTxt}${f.blNumero ? blSigneHtml(f) : ''}
     <div class="paper">${f.numero ? invoiceSvg(f) : bulletinSvg(f, true)}</div></div>`;
 }
 
@@ -306,6 +308,65 @@ function creerVente(pdf) {
   }
 }
 
+/* ---------- Envoyer la facture (et le bulletin) par mail ----------
+   Envoi direct depuis l'app par la boîte Infomaniak (fonction « mails », copie dans « Envoyés »), ou, à défaut,
+   « Ouvrir dans ma messagerie » : partage du PDF sur téléphone, ou mail prérempli + PDF téléchargé sur ordinateur. */
+const blobB64 = (b) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = ko; r.readAsDataURL(b); });
+function texteMailFacture(f) {
+  const s = cfg(), c = f.client && f.client.id ? DB.get(f.client.id) : null, salut = c && attnName(c) ? 'Bonjour ' + attnName(c) : c && c.type === 'particulier' && c.nom ? 'Bonjour ' + c.nom : 'Bonjour';
+  const paye = facStatut(f) === 'payee';
+  const corps = f.numero
+    ? `vous trouverez ci-joint la facture ${f.numero} du ${fmtDate(f.date)}, d'un montant de CHF ${money(f.total)}${paye ? ', déjà réglée : merci !' : `, payable jusqu'au ${fmtDate(f.echeance)} avec le QR-code en bas de la facture.`}${f.blNumero ? `\nLe bulletin de livraison ${f.blNumero} est joint aussi.` : ''}`
+    : `vous trouverez ci-joint le bulletin de livraison ${f.blNumero} du ${fmtDate(f.livraison || f.date)}.`;
+  return { objet: f.numero ? `Facture ${f.numero} – ${s.nom}` : `Bulletin de livraison ${f.blNumero} – ${s.nom}`, texte: `${salut},\n\n${corps}\n\nMerci beaucoup et à bientôt,\n${Sync.me ? nomDe(Sync.me) + '\n' : ''}${s.nom}${s.telephone ? '\n' + s.telephone : ''}${s.email ? '\n' + s.email : ''}` };
+}
+ACTIONS.facMail = (el) => {
+  const k = el.dataset.key, f = DB.get(k); if (!f) return; closeSheet();
+  const c = f.client && f.client.id ? DB.get(f.client.id) : null, t = texteMailFacture(f);
+  openSheet(`${sheetHead('Envoyer par mail', nomVente(f))}<form class="sbody form" data-form="facMail"><input type="hidden" name="key" value="${esc(k)}">
+    ${inp('fm-a', 'À', (c && c.email) || '', { name: 'a', type: 'email', req: true, attrs: { placeholder: 'adresse du client' }, sub: c && !c.email ? `Pas d'adresse dans la fiche de ${esc(displayName(c))} : elle y sera ajoutée.` : '' })}
+    ${inp('fm-o', 'Objet', t.objet, { name: 'objet', req: true })}
+    ${txt('fm-t', 'Message', t.texte, { name: 'texte', rows: 9 })}
+    <div class="field"><span class="flabel">Pièces jointes</span>
+      ${f.numero ? `<label class="row" style="font-size:14px"><input type="checkbox" name="pjFacture" checked> ${esc(invoiceFileName(f))}</label>` : ''}
+      ${f.blNumero ? `<label class="row" style="font-size:14px"><input type="checkbox" name="pjBl" checked> ${esc(bulletinFileName(f))}</label>` : ''}</div>
+    <label class="row" style="font-size:14px"><input type="checkbox" name="copie"> M'envoyer une copie (${esc(cfgMails().adresse || 'boîte commune')})</label>
+    <p class="hint">Le mail part de votre adresse Infomaniak, et une copie est rangée dans « Envoyés ».</p>
+    <div class="row-end"><button class="btn" type="button" data-act="facMailApp" data-key="${esc(k)}">Ouvrir dans ma messagerie</button><button class="btn primary" type="submit" id="fm-envoyer">Envoyer</button></div></form>`);
+};
+async function piecesFacture(f, v) {
+  const out = [];
+  if (f.numero && v.pjFacture) out.push({ nom: invoiceFileName(f), blob: invoicePdfBlob(f) });
+  if (f.blNumero && v.pjBl) out.push({ nom: bulletinFileName(f), blob: bulletinPdfBlob(f, true) });
+  return out;
+}
+FORMS.facMail = async (v) => {
+  const k = v.key, f = DB.get(k); if (!f) return;
+  const a = String(v.a || '').trim(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)) { toast('Adresse mail invalide.'); return; }
+  if (LOCAL_MODE || !Sync.sb) { toast("En mode essai, rien n'est envoyé."); return; }
+  if (!navigator.onLine) { toast('Il faut du réseau pour envoyer.'); return; }
+  const b = $('fm-envoyer'); if (b) { b.disabled = true; b.textContent = 'Envoi…'; }
+  try {
+    const pieces = await Promise.all((await piecesFacture(f, v)).map(async (p) => ({ nom: p.nom, type: 'application/pdf', base64: await blobB64(p.blob) })));
+    const { data, error } = await Sync.sb.functions.invoke('mails', { body: { envoyer: { a, objet: v.objet, texte: v.texte, pieces, cc: v.copie ? cfgMails().adresse || undefined : undefined, nomExp: cfg().nom } } });
+    if (error) { let m = error.message; try { const x = await error.context.clone().json(); if (x && x.erreur) m = x.erreur; } catch (_) { /* */ } throw new Error(m); }
+    const o = DB.get(k); DB.put(k, Object.assign({}, o, { envois: (o.envois || []).concat([{ le: new Date().toISOString(), a, par: Sync.me || '' }]) }));
+    const c = f.client && f.client.id ? DB.get(f.client.id) : null; if (c && !c.email) DB.put(f.client.id, Object.assign({}, c, { email: a }));
+    closeSheet(); toast(`Envoyé à ${a}${data && data.copie ? ' (copie dans « Envoyés »)' : ''}.`, 5000);
+  } catch (e) { if (b) { b.disabled = false; b.textContent = 'Envoyer'; } toast('Envoi impossible : ' + e.message, 8000); }
+};
+/* Sans passer par l'app : partage (téléphone) ou mail prérempli + PDF téléchargé (ordinateur) */
+ACTIONS.facMailApp = async (el) => {
+  const k = el.dataset.key, f = DB.get(k), form = el.closest('form'); if (!f || !form) return;
+  const v = Object.fromEntries(new FormData(form)); const pieces = await piecesFacture(f, v);
+  const fichiers = pieces.map((p) => new File([p.blob], p.nom, { type: 'application/pdf' }));
+  if (navigator.canShare && fichiers.length && navigator.canShare({ files: fichiers }) && matchMedia('(pointer: coarse)').matches) {
+    try { await navigator.share({ files: fichiers, title: v.objet, text: v.texte }); closeSheet(); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  for (const p of pieces) downloadFile(p.nom, p.blob, 'application/pdf');
+  location.href = `mailto:${encodeURIComponent(String(v.a || '').trim())}?subject=${encodeURIComponent(v.objet || '')}&body=${encodeURIComponent((v.texte || '') + '\n\n(Pièce jointe : ' + pieces.map((p) => p.nom).join(', ') + ')')}`;
+  toast('PDF téléchargé : glisse-le dans le mail qui s\'ouvre.', 6000);
+};
 /* ---------- Modifier ou supprimer une vente ----------
    Modifier : le formulaire « Nouvelle vente » se remplit avec la vente ; le numéro de facture et de bulletin restent,
    le stock et le total suivent. Une facture numérotée garde son paiement (il se change avec « Marquer comme payée »). */
