@@ -40,7 +40,7 @@ for (const largeur of [1200, 390]) {
     DB.put('msg:a', { de: 'noe', texte: 'Salut', cree: new Date().toISOString() });
     DB.put('self:a', { date: t, lieu: 'Stand', lignes: [{ prod: 'prod:c', qte: 4, prix: 9, unite: 'pièce', calibre: 'Moyen', poids: 1.5 }], retours: {}, statut: 'ouverte' });
   });
-  const routes = ['accueil', 'messages', 'messages/mails', 'contacts', 'contacts/prospection', 'taches', 'taches/semaine', 'calendrier', 'calendrier/mois', 'calendrier/heures',
+  const routes = ['accueil', 'messages', 'mails', 'contacts', 'contacts/prospection', 'taches', 'taches/semaine', 'calendrier', 'calendrier/mois', 'calendrier/heures',
     'factures', 'factures/nouvelle', 'factures/selfservice', 'factures/stock', 'factures/voir/fac:a', 'finances', 'finances/recettes', 'finances/associes', 'finances/annee', 'finances/bilan', 'finances/inventaire', 'finances/achats',
     'cultures', 'cultures/planches', 'cultures/journal', 'cultures/fiches', 'irrigation', 'irrigation/saison', 'irrigation/meteo', 'irrigation/reglages', 'drive', 'reglages', 'reglages/associes', 'reglages/donnees'];
   for (const r of routes) {

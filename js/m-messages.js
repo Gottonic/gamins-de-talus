@@ -20,21 +20,18 @@ const APP_URL = 'https://gottonic.github.io/gamins-de-talus/';
 const LIEN_MSG = `[🔗](<${APP_URL}#/messages>)`;
 
 MODULES.messages = {
-  titre: 'Messageries',
+  titre: 'Messagerie',
   tuile() {
     const n = nonLus().length, ms = messages(), der = ms[ms.length - 1];
-    const nm = typeof mailsATraiter === 'function' ? mailsATraiter().length : 0, mt = nm ? ` · ${nm} mail${nm > 1 ? 's' : ''} à traiter` : '';
-    if (!der) return { line: 'Discuter entre associés' + mt };
-    return { qui: der.de === Sync.me ? 'Toi :' : nomDe(der.de) + ' :', line: (der.photo && der.texte ? '📷 ' : '') + trunc(apercuMsg(der), 90) + mt, clamp: true, badge: n + nm };
+    if (!der) return { line: 'Discuter entre associés' };
+    return { qui: der.de === Sync.me ? 'Toi :' : nomDe(der.de) + ' :', line: (der.photo && der.texte ? '📷 ' : '') + trunc(apercuMsg(der), 90), clamp: true, badge: n };
   },
   render(sub) {
-    const nm = typeof mailsATraiter === 'function' ? mailsATraiter().length : 0;
-    const t = tabs('messages', [['', 'Discussion'], ['mails', `Mails${nm ? ' · ' + nm : ''}`]], sub || '');
-    if (sub === 'mails') return t + renderMails();
-    return t + renderMessages();
+    /* Les mails ont maintenant leur propre module : l'ancienne adresse y mène */
+    if (sub === 'mails') { setTimeout(() => location.replace('#/mails'), 0); return ''; }
+    return renderMessages();
   },
-  after(sub) {
-    if (sub === 'mails') { if (typeof releverMails === 'function') releverMails(); return; }
+  after() {
     marquerLu();
     /* Toujours ouvrir sur le dernier message, même quand les photos se chargent après coup */
     const box = $('msg-list');
@@ -108,7 +105,7 @@ function renderMessages() {
   const bandeau = edit ? `<div class="msg-prev"><span>✏️ Modifier ton message</span><button type="button" class="btn small" data-act="msgAnnuler">Annuler</button></div>`
     : cible ? `<div class="msg-prev"><span>↪ Réponse à <b>${esc(nomDe(cible.de))}</b> : ${esc(trunc(apercuMsg(cible), 80))}</span><button type="button" class="btn small" data-act="msgAnnuler">Annuler</button></div>` : '';
   return `<div class="panel chat">
-    <div class="between chat-head"><a class="btn small chat-fermer" href="#/messages/mails" aria-label="Fermer la discussion">←</a><h2>Entre nous</h2>
+    <div class="between chat-head"><a class="btn small chat-fermer" href="#/" data-act="chatFermer" aria-label="Fermer la discussion">←</a><h2>Entre nous</h2>
       <button class="btn small${dOn ? ' on' : ''}" type="button" data-act="discordSheet">${ICON_DISCORD}${dOn ? 'Notifications Discord activées' : 'Recevoir les notifications sur Discord'}</button></div>
     <p class="hint chat-who">${esc(personnes().map((p) => p.nom).join(', '))} · ${prevenus.length ? 'prévenus sur Discord : ' + esc(prevenus.join(', ')) : 'personne n\'est encore prévenu sur Discord'}</p>
     ${pinsHtml}
@@ -380,3 +377,19 @@ setTimeout(() => releverMails(), 15000);
 /* Sur téléphone, la discussion s'ouvre en plein écran (comme une app de messagerie) ; « ← » la ferme et mène aux mails */
 function majChatPlein() { document.body.classList.toggle('chat-plein', /^#\/messages\/?$/.test(location.hash) && matchMedia('(max-width: 700px)').matches); }
 window.addEventListener('hashchange', majChatPlein); window.addEventListener('resize', majChatPlein); majChatPlein();
+
+/* Fermer la discussion plein écran : retour à la page d'avant (sinon l'accueil) */
+let NAV_N = 0; window.addEventListener('hashchange', () => { NAV_N++; });
+ACTIONS.chatFermer = () => { if (NAV_N > 0) { const avant = location.hash; history.back(); setTimeout(() => { if (location.hash === avant) go('#/'); }, 250); } else go('#/'); };
+
+/* ---------- Module Mails (la boîte Infomaniak), à côté de la Messagerie ---------- */
+MODULES.mails = {
+  titre: 'Mails',
+  tuile() {
+    const nm = typeof mailsATraiter === 'function' ? mailsATraiter().length : 0, tous = typeof mails === 'function' ? mails() : [];
+    if (!tous.length) return { line: 'La boîte ' + (cfgMails().adresse || 'info@') };
+    return { line: nm ? `${nm} mail${nm > 1 ? 's' : ''} à traiter` : 'Rien à traiter', badge: nm };
+  },
+  render() { return renderMails(); },
+  after() { if (typeof releverMails === 'function') releverMails(); },
+};

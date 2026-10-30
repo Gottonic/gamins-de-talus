@@ -39,6 +39,14 @@ export async function jetonVapid(endpoint: string, d: string, pub = VAPID_PUBLIC
   const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, cle, enc.encode(corps));
   return corps + '.' + b64u(sig);
 }
+/* La clé privée (secret) correspond-elle à la clé publique de l'app ? On signe, puis on vérifie avec la clé publique. */
+export async function verifierCle(d: string, pub = VAPID_PUBLIC) {
+  try {
+    const p = deB64u(pub), jeton = await jetonVapid('https://exemple.org/x', d, pub), [h, c, sig] = jeton.split('.');
+    const cle = await crypto.subtle.importKey('jwk', { kty: 'EC', crv: 'P-256', x: b64u(p.slice(1, 33)), y: b64u(p.slice(33, 65)), ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, cle, deB64u(sig), enc.encode(h + '.' + c));
+  } catch (_) { return false; }
+}
 async function envoyer(abo: any, message: any, d: string) {
   const corps = await chiffrer(JSON.stringify(message), abo.p256dh, abo.auth);
   return fetch(abo.endpoint, { method: 'POST', body: corps, headers: { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'normal', Authorization: `vapid t=${await jetonVapid(abo.endpoint, d)}, k=${VAPID_PUBLIC}` } });
@@ -76,7 +84,9 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     if (!corps.test) return json({ erreur: 'réservé aux tests' }, 403);
     membre = m.personne;
   }
-  const d = env('VAPID_PRIVATE'); if (!d) return json({ erreur: 'Le secret VAPID_PRIVATE manque dans Supabase.' }, 500);
+  const d = String(env('VAPID_PRIVATE') || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
+  if (!d) return json({ erreur: 'Le secret VAPID_PRIVATE manque dans Supabase (Edge Functions → Secrets).' }, 500);
+  if (!(await verifierCle(d))) return json({ erreur: 'Le secret VAPID_PRIVATE ne correspond pas à la clé de l\'app : recopie-le exactement (43 caractères, sans espace ni guillemets).' }, 500);
   const lire = async (prefixe: string) => { const out: any[] = []; for (let f = 0; ; f += 1000) { const { data, error } = await sb.from('rows').select('key,data').like('key', prefixe + '%').eq('deleted', false).range(f, f + 999); if (error) throw error; out.push(...(data || [])); if (!data || data.length < 1000) break; } return out; };
   const abos = (await lire('push:')).map((r) => Object.assign({ key: r.key, personne: r.key.split(':')[1] }, r.data)).filter((a) => a.endpoint && a.p256dh && a.auth);
   const prefs: Record<string, any> = {}; for (const r of await lire('cfg:notif:')) prefs[r.key.split(':')[2]] = r.data || {};
@@ -93,7 +103,7 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     for (const p of personnes) if (p.k !== m.de && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de), texte: court(m.texte || (m.photo ? '📷 Photo' : ''), 140), url: APP + '#/messages', tag: 'msg' } });
   } else if (String(corps.key || '').startsWith('mail:')) {
     const m = corps.data || {}, de = (m.de && (m.de.nom || m.de.adresse)) || '?';
-    for (const p of personnes) if (veut(p.k, 'mails')) envois.push({ personne: p.k, message: { titre: '📧 ' + court(de, 40), texte: court(m.objet || '(sans objet)', 140), url: APP + '#/messages/mails', tag: 'mail' } });
+    for (const p of personnes) if (veut(p.k, 'mails')) envois.push({ personne: p.k, message: { titre: '📧 ' + court(de, 40), texte: court(m.objet || '(sans objet)', 140), url: APP + '#/mails', tag: 'mail' } });
   } else if (corps.matin) {
     const jour = aujourdhui(), taches = await lire('t:'), evs = await lire('ev:');
     for (const p of personnes) {
@@ -112,7 +122,7 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     try {
       const r = await envoyer(a, e.message, d);
       if (r.status === 404 || r.status === 410) await sb.from('rows').update({ deleted: true }).eq('key', a.key);
-      else if (r.ok) ok++; else erreurs.push(r.status + ' ' + court(await r.text(), 120));
+      else if (r.ok) ok++; else erreurs.push(`${new URL(a.endpoint).host} ${r.status} ${court(await r.text(), 120)}`);
     } catch (err) { erreurs.push(String((err as Error).message || err)); }
   }
   return json({ envoyes: ok, appareils: abos.length, erreurs });

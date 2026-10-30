@@ -53,7 +53,7 @@
 [data-mod="contacts"], .t-contacts { --mod: var(--c-contacts); --mod-soft: var(--s-contacts); }
 [data-mod="drive"], .t-drive { --mod: #5B6B7A; --mod-soft: #EAEEF2; }
 [data-mod="irrigation"], .t-irrigation { --mod: var(--c-irrigation); --mod-soft: var(--s-irrigation); }
-[data-mod="messages"], .t-messages { --mod: var(--c-messages); --mod-soft: var(--s-messages); }
+[data-mod="messages"], .t-messages, [data-mod="mails"], .t-mails { --mod: var(--c-messages); --mod-soft: var(--s-messages); }
 [data-mod="reglages"], .t-reglages { --mod: var(--c-reglages); --mod-soft: var(--s-reglages); }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -294,7 +294,7 @@ main { max-width: 1180px; margin: 0 auto; padding-block: 18px 64px;
 .tile span.warn { color: var(--late); font-weight: 700; }
 /* Téléphone : juste l'icône et le nom, 4 par ligne ; la pastille se pose sur le coin de l'icône, comme sur Android */
 @media (max-width: 600px) {
-  .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .tile { min-height: 0; padding: 10px 2px 9px; gap: 6px; align-items: center; border-radius: 14px; }
   .tile span.tline, .tile span.tline.clamp { display: none; }
   .tile b { font-family: var(--font-body); font-weight: 700; font-size: 12px; text-align: center; overflow-wrap: anywhere; }

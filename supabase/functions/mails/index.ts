@@ -62,7 +62,7 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
     for (const w of wh || []) {
       if (!w.data || !w.data.webhook) continue;
       const lignes = nouveaux.slice(0, 5).map((m) => `📧 **${m.data.de.nom || m.data.de.adresse}** : ${m.data.objet || '(sans objet)'}`).join('\n') + (nouveaux.length > 5 ? `\n… et ${nouveaux.length - 5} autres` : '');
-      const fd = new FormData(); fd.append('payload_json', JSON.stringify({ username: 'Gamins de Talus', content: `[🔗](<${APP}#/messages/mails>) ${nouveaux.length} nouveau${nouveaux.length > 1 ? 'x' : ''} mail${nouveaux.length > 1 ? 's' : ''}\n${lignes}`.slice(0, 1900), allowed_mentions: { parse: [] } }));
+      const fd = new FormData(); fd.append('payload_json', JSON.stringify({ username: 'Gamins de Talus', content: `[🔗](<${APP}#/mails>) ${nouveaux.length} nouveau${nouveaux.length > 1 ? 'x' : ''} mail${nouveaux.length > 1 ? 's' : ''}\n${lignes}`.slice(0, 1900), allowed_mentions: { parse: [] } }));
       await fetch(w.data.webhook, { method: 'POST', body: fd }).catch(() => {});
     }
   }
