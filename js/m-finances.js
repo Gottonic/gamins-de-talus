@@ -111,7 +111,7 @@ function renderDepenses() {
   const tot = list.reduce((a, d) => a + num(d.montant), 0);
   const banner = nSansJ.length ? `<div class="banner"><span><b>${nSansJ.length} dépense${nSansJ.length > 1 ? 's' : ''} sans justificatif</b> (${chf(nSansJ.reduce((a, d) => a + num(d.montant), 0))}). Sans ticket ni facture, la dépense ne peut pas être justifiée en comptabilité.</span>
     <button class="btn small" type="button" data-act="finSansJ">${FIN.sansJ ? 'Voir toutes les dépenses' : 'Voir seulement celles-ci'}</button></div>` : '';
-  return `<div class="panel"><div class="between"><h2>Dépenses</h2><div class="row"><button class="btn small" type="button" data-act="depCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="depEdit">+ Dépense</a></div></div>
+  return `<div class="panel" data-depot="nouvelle"><div class="between"><h2>Dépenses</h2><div class="row"><button class="btn small" type="button" data-act="depCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="depEdit">+ Dépense</a></div></div>
     <div class="grid2">
       ${fld('fin-q', 'Rechercher', `<input id="fin-q" type="search" value="${esc(FIN.q)}" placeholder="Objet, justificatif…">`)}
       ${sel('fin-annee', 'Année', FIN.annee, [['', 'Toutes']].concat(ys.map((y) => [y, y])))}
@@ -120,8 +120,9 @@ function renderDepenses() {
     </div>
     ${banner}
     ${gs.length ? `<details class="garanties"${gs.some((d) => d.garantie <= addDays(todayISO(), 60)) ? ' open' : ''}><summary>🛡️ <b>${gs.length} achat${gs.length > 1 ? 's' : ''} sous garantie</b></summary><div class="items">${gs.map((d) => `<button type="button" class="item" data-act="depEdit" data-key="${esc(d.key)}"><span class="who"><strong>${esc(d.objet)}</strong><span class="meta">acheté le ${fmtDate(d.date)} · ${chf(d.montant)}${d.garantieNote ? ' · ' + esc(d.garantieNote) : ''}${(d.fichiers || []).length ? ' · 📎 preuve d\'achat' : ' · ⚠️ pas de ticket joint'}</span></span><span class="num${d.garantie <= addDays(todayISO(), 60) ? ' bad' : ''}">jusqu'au ${fmtDate(d.garantie)}<br><span class="hint">${esc(finGarantieTxt(d.garantie))}</span></span></button>`).join('')}</div></details>` : ''}
-    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Objet</th><th>Catégorie</th><th>Payé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}${sousGarantie(d) ? ` <span class="clip" title="Garantie jusqu'au ${fmtDate(d.garantie)}">🛡️</span>` : ''}</td><td>${esc(d.categorie || '—')}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
+    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Objet</th><th>Catégorie</th><th>Payé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}" data-depot="ligne"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}${sousGarantie(d) ? ` <span class="clip" title="Garantie jusqu'au ${fmtDate(d.garantie)}">🛡️</span>` : ''}</td><td>${esc(d.categorie || '—')}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="4">${list.length} dépense${list.length > 1 ? 's' : ''}</td><td class="r num">${money(tot)}</td></tr></tfoot></table></div>` : '<p class="empty">Aucune dépense ne correspond.</p>'}
+    <p class="hint depot-aide">Depuis un dossier de l'ordinateur : glisse un ticket ou une facture (photo ou PDF) sur une ligne pour l'y joindre, ou ailleurs dans ce cadre pour créer une nouvelle dépense avec.</p>
   </div>`;
 }
 ACTIONS.finSansJ = () => { FIN.sansJ = !FIN.sansJ; render(); };
@@ -129,7 +130,7 @@ ACTIONS.depEdit = (el) => {
   const k = el.dataset.key || '', d = k ? DB.get(k) : Object.assign({ date: todayISO(), type: 'charge', par: Sync.me || 'nicolas', categorie: '' }, el._pre || {});
   const inInv = k && DB.all('inv:').some((i) => i.depenseId === k);
   DEP.key = k; DEP.fichiers = (d.fichiers || []).slice();
-  openSheet(`${sheetHead(k ? 'Modifier la dépense' : 'Nouvelle dépense', k && d.n ? 'N° ' + d.n : '')}<form class="sbody form" data-form="dep"><input type="hidden" name="key" value="${esc(k)}">
+  openSheet(`${sheetHead(k ? 'Modifier la dépense' : 'Nouvelle dépense', k && d.n ? 'N° ' + d.n : '')}<form class="sbody form" data-form="dep" data-depot="dep"><input type="hidden" name="key" value="${esc(k)}">
     <div class="grid2">${inp('dp-date', 'Date', d.date, { name: 'date', type: 'date', req: true })}${inp('dp-montant', 'Montant CHF', d.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}</div>
     ${inp('dp-objet', 'Objet', d.objet, { name: 'objet', req: true, attrs: { maxlength: 90 } })}
     <div class="field"><span class="flabel">Type</span><div class="seg">
@@ -140,7 +141,8 @@ ACTIONS.depEdit = (el) => {
     ${typeof choixPourHtml === 'function' ? choixPourHtml('dp-pour', d.pour, String(d.date || todayISO()).slice(0, 4)) : ''}
     <div class="field"><span class="flabel">Justificatif (important)</span>
       <div id="dp-fichiers">${fichiersDep()}</div>
-      <label class="btn justif-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>Photo du ticket ou PDF de la facture<input id="dp-file" type="file" accept="image/*,application/pdf" hidden></label>
+      <label class="btn justif-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>Photo du ticket ou PDF de la facture<input id="dp-file" type="file" accept="image/*,application/pdf" multiple hidden></label>
+      <span class="sub depot-aide">…ou glisse les fichiers ici depuis un dossier de l'ordinateur (ticket, facture, certificat de garantie).</span>
       <span class="sub" id="dp-just-etat">${sansJustificatif(d) ? '<span class="pill nojust">Manquant</span> Sans justificatif, la dépense ne compte pas en comptabilité.' : ''}</span></div>
     ${inp('dp-just', 'Référence du justificatif (facultatif)', d.justificatif, { name: 'justificatif', attrs: { placeholder: 'N° de facture, nom du scan…' } })}
     ${inp('dp-rem', 'Remarque', d.remarque, { name: 'remarque' })}
@@ -150,7 +152,7 @@ ACTIONS.depEdit = (el) => {
       <span class="sub">Le ticket ou la facture joints ci-dessus servent de preuve d'achat : ils restent dans l'app tant que la garantie court. Tu peux aussi y joindre le certificat de garantie.</span></div>
     ${!inInv ? `<label class="row" style="font-size:14px"><input type="checkbox" name="versInventaire"${el._pre && el._pre.type === 'investissement' ? ' checked' : ''}> Ajouter à l'inventaire (pour l'amortir)</label>` : '<p class="hint">Cet achat est dans l\'inventaire.</p>'}
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette dépense">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
-  const f = $('dp-file'); if (f) f.addEventListener('change', () => { joindreDep(f.files[0]); f.value = ''; });
+  const f = $('dp-file'); if (f) f.addEventListener('change', async () => { const l = [...f.files]; f.value = ''; for (const x of l) await joindreDep(x); });
 };
 /* Justificatifs joints : envoyés tout de suite ; sur une dépense existante, enregistrés aussitôt (rien ne se perd si on ferme) */
 function fichiersDep() {
@@ -179,6 +181,25 @@ ACTIONS.depGarantie = (el) => {
   const g = $('dp-gar'), d = ($('dp-date') && $('dp-date').value) || todayISO(), n = Number(el.dataset.ans);
   if (g) g.value = n ? addDays(ajouterMois(d, 12 * n), -1) : '';
 };
+/* Glisser-déposer depuis l'ordinateur : sur la fiche d'une dépense, sur une ligne de la liste, ou dans le cadre (nouvelle dépense) */
+const avecFichiers = (e) => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files');
+document.addEventListener('dragover', (e) => {
+  const z = e.target.closest && e.target.closest('[data-depot]'); document.querySelectorAll('[data-depot].drop').forEach((x) => { if (x !== z) x.classList.remove('drop'); });
+  if (!z || !avecFichiers(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; z.classList.add('drop');
+});
+document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.querySelectorAll('[data-depot].drop').forEach((x) => x.classList.remove('drop')); });
+document.addEventListener('drop', async (e) => {
+  const z = e.target.closest && e.target.closest('[data-depot]'); if (!z || !avecFichiers(e)) return;
+  e.preventDefault(); z.classList.remove('drop');
+  const fs = [...e.dataTransfer.files].filter((f) => /^image\/|pdf$/.test(f.type) || /\.(pdf|jpe?g|png|heic|webp)$/i.test(f.name));
+  if (!fs.length) { toast('Seulement des photos ou des PDF.'); return; }
+  if (z.dataset.depot === 'ligne') ACTIONS.depEdit({ dataset: { key: z.dataset.key } });
+  else if (z.dataset.depot === 'nouvelle') {
+    ACTIONS.depEdit({ dataset: {} });
+    const o = $('dp-objet'); if (o && !o.value) o.value = trunc(fs[0].name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' '), 80);
+  }
+  for (const f of fs) await joindreDep(f);
+});
 ACTIONS.depFichierOff = (el) => { DEP.fichiers.splice(Number(el.dataset.i), 1); majFichiersDep(); };
 FORMS.dep = (v) => {
   const m = num(v.montant); if (!(m > 0) || !v.date || !v.objet) { toast('Date, montant et objet sont obligatoires.'); return; }
