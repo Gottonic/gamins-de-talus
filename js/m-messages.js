@@ -325,7 +325,7 @@ function renderMails() {
     return `<div class="mail${m.statut === 'encours' ? ' encours' : ''}${['traite', 'ignore'].includes(m.statut || '') ? ' fini' : ''}">
       <div class="between"><b>${esc((m.de && (m.de.nom || m.de.adresse)) || '?')}</b><span class="hint">${esc(depuis(m.date))}</span></div>
       <div class="mail-objet">${esc(m.objet || '(sans objet)')}</div>
-      ${ct ? `<a class="hint" href="#/${ct.prospect ? 'factures/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc((m.de && m.de.adresse) || '')}</span>`}
+      ${ct ? `<a class="hint" href="#/${ct.prospect ? 'contacts/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc((m.de && m.de.adresse) || '')}</span>`}
       <p class="mail-extrait${MAIL.ouvert === m.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(m.key)}">${esc(m.extrait || '')}</p>
       <div class="mail-etat"><span class="tpill">${esc(etatTxt)}</span>${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
       <div class="row mail-actions">

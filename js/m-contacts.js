@@ -51,10 +51,13 @@ MODULES.contacts = {
     return { line: `${n} contact${n > 1 ? 's' : ''}` };
   },
   render(sub, id) {
-    /* La prospection est maintenant dans Ventes : les anciennes adresses y mènent */
-    const pr = sub === 'prospection' || sub === 'prospect' || sub === 'convertir' || (sub === 'modifier' && (DB.get(id) || {}).prospect);
-    if (pr) { setTimeout(() => location.replace(`#/factures/${sub === 'modifier' ? 'pmodifier' : sub}${id ? '/' + encodeURIComponent(id) : ''}`), 0); return ''; }
-    return renderContacts(sub, id);
+    /* Deux onglets : les contacts (clients, partenaires…) et la prospection (futurs clients) */
+    if (sub === 'modifier' && (DB.get(id) || {}).prospect) sub = 'pmodifier';
+    const pr = ['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub);
+    const np = prospects().filter((c) => !['clos', 'valide'].includes(groupeStatut(pStat(c)))).length;
+    const t = tabs('contacts', [['', 'Contacts'], ['prospection', `Prospection${np ? ' · ' + np : ''}`]], pr ? 'prospection' : '');
+    if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
+    return t + renderContacts(sub, id);
   },
   after(sub) { afterContactsProspection(sub); },
 };
@@ -136,7 +139,7 @@ function contactForm(c, prospect) {
   const k = c ? c.key : '';
   c = c || { type: CT.type || 'pro', prospect: !!prospect, prospection: prospect ? { statut: 'À contacter', priorite: 2, categorie: 'Restaurant' } : undefined };
   const p = c.prospection || {}, isP = !!c.prospect;
-  const back = k ? (isP ? '#/factures/prospect/' : '#/contacts/voir/') + encodeURIComponent(k) : isP ? '#/factures/prospection' : '#/contacts';
+  const back = k ? (isP ? '#/contacts/prospect/' : '#/contacts/voir/') + encodeURIComponent(k) : isP ? '#/contacts/prospection' : '#/contacts';
   return `<form class="panel form" data-form="contact"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="prospect" value="${isP ? '1' : ''}">
     <h2>${k ? 'Modifier ' + esc(displayName(c)) : isP ? 'Nouveau prospect' : 'Nouveau contact'}</h2>
     <div class="grid2">
@@ -169,16 +172,16 @@ FORMS.contact = (v) => {
     o.type = TYPE_DE_CATEGORIE[v.categorie] || 'autre';
   } else o.type = v.type || 'autre';
   DB.put(k, o); toast(v.key ? 'Fiche mise à jour.' : `${displayName(o)} ajouté.`);
-  go((o.prospect ? '#/factures/prospect/' : '#/contacts/voir/') + encodeURIComponent(k));
+  go((o.prospect ? '#/contacts/prospect/' : '#/contacts/voir/') + encodeURIComponent(k));
 };
 ACTIONS.ctDel = (el) => { const c = DB.get(el.dataset.key); confirmSheet('Supprimer ' + displayName(c) + ' ?', 'Ses factures restent intactes. La fiche reste récupérable dans la corbeille (Réglages → Données).', 'ctDelOk', 'Supprimer', { key: el.dataset.key }); };
-ACTIONS.ctDelOk = (el) => { const c = DB.get(el.dataset.key); DB.del(el.dataset.key); closeSheet(); toast('Supprimé.'); go(c && c.prospect ? '#/factures/prospection' : '#/contacts'); };
+ACTIONS.ctDelOk = (el) => { const c = DB.get(el.dataset.key); DB.del(el.dataset.key); closeSheet(); toast('Supprimé.'); go(c && c.prospect ? '#/contacts/prospection' : '#/contacts'); };
 ACTIONS.copy = async (el) => { try { await navigator.clipboard.writeText(el.dataset.v); toast('Copié.'); } catch (e) { toast('Copie impossible : sélectionne le texte à la main.'); } };
 ACTIONS.ctVersProspect = (el) => {
   const c = DB.get(el.dataset.key); if (!c) return;
   const j = (c.journal || []).concat([{ date: todayISO(), par: Sync.me || '', statut: 'En cours', note: 'Remis en prospection.' }]);
   DB.put(el.dataset.key, Object.assign({}, c, { prospect: true, journal: j, prospection: Object.assign({ categorie: 'Autre', priorite: 2 }, c.prospection || {}, { statut: 'En cours' }) }));
-  go('#/factures/prospect/' + encodeURIComponent(el.dataset.key));
+  go('#/contacts/prospect/' + encodeURIComponent(el.dataset.key));
 };
 
 /* ================= Prospection ================= */
@@ -204,7 +207,7 @@ function renderProspection(sub, id) {
     : !shown.length ? '<p class="empty">Aucun prospect ne correspond à ces filtres.</p>'
     : shown.map((c) => {
       const p = c.prospection || {}, last = dernierContact(c);
-      return `<a class="item prow${c.key === id ? ' sel' : ''}${aRelancer(c) ? ' due' : ''}" href="#/factures/prospect/${encodeURIComponent(c.key)}">
+      return `<a class="item prow${c.key === id ? ' sel' : ''}${aRelancer(c) ? ' due' : ''}" href="#/contacts/prospect/${encodeURIComponent(c.key)}">
         <span class="prio p${p.priorite || 0}" title="Priorité ${p.priorite || '—'}">${p.priorite || '·'}</span>
         <span class="who"><strong>${esc(displayName(c))}</strong><span class="meta">${esc([p.categorie, p.lieu || c.localite].filter(Boolean).join(' · '))}${aRelancer(c) ? ` · <b class="err">à relancer (${fmtDateCourt(p.relanceLe)})</b>` : last ? ` · dernier échange ${fmtDateCourt(last)}` : ''}</span></span>
         ${pillStatut(pStat(c))}</a>`;
@@ -222,7 +225,7 @@ function renderProspection(sub, id) {
       <div class="stat"><span class="k">Validés</span><span class="v">${cnt.valide}</span><span class="s">${((n) => `${n} déjà passé${n > 1 ? 's' : ''} en client${n > 1 ? 's' : ''}`)(contacts().filter((c) => c.devenuClientLe || (c.prospection || {}).statut === 'Validé').length)}</span></div>
     </div>
     <div class="split wide-left"><div class="panel">
-      <div class="between"><h2>Prospection</h2><a class="btn primary small" href="#/factures/prospect/nouveau">+ Prospect</a></div>
+      <div class="between"><h2>Prospection</h2><a class="btn primary small" href="#/contacts/prospect/nouveau">+ Prospect</a></div>
       <div class="grid2">${fld('pr-search', 'Rechercher', `<input id="pr-search" type="search" value="${esc(PR.search)}" placeholder="Nom, lieu, note…" autocomplete="off">`)}
         ${sel('pr-cat', 'Catégorie', PR.categorie, [['', 'Toutes']].concat(cats.map((x) => [x, x])))}</div>
       <div class="chips">${chips}</div><div class="chips">${prios}</div>
@@ -243,7 +246,7 @@ function ficheProspect(c) {
   const p = c.prospection || {}, st = pStat(c), g = groupeStatut(st);
   return `<div class="panel">
     <div class="between"><div><h2>${esc(displayName(c))}</h2><div class="row">${pillStatut(st)}<span class="tpill">${esc(p.categorie || '—')}</span>${p.priorite ? `<span class="tpill">Priorité ${p.priorite}</span>` : ''}</div></div>
-      <div class="row"><a class="btn primary" href="#/factures/convertir/${encodeURIComponent(c.key)}">Devenir client</a><a class="btn" href="#/factures/pmodifier/${encodeURIComponent(c.key)}">Modifier</a></div></div>
+      <div class="row"><a class="btn primary" href="#/contacts/convertir/${encodeURIComponent(c.key)}">Devenir client</a><a class="btn" href="#/contacts/pmodifier/${encodeURIComponent(c.key)}">Modifier</a></div></div>
     ${dernierEchange(c)}
     ${p.horaires ? `<div class="banner callhours"><span><b>Quand appeler :</b> ${esc(p.horaires)}</span></div>` : ''}
     ${lignesContact(c)}
@@ -290,7 +293,7 @@ function formConversion(c) {
     </div>
     ${p.adresseTexte ? `<p class="hint">Adresse notée dans le tableur : ${esc(p.adresseTexte)}</p>` : ''}
     ${txt('cv-note', 'Note', '', { name: 'note', rows: 2, sub: 'Ex. première commande : 10 kg de butternut' })}
-    <div class="row-end"><a class="btn" href="#/factures/prospect/${encodeURIComponent(c.key)}">Annuler</a><button class="btn" type="submit" name="ensuite" value="fiche">Passer en client</button><button class="btn primary" type="submit" name="ensuite" value="facture">Passer en client et facturer</button></div>
+    <div class="row-end"><a class="btn" href="#/contacts/prospect/${encodeURIComponent(c.key)}">Annuler</a><button class="btn" type="submit" name="ensuite" value="fiche">Passer en client</button><button class="btn primary" type="submit" name="ensuite" value="facture">Passer en client et facturer</button></div>
   </form>`;
 }
 FORMS.convertir = (v, form) => {

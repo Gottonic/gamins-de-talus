@@ -12,13 +12,13 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 | Module | Ce qu'on y fait |
 |---|---|
 | Messages | Discussion entre associés, avec photos : non lus sur l'accueil, « vu par », notifications Discord au choix de chacun (bouton dans la messagerie) |
-| Ventes | Factures QR (virement) ou payées comptant, PDF, suivi des paiements, produits et prix. Prospection : établissements à appeler avec statut, priorité, horaires d'appel, journal des échanges, relances, pitch d'appel ; un prospect devient client en un clic |
+| Ventes | Factures QR (virement) ou payées comptant, bulletins de livraison, PDF, suivi des paiements, vente directe, stock et prix |
 | Finances | Inventaire et amortissements, achats prévus. Fin d'année (chaque associé télécharge l'archive une fois) : vérifications, comptes en PDF et archive .zip (factures, justificatifs, tableaux) à garder 10 ans. Dépenses (photo du ticket ou PDF de la facture joint), recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
 | Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Onglet Heures : la semaine (une case = un clic pour noter) et le bilan de l'année, agenda |
 | Tâches | Tâches partagées : responsable, échéance, domaine, urgent |
 | Cultures | « Nos cultures » : chaque culture se crée ici (rendement, prix, semaines, espacements, variété, fumure, notes), avec son bilan saison après saison. Le plan d'une saison les place (liste déroulante) et précise planches, longueur, récolte réelle ; corrections d'analyse de sol dans les hypothèses. Plan : planning des semaines, planches, récoltes prévues et réelles, ventes, plantons, compost, engrais |
 | Irrigation | Arrosage conseillé par culture et par semaine (méthode FAO-56 : ETc = Kc × ET0 selon le stade), selon votre matériel (goutte-à-goutte, aspersion) ; pluie efficace, report d'une semaine à l'autre, heures réellement arrosées ; météo de Fribourg / Posieux mise à jour chaque jour |
-| Contacts | Clients, grossistes, restauration collective, fournisseurs, partenaires |
+| Contacts | Clients, grossistes, restauration collective, fournisseurs, partenaires (favoris). Prospection : établissements à appeler avec statut, priorité, horaires d'appel, journal des échanges, relances, pitch d'appel ; un prospect devient client en un clic |
 | Réglages | Coordonnées, IBAN, associés et parts, export / import, corbeille |
 
 ## Mise en route (une seule fois)

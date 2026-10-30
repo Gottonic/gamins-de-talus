@@ -112,17 +112,16 @@ MODULES.factures = {
     return { line: f.length ? `${f.length} vente${f.length > 1 ? 's' : ''}, tout est payé` : 'Ventes, stock et prix' };
   },
   render(sub, id) {
-    const pr = ['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub);
-    const np = prospects().filter((c) => !['clos', 'valide'].includes(groupeStatut(pStat(c)))).length;
+    /* La prospection est maintenant dans Contacts : les anciennes adresses y mènent */
+    if (['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub)) { setTimeout(() => location.replace(`#/contacts/${sub}${id ? '/' + encodeURIComponent(id) : ''}`), 0); return ''; }
     if (sub === 'produits') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
-    const t = tabs('factures', [['', 'Ventes'], ['nouvelle', 'Nouvelle vente'], ['selfservice', 'Vente directe'], ['stock', 'Stock et prix'], ['prospection', `Prospection${np ? ' · ' + np : ''}`]], sub === 'voir' ? '' : pr ? 'prospection' : sub);
-    if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
+    const t = tabs('factures', [['', 'Ventes'], ['nouvelle', 'Nouvelle vente'], ['selfservice', 'Vente directe'], ['stock', 'Stock et prix']], sub === 'voir' ? '' : sub);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'stock') return t + renderStock();
     if (sub === 'selfservice') return t + renderSelfService();
     return t + renderListeFactures(sub === 'voir' ? id : '');
   },
-  after(sub) { if (sub === 'nouvelle') brancherBrouillon(); if (sub === 'stock') brancherStock(); if (['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub)) afterContactsProspection(sub); },
+  after(sub) { if (sub === 'nouvelle') brancherBrouillon(); if (sub === 'stock') brancherStock(); },
 };
 
 function renderListeFactures(selKey) {
