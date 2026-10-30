@@ -287,7 +287,7 @@ ACTIONS.discordOff = () => { if (DB.get('cfg:discord:' + Sync.me)) DB.del('cfg:d
    mail:<id> = { de: { nom, adresse }, objet, date, extrait, uid, messageId,
                  statut: '' | 'encours' | 'traite' | 'ignore', par (qui s'en occupe), vus: { personne: date }, tache }
    cfg:mails = { adresse, webmail } (réglages) ; cfg:mails:etat = { derniere, erreur, nouveaux } (écrit par la fonction). */
-const MAIL = { filtre: 'atraiter', ouvert: '' };
+const MAIL = { filtre: 'atraiter', ouvert: '', complet: {}, charge: '' };
 const mails = () => DB.all('mail:').sort((a, b) => String(b.date).localeCompare(String(a.date)));
 const mailsATraiter = () => mails().filter((m) => !['traite', 'ignore'].includes(m.statut || ''));
 const cfgMails = () => Object.assign({ webmail: 'https://mail.infomaniak.com' }, DB.get('cfg:mails') || {});
@@ -323,7 +323,8 @@ function renderMails() {
       <div class="between"><b>${esc((m.de && (m.de.nom || m.de.adresse)) || '?')}</b><span class="hint">${esc(depuis(m.date))}</span></div>
       <div class="mail-objet">${esc(m.objet || '(sans objet)')}</div>
       ${ct ? `<a class="hint" href="#/${ct.prospect ? 'contacts/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc((m.de && m.de.adresse) || '')}</span>`}
-      <p class="mail-extrait${MAIL.ouvert === m.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(m.key)}">${esc(m.extrait || '')}</p>
+      ${MAIL.complet[m.key] ? mailCompletHtml(m) : `<p class="mail-extrait${MAIL.ouvert === m.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(m.key)}">${esc(m.extrait || '')}</p>
+      <button class="btn link small" type="button" data-act="mailLire" data-key="${esc(m.key)}">${MAIL.charge === m.key ? 'Chargement…' : 'Lire en entier et voir les pièces jointes'}</button>`}
       <div class="mail-etat"><span class="tpill">${esc(etatTxt)}</span>${(m.reponses || []).length ? `<span class="hint">↩ répondu par ${esc(m.reponses.map((r) => nomDe(r.par) + ' le ' + fmtDateCourt(String(r.le).slice(0, 10))).join(', '))}</span>` : ''}${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
       <div class="row mail-actions">
         <button class="btn primary small" type="button" data-act="mailRepondre" data-key="${esc(m.key)}">↩ Répondre</button>
@@ -343,13 +344,16 @@ ACTIONS.mailFiltre = (el) => { MAIL.filtre = el.dataset.k; render(); };
 ACTIONS.mailOuvrir = (el) => { MAIL.ouvert = MAIL.ouvert === el.dataset.key ? '' : el.dataset.key; render(); };
 ACTIONS.mailMoi = (el) => { ouvrirWebmail(); majMail(el.dataset.key, { statut: 'encours', par: Sync.me }); };
 ACTIONS.mailVerifier = (el) => { ouvrirWebmail(); majMail(el.dataset.key, {}); };
-ACTIONS.mailStatut = (el) => { const s = el.dataset.s; majMail(el.dataset.key, s ? { statut: s, par: (DB.get(el.dataset.key) || {}).par || Sync.me } : { statut: '', par: '' }); closeSheet(); };
+ACTIONS.mailStatut = (el) => { const s = el.dataset.s; majMail(el.dataset.key, s ? { statut: s, par: (DB.get(el.dataset.key) || {}).par || Sync.me } : { statut: '', par: '' }); closeSheet(); if (s) boite(el.dataset.key, 'lu').catch(() => {}); };
 ACTIONS.mailRelever = () => releverMails(true);
 ACTIONS.mailPlus = (el) => {
   const k = el.dataset.key, m = DB.get(k); if (!m) return; const ct = contactDuMail(m.de && m.de.adresse);
   const b = (act, txt, extra = '') => `<button type="button" class="menu-it" data-act="${act}" data-key="${esc(k)}"${extra}>${txt}</button>`;
   openSheet(`${sheetHead(m.objet || '(sans objet)', (m.de && m.de.adresse) || '')}<div class="sbody"><p style="white-space:pre-wrap;margin-top:0">${esc(m.extrait || '')}</p><div class="menu-list">
     ${b('mailTache', '✅ En faire une tâche')}
+    ${m.uid ? b('mailArchiver', '🗄️ Archiver (dossier « Archives » chez Infomaniak)') : ''}
+    ${m.uid ? b('mailNonLu', '✉️ Marquer comme non lu chez Infomaniak') : ''}
+    ${m.uid ? b('mailSuppr', '🗑️ Supprimer (corbeille Infomaniak)') : ''}
     ${b('mailStatut', '🙈 Pas important : ignorer', ' data-s="ignore"')}
     ${!ct && m.de && m.de.adresse ? b('mailContact', '👤 Ajouter l\'expéditeur aux contacts') : ''}
     ${m.statut ? b('mailStatut', '↩︎ Remettre à traiter', ' data-s=""') : ''}
@@ -442,4 +446,60 @@ FORMS.mailEnvoyer = async (v) => {
     if (m) majMail(v.repond, Object.assign({ reponses: (m.reponses || []).concat([{ le: new Date().toISOString(), par: Sync.me || '', a }]) }, v.traite ? { statut: 'traite', par: m.par || Sync.me } : {}));
     ECR.pieces = []; closeSheet(); toast(`Envoyé à ${a}${data && data.copie ? ' (copie dans « Envoyés »)' : ''}.`, 5000);
   } catch (e) { if (b) { b.disabled = false; b.textContent = 'Envoyer'; } toast('Envoi impossible : ' + e.message, 8000); }
+};
+
+/* ---------- La boîte chez Infomaniak : lire en entier, pièces jointes, archiver, supprimer, lu / non lu ----------
+   Tout passe par la fonction « mails » au moment où on le demande : les pièces jointes restent chez Infomaniak. */
+async function boite(k, action, extra) {
+  const m = DB.get(k); if (!m || !m.uid) throw new Error('mail introuvable');
+  if (LOCAL_MODE || !Sync.sb) throw new Error('pas en mode essai');
+  const uv = String(k).replace(/^mail:/, '').split('-')[0];
+  const { data, error } = await Sync.sb.functions.invoke('mails', { body: { boite: Object.assign({ action, uid: m.uid, uv }, extra || {}) } });
+  if (error) { let msg = error.message; try { const x = await error.context.clone().json(); if (x && x.erreur) msg = x.erreur; } catch (_) { /* */ } throw new Error(msg); }
+  return data;
+}
+const lienTexte = (t) => esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+function mailCompletHtml(m) {
+  const c = MAIL.complet[m.key];
+  return `<div class="mail-complet">${lienTexte(c.texte || '(pas de texte)')}</div>
+    ${(c.pieces || []).length ? `<div class="mail-pj">${c.pieces.map((p) => `<span class="pj">📎 ${esc(trunc(p.nom, 40))} <span class="hint">${tailleTxt(p.taille)}</span>
+      <button class="btn small" type="button" data-act="mailPiece" data-key="${esc(m.key)}" data-i="${p.index}">Télécharger</button>
+      <button class="btn small" type="button" data-act="mailPieceDep" data-key="${esc(m.key)}" data-i="${p.index}" title="Créer une dépense avec cette pièce comme justificatif">→ Dépense</button></span>`).join('')}</div>` : ''}
+    <button class="btn link small" type="button" data-act="mailReplier" data-key="${esc(m.key)}">Replier</button>`;
+}
+ACTIONS.mailLire = async (el) => {
+  const k = el.dataset.key; MAIL.charge = k; render();
+  try { MAIL.complet[k] = await boite(k, 'lire'); majMail(k, {}); } catch (e) { toast('Lecture impossible : ' + e.message, 7000); }
+  MAIL.charge = ''; render();
+};
+ACTIONS.mailReplier = (el) => { delete MAIL.complet[el.dataset.key]; render(); };
+async function pieceDeMail(k, i) {
+  const x = await boite(k, 'piece', { index: Number(i) });
+  const o = Uint8Array.from(atob(x.base64), (ch) => ch.charCodeAt(0));
+  return new File([o], x.nom, { type: x.type || 'application/octet-stream' });
+}
+ACTIONS.mailPiece = async (el) => {
+  toast('Téléchargement…');
+  try { const f = await pieceDeMail(el.dataset.key, el.dataset.i); downloadFile(f.name, f, f.type); } catch (e) { toast('Téléchargement impossible : ' + e.message, 7000); }
+};
+/* Une facture fournisseur reçue par mail → une dépense avec ce justificatif (rangé dans l'app, comme une photo de ticket) */
+ACTIONS.mailPieceDep = async (el) => {
+  const m = DB.get(el.dataset.key); toast('Préparation du justificatif…');
+  try {
+    const f = await pieceDeMail(el.dataset.key, el.dataset.i);
+    ACTIONS.depEdit({ dataset: {} });
+    const o = $('dp-objet'); if (o && !o.value) o.value = trunc(`${(m.de && (m.de.nom || m.de.adresse)) || ''} · ${m.objet || ''}`, 80);
+    const d = $('dp-date'); if (d && m.date) d.value = String(m.date).slice(0, 10);
+    await joindreDep(f);
+  } catch (e) { toast('Impossible : ' + e.message, 7000); }
+};
+ACTIONS.mailNonLu = async (el) => { closeSheet(); try { await boite(el.dataset.key, 'nonlu'); toast('Marqué comme non lu chez Infomaniak.'); } catch (e) { toast('Impossible : ' + e.message, 7000); } };
+ACTIONS.mailArchiver = async (el) => {
+  const k = el.dataset.key; closeSheet();
+  try { await boite(k, 'archiver'); majMail(k, { statut: 'traite', par: (DB.get(k) || {}).par || Sync.me, archive: true }); toast('Archivé chez Infomaniak.'); } catch (e) { toast('Archivage impossible : ' + e.message, 7000); }
+};
+ACTIONS.mailSuppr = (el) => confirmSheet('Supprimer ce mail ?', 'Il part dans la corbeille de la boîte Infomaniak (où il se récupère encore), et disparaît de l\'app.', 'mailSupprOk', 'Supprimer', { key: el.dataset.key });
+ACTIONS.mailSupprOk = async (el) => {
+  const k = el.dataset.key; closeSheet();
+  try { await boite(k, 'supprimer'); delete MAIL.complet[k]; DB.del(k); toast('Mail mis à la corbeille d\'Infomaniak.'); } catch (e) { toast('Suppression impossible : ' + e.message, 7000); }
 };

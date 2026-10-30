@@ -3,8 +3,8 @@
 // avec l'en-tête « x-cron: <CRON_SECRET> ».
 // Secrets à définir dans Supabase (Edge Functions → Secrets) : IMAP_USER, IMAP_PASSWORD
 //   (facultatifs : IMAP_HOST = mail.infomaniak.com, IMAP_PORT = 993, CRON_SECRET).
-// Seuls l'expéditeur, l'objet, la date et le début du texte (1500 caractères) sont copiés. Rien n'est modifié dans la boîte
-// (lecture seule : les mails restent « non lus » chez Infomaniak).
+// Seuls l'expéditeur, l'objet, la date et le début du texte (1500 caractères) sont copiés dans la base. La relève ne modifie
+// rien dans la boîte. Le texte complet et les pièces jointes sont lus à la demande et restent chez Infomaniak.
 // Envoi : { envoyer: { a, cc?, objet, texte, inReplyTo?, pieces: [{ nom, type, base64 }] } } par un membre connecté → envoyé par le SMTP
 // d'Infomaniak (port 465, mêmes identifiants), et une copie est rangée dans le dossier « Envoyés » de la boîte.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -74,6 +74,46 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
   return nouveaux.length;
 }
 
+/* ---------- Gestion d'un mail de la boîte de réception (à la demande, rien n'est stocké dans Supabase) ----------
+   { boite: { action: 'lire' | 'piece' | 'supprimer' | 'archiver' | 'lu' | 'nonlu', uid, uv, index? } }
+   lire : texte complet + liste des pièces jointes (et marque « lu ») ; piece : une pièce jointe en base64 ;
+   supprimer : vers la corbeille Infomaniak ; archiver : vers « Archives » ; lu / nonlu : drapeau « lu » chez Infomaniak. */
+const imapDe = (env: (k: string) => string | undefined) => new ImapFlow({ host: env('IMAP_HOST') || 'mail.infomaniak.com', port: Number(env('IMAP_PORT') || 993), secure: (env('IMAP_SECURE') || 'true') !== 'false', auth: { user: env('IMAP_USER')!, pass: env('IMAP_PASSWORD')! }, logger: false, tls: { rejectUnauthorized: (env('IMAP_TLS_STRICT') || 'true') !== 'false' } });
+function htmlVersTexte(h: string) { return String(h || '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<br\s*\/?>|<\/p>|<\/div>|<\/li>|<\/tr>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&rsquo;/g, "'").replace(/&quot;/g, '"').replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*\n+/g, '\n\n').trim(); }
+const b64 = (u: Uint8Array) => { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+export async function gererBoite(env: (k: string) => string | undefined, o: any) {
+  const c = imapDe(env); await c.connect();
+  try {
+    const box = await c.mailboxOpen('INBOX', { readOnly: o.action === 'piece' });
+    if (o.uv && String(box.uidValidity) !== String(o.uv)) throw new Error('la boîte a été réorganisée chez Infomaniak : ce mail n\'est plus retrouvable ici');
+    const uid = String(Number(o.uid)); if (!(Number(uid) > 0)) throw new Error('mail inconnu');
+    const dossier = async (special: string, motif: RegExp, creer: string) => {
+      const l = await c.list(); const d = l.find((x: any) => x.specialUse === special) || l.find((x: any) => motif.test(x.name));
+      if (d) return d.path; if (!creer) throw new Error('dossier introuvable'); await c.mailboxCreate(creer); return creer;
+    };
+    if (o.action === 'lire' || o.action === 'piece') {
+      const msg: any = await c.fetchOne(uid, { uid: true, source: true }, { uid: true });
+      if (!msg) throw new Error('ce mail n\'est plus dans la boîte de réception (déplacé ou supprimé chez Infomaniak)');
+      const p: any = await PostalMime.parse(msg.source);
+      const pieces = (p.attachments || []).filter((a: any) => a.disposition !== 'inline' || a.filename).map((a: any, i: number) => ({ index: i, nom: a.filename || `piece-${i + 1}`, type: a.mimeType || 'application/octet-stream', taille: (a.content && (a.content.byteLength ?? a.content.length)) || 0, a }));
+      if (o.action === 'piece') {
+        const x = pieces.find((y: any) => y.index === Number(o.index)); if (!x) throw new Error('pièce jointe introuvable');
+        if (x.taille > 15 * 1024 * 1024) throw new Error('pièce jointe trop lourde pour passer par l\'app (plus de 15 Mo) : ouvre-la dans Infomaniak');
+        const u = x.a.content instanceof ArrayBuffer ? new Uint8Array(x.a.content) : new TextEncoder().encode(String(x.a.content));
+        return { nom: x.nom, type: x.type, base64: b64(u) };
+      }
+      await c.messageFlagsAdd(uid, ['\\Seen'], { uid: true }).catch(() => {});
+      const texte = (p.text && p.text.trim()) || htmlVersTexte(p.html || '');
+      return { texte: texte.slice(0, 60000), de: p.from || null, a: p.to || [], cc: p.cc || [], date: p.date || '', pieces: pieces.map(({ a, ...r }: any) => r) };
+    }
+    if (o.action === 'lu') { await c.messageFlagsAdd(uid, ['\\Seen'], { uid: true }); return { ok: true }; }
+    if (o.action === 'nonlu') { await c.messageFlagsRemove(uid, ['\\Seen'], { uid: true }); return { ok: true }; }
+    if (o.action === 'supprimer') { const d = await dossier('\\Trash', /^(trash|corbeille|deleted)/i, ''); await c.messageMove(uid, d, { uid: true }); return { ok: true, dossier: d }; }
+    if (o.action === 'archiver') { const d = await dossier('\\Archive', /^archive/i, 'Archives'); await c.messageFlagsAdd(uid, ['\\Seen'], { uid: true }).catch(() => {}); await c.messageMove(uid, d, { uid: true }); return { ok: true, dossier: d }; }
+    throw new Error('action inconnue');
+  } finally { await c.logout().catch(() => {}); }
+}
+
 /* Envoi d'un mail (facture…) avec pièces jointes, puis copie dans « Envoyés » */
 export async function envoyerMail(env: (k: string) => string | undefined, m: any, nomExp = 'Gamins de Talus') {
   const user = env('IMAP_USER')!, pass = env('IMAP_PASSWORD')!;
@@ -112,6 +152,11 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
   }
   if (!env('IMAP_USER') || !env('IMAP_PASSWORD')) return json({ erreur: 'IMAP_USER et IMAP_PASSWORD manquent dans les secrets' }, 500);
   const corps = await req.json().catch(() => ({}));
+  if (corps && corps.boite) {
+    if (cron && h && h === cron) return json({ erreur: 'réservé aux membres' }, 403);
+    try { return json(await gererBoite(env, corps.boite)); }
+    catch (e) { return json({ erreur: String((e as any).responseText || (e as Error).message || e).slice(0, 300) }, 500); }
+  }
   if (corps && corps.envoyer) {
     if (cron && h && h === cron) return json({ erreur: 'envoi réservé aux membres' }, 403);
     try { return json(await envoyerMail(env, corps.envoyer, corps.envoyer.nomExp || 'Gamins de Talus')); }
