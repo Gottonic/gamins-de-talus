@@ -18,7 +18,8 @@ MODULES.taches = {
     if (urg.length) return { line: `${urg.length} urgente${urg.length > 1 ? 's' : ''} ou en retard · ${open.length} ouverte${open.length > 1 ? 's' : ''}`, warn: true };
     return { line: open.length ? `${open.length} à faire` : 'Rien à faire, bravo' };
   },
-  render() {
+  render(sub) {
+    if (sub === 'semaine') return tabs('taches', [['', 'Tâches'], ['semaine', 'Feuille de la semaine']], 'semaine') + renderFeuille();
     let all = taches();
     const counts = { '': all.filter((t) => t.statut !== 'termine').length };
     if (TA.qui === 'moi') all = all.filter((t) => t.responsable === Sync.me || t.responsable === 'ensemble' || !t.responsable);
@@ -33,7 +34,7 @@ MODULES.taches = {
     const sec = (titre, list) => list.length ? `<div><h3>${titre} · ${list.length}</h3>${list.map(tacheHtml).join('')}</div>` : '';
     const quiChips = [['', 'Toutes'], ['moi', 'Les miennes']].concat(persOptions(true)).map(([k, l]) => `<button class="chip${TA.qui === k ? ' on' : ''}" type="button" data-act="taQui" data-k="${k}">${esc(l)}</button>`).join('');
     const tagChips = TAGS.filter(([k]) => k).map(([k, l]) => `<button class="chip${TA.tag === k ? ' on' : ''}" type="button" data-act="taTag" data-k="${k}">${esc(l)}</button>`).join('');
-    return `<div class="panel">
+    return tabs('taches', [['', 'Tâches'], ['semaine', 'Feuille de la semaine']], '') + `<div class="panel">
       <form class="quick" data-form="taQuick"><input name="titre" id="ta-quick" placeholder="Nouvelle tâche… (Entrée pour ajouter)" autocomplete="off" aria-label="Nouvelle tâche"><button class="btn primary" type="submit">Ajouter</button></form>
       <div class="chips">${quiChips}</div><div class="chips">${tagChips}</div>
       ${sec('Urgent ou en retard', urg)}${sec('En cours', enc)}${sec('À faire', af)}${sec('Suspendu', sus)}

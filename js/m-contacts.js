@@ -68,16 +68,17 @@ function afterContactsProspection(sub) {
 
 /* ================= Clients et contacts ================= */
 function renderContacts(sub, id) {
-  const all = contacts().sort(byName);
+  const all = contacts().sort((a, b) => (b.favori ? 1 : 0) - (a.favori ? 1 : 0) || byName(a, b));
   const counts = {}; for (const c of all) counts[c.type || 'autre'] = (counts[c.type || 'autre'] || 0) + 1;
-  const shown = all.filter((c) => (!CT.type || (c.type || 'autre') === CT.type) && contactMatches(c, CT.search));
-  const chips = [`<button class="chip${!CT.type ? ' on' : ''}" type="button" data-act="ctType" data-t="">Tous<span class="n">${all.length}</span></button>`]
+  const shown = all.filter((c) => (!CT.type || (CT.type === 'favoris' ? c.favori : (c.type || 'autre') === CT.type)) && contactMatches(c, CT.search));
+  const nFav = all.filter((c) => c.favori).length;
+  const chips = [`<button class="chip${!CT.type ? ' on' : ''}" type="button" data-act="ctType" data-t="">Tous<span class="n">${all.length}</span></button>`, nFav ? `<button class="chip${CT.type === 'favoris' ? ' on' : ''}" type="button" data-act="ctType" data-t="favoris">★ Favoris<span class="n">${nFav}</span></button>` : '']
     .concat(TYPES.filter((t) => counts[t.k]).map((t) => `<button class="chip${CT.type === t.k ? ' on' : ''}" type="button" data-act="ctType" data-t="${t.k}">${t.label}<span class="n">${counts[t.k]}</span></button>`)).join('');
   const list = !all.length ? '<p class="empty">Pas encore de contact. Ajoute-les avec « + Nouveau », ou fais passer un prospect en client depuis la Prospection.</p>'
     : !shown.length ? '<p class="empty">Aucun contact ne correspond.</p>'
     : shown.map((c) => {
       const subl = [c.organisation && c.nom ? c.nom : '', c.fonction, c.localite].filter(Boolean).join(' · ');
-      return `<a class="item${c.key === id ? ' sel' : ''}" href="#/contacts/voir/${encodeURIComponent(c.key)}"><span class="who"><strong>${esc(displayName(c))}</strong>${subl ? `<span class="meta">${esc(subl)}</span>` : ''}</span><span class="tpill">${esc(typeLabel(c.type))}</span></a>`;
+      return `<a class="item${c.key === id ? ' sel' : ''}" href="#/contacts/voir/${encodeURIComponent(c.key)}"><button type="button" class="star${c.favori ? ' on' : ''}" data-act="ctFavori" data-key="${esc(c.key)}" aria-label="${c.favori ? 'Retirer des favoris' : 'Ajouter aux favoris'}" title="Favori">${c.favori ? '★' : '☆'}</button><span class="who"><strong>${esc(displayName(c))}</strong>${subl ? `<span class="meta">${esc(subl)}</span>` : ''}</span><span class="tpill">${esc(typeLabel(c.type))}</span></a>`;
     }).join('');
   let right = '';
   if (sub === 'nouveau') right = contactForm(null);
@@ -91,6 +92,7 @@ function renderContacts(sub, id) {
     <div id="ct-right">${right}</div></div>`;
 }
 ACTIONS.ctType = (el) => { CT.type = el.dataset.t; render(); };
+ACTIONS.ctFavori = (el) => { const c = DB.get(el.dataset.key); if (c) DB.put(el.dataset.key, Object.assign({}, c, { favori: !c.favori })); };
 
 function lignesContact(c) {
   const copy = (v, what) => v ? `<span>${esc(v)}</span><button class="copy" type="button" data-act="copy" data-v="${esc(v)}" aria-label="Copier ${what}">Copier</button>` : '<span class="meta">—</span>';

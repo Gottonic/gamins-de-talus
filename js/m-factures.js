@@ -142,7 +142,7 @@ function renderNouvelleFacture(contactKey) {
   if (contactKey && DB.get(contactKey) && draftF.clientId !== contactKey) { draftF.clientId = contactKey; const c = DB.get(contactKey); if (!c.npa || !c.localite) draftF.paiement = 'especes'; for (const l of draftF.lignes) { const pr = DB.get(l.produitId); if (pr && l.auto) l.prix = prixPour(pr, c.type || 'autre'); } }
   if (!draftF.lignes.length) draftF.lignes.push(nouvelleLigne());
   const cl = contacts().sort(byName);
-  const groups = TYPES.map((t) => [t, cl.filter((c) => (c.type || 'autre') === t.k)]).filter(([, l]) => l.length);
+  const groups = [[{ label: '★ Favoris' }, cl.filter((c) => c.favori)]].concat(TYPES.map((t) => [t, cl.filter((c) => (c.type || 'autre') === t.k && !c.favori)])).filter(([, l]) => l.length);
   const c = DB.get(draftF.clientId);
   const addr = c ? [street(c), place(c)].filter(Boolean).join(', ') : '';
   return `<div class="split"><form class="panel form" id="draft" onsubmit="return false">
