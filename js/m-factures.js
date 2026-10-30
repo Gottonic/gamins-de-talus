@@ -28,7 +28,7 @@ function problemesReglages(cash) {
 }
 
 /* ---------- Brouillon de facture ---------- */
-const draftF = { clientId: '', date: todayISO(), livraison: '', bulletin: '', remarque: '', paiement: 'virement', lignes: [], facture: true, bl: false, stock: true, moyen: 'especes' };
+const draftF = { edition: '', clientId: '', date: todayISO(), livraison: '', bulletin: '', remarque: '', paiement: 'virement', lignes: [], facture: true, bl: false, stock: true, moyen: 'especes' };
 const EXAMPLE_CLIENT = { nom: 'Exemple : Grossiste SA', attn: '', rue: "Route de l'Exemple", numero: '1', npa: '1700', localite: 'Fribourg' };
 /* Prix d'un produit selon le type de client ; sinon le prix par défaut. Modifiable ensuite sur chaque facture. */
 const vide = (v) => v === '' || v == null;
@@ -79,7 +79,7 @@ function fourchette(p) { if (vide(p.prixMin) && vide(p.prixMax)) return ''; if (
 const typeClientBrouillon = () => { const c = DB.get(draftF.clientId); return c ? (c.type || 'autre') : ''; };
 function nouvelleLigne() { const p = produits()[0]; return p ? { produitId: p.key, designation: p.nom, quantite: '', unite: p.unite || 'kg', prix: prixLigne(p), auto: true } : { produitId: '', designation: '', quantite: '', unite: 'kg', prix: '' }; }
 function factureDepuisBrouillon() {
-  const s = cfg(), n = prochainNumero(draftF.date), client = DB.get(draftF.clientId);
+  const ed = draftF.edition && DB.get(draftF.edition), s = cfg(), n = ed && ed.numero ? { numero: ed.numero, seq: ed.seq, annee: ed.annee } : prochainNumero(draftF.date), client = DB.get(draftF.clientId);
   const lignes = draftF.lignes.filter((l) => (l.designation || '').trim() && num(l.quantite) > 0).map((l) => Object.assign({ designation: l.designation.trim(), quantite: r2(num(l.quantite)), unite: l.unite || 'kg', prix: r2(num(l.prix)) }, l.produitId ? { produitId: l.produitId } : {}, l.calibre != null && l.calibre !== '' && num(l.poids) > 0 ? { calibre: Number(l.calibre), poids: num(l.poids) } : {}));
   let example = false, shown = lignes;
   if (!shown.length) { example = true; shown = [{ designation: 'Patates douces', quantite: 100, unite: 'kg', prix: 2.5 }]; }
@@ -162,9 +162,11 @@ function renderListeFactures(selKey) {
 function renderDetailFacture(f, dbl) {
   const s = facStatut(f), acts = [];
   acts.push(`<button class="btn primary" type="button" data-act="papiersPdf" data-key="${esc(f.key)}">Facture & bulletin PDF</button>`);
+  if (s !== 'annulee' && s !== 'groupee' && !(f.regroupe || []).length) acts.push(`<button class="btn" type="button" data-act="venteModifier" data-key="${esc(f.key)}">Modifier</button>`);
   if (s === 'ouverte' || s === 'retard') acts.push(`<button class="btn" type="button" data-act="facPaid" data-key="${esc(f.key)}">Marquer comme payée</button>`);
   if (s === 'payee' && f.paiement !== 'especes') acts.push(`<button class="btn" type="button" data-act="facReopen" data-key="${esc(f.key)}">Remettre en ouverte</button>`);
   if (s !== 'annulee' && s !== 'groupee' && (s !== 'payee' || f.paiement === 'especes')) acts.push(`<button class="btn danger" type="button" data-act="facCancel" data-key="${esc(f.key)}">Annuler</button>`);
+  if (s !== 'groupee') acts.push(`<button class="btn danger" type="button" data-act="venteSuppr" data-key="${esc(f.key)}">Supprimer</button>`);
   const warn = dbl[f.numero] > 1 && s !== 'annulee' ? `<div class="errors">Deux factures portent le numéro ${esc(f.numero)} (créées en même temps, hors ligne ?). <button class="btn link" type="button" data-act="facRenum" data-key="${esc(f.key)}">Donner un nouveau numéro à celle-ci</button></div>` : '';
   const grp = s === 'groupee' ? (() => { const g = DB.get(f.groupe); return `<p class="hint">Reprise dans la facture du mois <a href="#/factures/voir/${encodeURIComponent(f.groupe)}">${esc((g && g.numero) || '')}</a> : c'est elle qui sera payée.</p>`; })()
     : (f.regroupe || []).length ? `<p class="hint">Regroupe ${f.regroupe.length} vente${f.regroupe.length > 1 ? 's' : ''} : ${f.regroupe.map((k) => { const x = DB.get(k) || {}; return `<a href="#/factures/voir/${encodeURIComponent(k)}">${esc(x.blNumero || fmtDateCourt(x.date || ''))}</a>`; }).join(', ')}.</p>` : '';
@@ -185,8 +187,9 @@ function renderNouvelleFacture(contactKey) {
   const addr = c ? [street(c), place(c)].filter(Boolean).join(', ') : '';
   return `<div class="split"><form class="panel form" id="draft" onsubmit="return false">
       <h2 id="d-title">Nouvelle vente</h2>
+      ${draftF.edition ? `<div class="banner">Modification d'une vente enregistrée. <button class="btn small" type="button" data-act="venteModifAnnuler">Annuler la modification</button></div>` : ''}
       <div class="field"><span class="flabel">Pour cette vente</span><div class="seg wrap">
-        <label><input type="checkbox" id="d-opt-facture"${draftF.facture ? ' checked' : ''}> Facture</label>
+        <label><input type="checkbox" id="d-opt-facture"${draftF.facture ? ' checked' : ''}${draftF.edition && (DB.get(draftF.edition) || {}).numero ? ' disabled' : ''}> Facture</label>
         <label><input type="checkbox" id="d-opt-bl"${draftF.bl ? ' checked' : ''}> Bulletin de livraison</label>
         <label><input type="checkbox" id="d-opt-stock"${draftF.stock ? ' checked' : ''}> Déduire du stock</label></div>
         <span class="sub">${draftF.facture ? 'Facture numérotée (QR ou payée comptant).' : 'Sans facture : vente au marché, au stand, ou facturée plus tard.'}${draftF.bl ? ' Bulletin numéroté automatiquement, à faire signer à la livraison.' : ''}${draftF.stock ? ' Le stock des produits suivis baisse.' : ''}</span></div>
@@ -198,7 +201,7 @@ function renderNouvelleFacture(contactKey) {
         ${inp('d-livraison', 'Date de livraison', draftF.livraison, { type: 'date' })}
         ${draftF.bl || !draftF.facture ? '' : inp('d-bulletin', 'Bulletin de livraison n° (le vôtre)', draftF.bulletin, { attrs: { placeholder: 'facultatif' } })}
       </div>
-      ${draftF.facture ? `<div class="field"><span class="flabel">Paiement</span><div class="seg" role="radiogroup" aria-label="Mode de paiement">
+      ${draftF.edition && (DB.get(draftF.edition) || {}).numero ? `<p class="hint">Paiement : ${esc(facLabel(DB.get(draftF.edition)))}. Il se change dans la vente (« Marquer comme payée »).</p>` : draftF.facture ? `<div class="field"><span class="flabel">Paiement</span><div class="seg" role="radiogroup" aria-label="Mode de paiement">
         <label for="d-pay-virement"><input type="radio" name="d-paiement" id="d-pay-virement" value="virement"${draftF.paiement !== 'especes' ? ' checked' : ''}> Virement (QR-facture)</label>
         <label for="d-pay-especes"><input type="radio" name="d-paiement" id="d-pay-especes" value="especes"${draftF.paiement === 'especes' ? ' checked' : ''}> Payé comptant (espèces)</label></div>
         <span class="sub">${draftF.paiement === 'especes' ? 'Déjà payé : la facture est marquée payée, avec « Acquittée » et une ligne de signature, sans QR-code.' : 'Le client paie par virement avec le QR-code, dans le délai prévu.'}</span></div>`
@@ -229,8 +232,9 @@ function majApercu() {
   const d = factureDepuisBrouillon();
   $('d-paper').innerHTML = draftF.facture ? invoiceSvg(d.inv) : bulletinSvg(Object.assign({}, d.inv, { numero: '', blNumero: draftF.bl ? prochainBL(draftF.date) : '' }), true); $('d-badge').hidden = !d.example || !draftF.facture;
   $('d-total').textContent = chf(d.lignes.reduce((a, l) => a + r2(l.quantite * l.prix), 0));
-  $('d-title').textContent = draftF.facture ? 'Nouvelle vente · facture ' + d.inv.numero : 'Nouvelle vente'; $('d-create').textContent = draftF.facture ? 'Enregistrer et faire la facture ' + d.inv.numero : draftF.bl ? 'Enregistrer et faire le bulletin' : 'Enregistrer la vente';
-  $('d-save').hidden = !(draftF.facture || draftF.bl);
+  const ed = draftF.edition && DB.get(draftF.edition);
+  $('d-title').textContent = ed ? 'Modifier · ' + nomVente(ed) : draftF.facture ? 'Nouvelle vente · facture ' + d.inv.numero : 'Nouvelle vente'; $('d-create').textContent = ed ? 'Enregistrer les modifications' : draftF.facture ? 'Enregistrer et faire la facture ' + d.inv.numero : draftF.bl ? 'Enregistrer et faire le bulletin' : 'Enregistrer la vente';
+  $('d-save').hidden = !!ed || !(draftF.facture || draftF.bl);
   draftF.lignes.forEach((l, i) => {
     const t = $('l-t-' + i); if (!t) return;
     const p = DB.get(l.produitId), f = p ? fourchette(p) : '';
@@ -276,6 +280,7 @@ function brancherBrouillon() {
   $('d-save').addEventListener('click', () => creerVente(false));
 }
 function creerVente(pdf) {
+  if (draftF.edition) { modifierVente(); return; }
   {
     const p = problemesBrouillon(), box = $('d-errors');
     if (p.length) { box.innerHTML = `<strong>Il manque encore :</strong><ul>${p.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`; box.hidden = false; return; }
@@ -301,6 +306,56 @@ function creerVente(pdf) {
   }
 }
 
+/* ---------- Modifier ou supprimer une vente ----------
+   Modifier : le formulaire « Nouvelle vente » se remplit avec la vente ; le numéro de facture et de bulletin restent,
+   le stock et le total suivent. Une facture numérotée garde son paiement (il se change avec « Marquer comme payée »). */
+ACTIONS.venteModifier = (el) => {
+  const k = el.dataset.key, f = DB.get(k); if (!f) return;
+  if (f.groupe || (f.regroupe || []).length) { toast('Vente reprise dans une facture du mois : annule d\'abord la facture du mois.', 5000); return; }
+  Object.assign(draftF, {
+    edition: k, clientId: (f.client && f.client.id) || '', date: f.date || todayISO(), livraison: f.livraison || '', bulletin: f.bulletin || '', remarque: f.remarque || '',
+    paiement: f.paiement || 'virement', facture: !!f.numero, bl: !!f.blNumero, stock: f.stock !== false, moyen: f.statut === 'payee' ? f.payeePar || 'especes' : 'plustard',
+    lignes: (f.lignes || []).map((l) => ({ produitId: l.produitId || '', designation: l.designation, quantite: String(l.quantite), unite: l.unite || 'kg', prix: l.prix, calibre: l.calibre ?? '', poids: l.poids ?? null, auto: false })),
+  });
+  go('#/factures/nouvelle');
+};
+function viderBrouillon() { Object.assign(draftF, { edition: '', clientId: '', date: todayISO(), lignes: [], bulletin: '', remarque: '', livraison: '', paiement: 'virement', facture: true, bl: false, stock: true, moyen: 'especes' }); }
+ACTIONS.venteModifAnnuler = () => { const k = draftF.edition; viderBrouillon(); go(k ? '#/factures/voir/' + encodeURIComponent(k) : '#/factures'); };
+function modifierVente() {
+  const k = draftF.edition, old = DB.get(k); if (!old) { viderBrouillon(); render(); return; }
+  const p = problemesBrouillon().filter((x) => !(old.numero && /^Réglages/.test(x))), box = $('d-errors');
+  if (p.length) { box.innerHTML = `<strong>Il manque encore :</strong><ul>${p.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`; box.hidden = false; return; }
+  const d = factureDepuisBrouillon(), b = d.inv;
+  const o = Object.assign({}, old, { client: b.client, date: b.date, livraison: b.livraison, remarque: b.remarque, lignes: d.lignes, stock: !!draftF.stock, modifieLe: new Date().toISOString(), modifiePar: Sync.me || '' });
+  if (old.numero) {
+    o.bulletin = b.bulletin || old.bulletin || '';
+    if (o.statut !== 'payee' && o.paiement !== 'especes') o.echeance = addDays(o.date, num(o.delai) >= 0 ? num(o.delai) : b.delai);
+  } else if (draftF.facture) { /* la vente devient une facture */
+    Object.assign(o, prochainNumero(b.date), { facture: true, emetteur: b.emetteur, delai: b.delai, echeance: b.echeance, paiement: b.paiement, statut: b.statut, payeeLe: b.payeeLe, payeePar: b.payeePar, encaissePar: b.encaissePar, bulletin: b.bulletin || old.blNumero || '' });
+  } else {
+    const m = draftF.moyen || 'especes';
+    if (m === 'plustard') Object.assign(o, { paiement: 'virement', statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '' });
+    else if (!(old.statut === 'payee' && old.payeePar === m)) Object.assign(o, { paiement: m === 'especes' ? 'especes' : 'virement', statut: 'payee', payeeLe: o.date, payeePar: m, encaissePar: m === 'virement' ? (cfg().compteDe || Sync.me || '') : (Sync.me || ''), echeance: o.date });
+  }
+  if (draftF.bl && !o.blNumero) o.blNumero = prochainBL(o.date);
+  o.total = factureTotal(o);
+  DB.put(k, o); stockPourVente(k, o); viderBrouillon();
+  toast(`${nomVente(o)} modifiée.`); go('#/factures/voir/' + encodeURIComponent(k));
+}
+ACTIONS.venteSuppr = (el) => {
+  const k = el.dataset.key, f = DB.get(k); if (!f) return;
+  if (f.groupe) { toast('Vente reprise dans une facture du mois : annule d\'abord la facture du mois.', 5000); return; }
+  const txt = (f.regroupe || []).length ? `Les ${f.regroupe.length} ventes de cette facture du mois redeviennent « à facturer ».`
+    : f.numero ? `Si la facture a déjà été envoyée au client, préfère « Annuler » (elle reste dans la liste, barrée).` : 'Le stock est rendu.';
+  confirmSheet(`Supprimer ${nomVente(f)} ?`, txt + ' Elle reste récupérable dans la corbeille (Réglages → Données).', 'venteSupprOk', 'Supprimer', { key: k });
+};
+ACTIONS.venteSupprOk = (el) => {
+  const k = el.dataset.key, f = DB.get(k); closeSheet(); if (!f) return;
+  stockPourVente(k, Object.assign({}, f, { statut: 'annulee' })); // retire ses mouvements de stock
+  for (const g of f.regroupe || []) { const x = DB.get(g); if (x && x.groupe === k) { const y = Object.assign({}, x); delete y.groupe; DB.put(g, y); } }
+  DB.del(k); if (draftF.edition === k) viderBrouillon();
+  toast(`${nomVente(f)} supprimée.`); go('#/factures');
+};
 function telechargerFacture(key) {
   const f = DB.get(key); if (!f) return;
   if (!window.jspdf) { toast("Le générateur PDF n'a pas pu se charger. Recharge la page."); return; }
