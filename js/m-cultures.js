@@ -10,7 +10,7 @@ const f1 = (n) => fmtNum(n, 1), f0 = (n) => fmtNum(n, 0);
 
 MODULES.cultures = {
   titre: 'Cultures',
-  tuile() { const s = saisonCourante(), l = cultures(s); if (!l.length) return { line: 'Aucun plan' }; const t = totauxCultures(l, paramsCultures(s)); return { line: `${s} · ${l.length} cultures · ${f0(t.surface)} m²` }; },
+  tuile() { const s = saisonCourante(), l = cultures(s); if (!l.length) return { line: 'Aucun plan' }; const t = totauxCultures(l, paramsCultures(s)); return { line: `${s} · ${l.length} cultures · ${f0(t.surface)} m²`, badge: typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => typeof pourMoi !== 'function' || pourMoi(r.qui)).length : 0 }; },
   render(sub, id) {
     creerFichesManquantes();
     const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['journal', 'Journal'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
@@ -27,7 +27,7 @@ function renderPlan() {
     const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
     const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture » : tu peux la choisir dans « Nos cultures », avec ses données des années passées.</p></div>';
-    const eff = list.map((c) => Object.assign({}, c, { recolteReelle: c.recolteReelle == null || c.recolteReelle === '' ? recolteNotee(c.key) : c.recolteReelle }));
+    const eff = list.map((c) => Object.assign({}, c, { recolteReelle: recolteReelleDe(c) }));
     const os = eff.map((c) => culture(c, P)), T = totauxCultures(eff, P), cols = list.length;
     const coul = list.map((c, i) => couleurCulture(c, i));
     let gi = 0;
@@ -49,7 +49,7 @@ function renderPlan() {
       ${grp('Récolte et ventes', 9)}
       ${fic('Rendement kg/m²', 'rendement')}
       ${calc('Récolte prévue kg', (c, o) => f0(o.recolte), f0(T.recolte))}
-      ${edit('Récolte réelle kg', 'recolteReelle', { ph: (c) => { const k = recolteNotee(c.key); return k ? f0(k) + ' cal.' : ''; }, tot: T.recolteReelle ? f0(T.recolteReelle) : '—' })}
+      ${calc('Récolte réelle kg', (c) => (num(c.recolteReelle) ? f0(c.recolteReelle) : '—'), T.recolteReelle ? f0(T.recolteReelle) : '—')}
       ${fic('Prix direct CHF/kg', 'prixDirect', { fmt: (v) => (v ? money(v) : '—') })}
       ${calc('Ventes directes CHF', (c, o) => f0(o.ventesDirect), f0(T.ventesDirect))}
       ${calc('CHF/m² direct', (c, o) => money(o.chfM2Direct))}
@@ -119,7 +119,7 @@ function renderPlan() {
         ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).length ? `<p class="banner">Pas couvert par vos engrais : ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).map((n) => `${n} ${fmtNum(T.nonCouvert[n] / 1000, 1)} kg`).join(', ')}. Ajoute un engrais qui en contient dans les hypothèses, ou augmente le compost.</p>` : ''}
         <p class="hint">Une planche = ${fmtNum(P.longueur, 1)} m × ${fmtNum(P.facteurSurface, 2)} m (avec le passe-pied) = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m². Besoin brut × correction du sol − compost (${Math.round(num(P.dispoCompost) * 100)} % disponible la 1re année) = reste à couvrir par les engrais, dans l'ordre de la liste des hypothèses.</p></div>
       <div class="panel"><h2>Plan ${s}</h2>
-        <p class="hint">Cases blanches : propres à cette saison (planches, longueur, récolte réelle), elles se modifient directement. Lignes vertes : données de la culture, qui viennent de « Nos cultures » ; touche une case pour modifier la fiche. Lignes grisées : calculées. Touche le nom d'une culture pour ses réglages de saison ou pour la retirer du plan. Récolte réelle vide : somme des récoltes notées au calendrier (« cal. »).</p>
+        <p class="hint">Cases blanches : propres à cette saison (planches, longueur), elles se modifient directement. Lignes vertes : données de la culture, qui viennent de « Nos cultures » ; touche une case pour modifier la fiche. Lignes grisées : calculées. Touche le nom d'une culture pour ses réglages de saison ou pour la retirer du plan. Récolte réelle : la somme des récoltes enregistrées avec « + Récolte ».</p>
         ${table}
         <p class="hint">Surface = planches × longueur × largeur avec passe-pied (${fmtNum(P.facteurSurface, 2)} m). Plantons = longueur ÷ interplant × lignes × planches. Prix revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du prix direct. Corrections d'analyse de sol (hypothèses) : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Chaque engrais couvre le reste de son nutriment principal ; ce qu'il apporte en plus (ex. Mg) est déduit des autres.</p></div>`;
   }
@@ -128,7 +128,7 @@ function brancherPlan() {
   {
     $('view').querySelectorAll('input.cell-in').forEach((el) => el.addEventListener('change', () => {
       const k = el.dataset.cu, f = el.dataset.f, c = DB.get(k); if (!c) return;
-      const TXT = ['semPlantation', 'semRecolte', 'variete', 'fournisseur'], NULLABLE = ['longueur', 'prixRevendeur', 'recolteReelle'];
+      const TXT = ['semPlantation', 'semRecolte', 'variete', 'fournisseur'], NULLABLE = ['longueur', 'prixRevendeur'];
       const raw = el.value.trim();
       let v;
       if (TXT.includes(f)) v = raw;
@@ -142,19 +142,22 @@ function brancherPlan() {
     }));
   }
 }
+/* Récolte réelle = somme des récoltes enregistrées (une seule porte d'entrée : « + Récolte ») ; une ancienne valeur tapée à la main sert encore s'il n'y a rien d'enregistré */
+function recolteReelleDe(c, k) { return recolteNotee(k || c.key) || (c.recolteReelle == null || c.recolteReelle === '' ? 0 : num(c.recolteReelle)); }
 ACTIONS.cuSaison = (el) => { CU.saison = el.dataset.s; render(); };
 function cuSave() { ls.set('gdt-cu-fermes', JSON.stringify(CU.fermes)); render(); }
 ACTIONS.cuToggle = (el) => { const g = el.dataset.g; CU.fermes = CU.fermes.includes(g) ? CU.fermes.filter((x) => x !== g) : CU.fermes.concat([g]); cuSave(); };
 ACTIONS.cuToutes = (el) => { CU.fermes = el.dataset.v === 'fermer' ? ['surface', 'r-colte-et-ventes', 'plantation', 'fumure'] : []; cuSave(); };
 document.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('tr.grp[data-act]')) { e.preventDefault(); e.target.click(); } });
 
-/* Réglages d'une culture pour la saison : planches, longueur, récolte réelle, ordre, remarque. Le reste est dans sa fiche. */
+/* Réglages d'une culture pour la saison : planches, longueur, ordre, remarque. Le reste est dans sa fiche ; la récolte réelle vient des récoltes enregistrées. */
 ACTIONS.cuEdit = (el) => {
   const k = el.dataset.key || ''; if (!k || !DB.get(k)) { ACTIONS.cuAjouter(el); return; }
   const c = DB.get(k), fk = ficheDe(c), n = (id, label, val, step) => inp(id, label, val ?? '', { name: id.slice(3), type: 'number', attrs: { step: step || 'any', inputmode: 'decimal' } });
   openSheet(`${sheetHead(c.nom, 'Saison ' + c.saison)}<form class="sbody form" data-form="cu"><input type="hidden" name="key" value="${esc(k)}">
-    <div class="grid2">${n('cu-planches', 'Planches', c.planches, '1')}${n('cu-longueur', 'Longueur de planche m', c.longueur)}${n('cu-recolteReelle', 'Récolte réelle kg', c.recolteReelle)}${n('cu-ordre', "Ordre d'affichage", c.ordre, '1')}</div>
-    <p class="hint">Longueur vide : celle des hypothèses (${fmtNum(paramsCultures(c.saison).longueur, 1)} m). Récolte réelle vide : les récoltes notées au calendrier.</p>
+    <div class="grid2">${n('cu-planches', 'Planches', c.planches, '1')}${n('cu-longueur', 'Longueur de planche m', c.longueur)}${n('cu-ordre', "Ordre d'affichage", c.ordre, '1')}</div>
+    <p class="hint">Longueur vide : celle des hypothèses (${fmtNum(paramsCultures(c.saison).longueur, 1)} m). Récolte réelle de cette saison : ${f0(recolteReelleDe(c, k))} kg (somme des récoltes enregistrées).</p>
+    <div class="row"><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte" data-culture="${esc(k)}">+ Récolte de ${esc(c.nom)}</button></div>
     ${txt('cu-rem', 'Remarque pour cette saison', c.remarque, { name: 'remarque' })}
     <p class="hint">Rendement, prix, semaines, espacements, variété, fumure : dans la fiche de la culture. <a href="#/cultures/fiches/${encodeURIComponent(fk)}" data-act="go" data-href="#/cultures/fiches/${encodeURIComponent(fk)}">Ouvrir la fiche ${esc(c.nom)}</a></p>
     <div class="row-end"><button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette culture du plan ${esc(c.saison)} (sa fiche reste)">Retirer du plan</button><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
@@ -163,7 +166,7 @@ FORMS.cu = (v) => {
   const k = v.key, old = DB.get(k); if (!old) return;
   const o = Object.assign({}, old, { remarque: v.remarque });
   o.planches = num(v.planches); o.ordre = num(v.ordre) || old.ordre || 1;
-  for (const f of ['longueur', 'recolteReelle']) o[f] = v[f] === '' ? null : num(v[f]);
+  o.longueur = v.longueur === '' ? null : num(v.longueur);
   DB.put(k, o); closeSheet(); toast('Culture mise à jour.');
 };
 ACTIONS.cuParams = () => {
@@ -243,7 +246,7 @@ function creerFichesManquantes() {
 function historiqueFiche(k) {
   const f = DB.get(k) || {};
   return DB.all('cul:').filter((c) => ficheDe(c) === k).sort((a, b) => String(b.saison).localeCompare(String(a.saison))).map((c) => {
-    const P = paramsCultures(c.saison), reel = c.recolteReelle == null || c.recolteReelle === '' ? recolteNotee(c.key) : num(c.recolteReelle);
+    const P = paramsCultures(c.saison), reel = recolteReelleDe(c);
     const o = culture(Object.assign({}, c, { recolteReelle: reel }), P);
     return { saison: c.saison, planches: num(c.planches), surface: o.surface, prevu: o.recolte, reel, rdtReel: reel && o.surface ? reel / o.surface : 0, rdtPrevu: num(c.rendement) };
   });

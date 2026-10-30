@@ -59,6 +59,9 @@ function renderAccueil() {
   const prochains = []; const it7 = itemsPeriode(today, addDays(today, 6));
   for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ href: '#/calendrier', txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : d === addDays(today, 1) ? 'demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : ''), fort: d <= addDays(today, 1) });
   groupes.push({ mod: 'calendrier', titre: 'Ces 7 prochains jours', n: prochains.length, vide: 'Rien de prévu au calendrier.', items: prochains.slice(0, 7), plus: { href: '#/calendrier/agenda', txt: "Voir l'agenda" } });
+  /* Récoltes prévues au calendrier, pas encore enregistrées */
+  const rae = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => pourMoi(r.qui)) : [];
+  if (rae.length) groupes.push({ mod: 'cultures', titre: 'Récoltes à enregistrer', n: rae.length, items: rae.slice(0, 5).map((r) => ({ act: 'recolteEv', data: { key: r.key, occ: r.occ }, txt: r.titre, val: r.occ === today ? "aujourd'hui" : 'depuis le ' + fmtDateCourt(r.occ), fort: r.occ === today, bad: r.occ < today })) });
   const sansJ = depenses().filter((x) => sansJustificatif(x) && pourMoi(x.par)).sort((a, c) => String(c.date).localeCompare(String(a.date)));
   if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
     plus: sansJ.length > 4 ? { href: '#/finances/depenses', txt: `Voir les ${sansJ.length} dépenses sans justificatif` } : null, avant: () => { FIN.sansJ = true; } });
@@ -76,7 +79,7 @@ function renderAccueil() {
 
   const vue = Sync.me ? `<div class="seg-mini" role="group" aria-label="Afficher"><button type="button" class="${ACC.vue === 'moi' ? 'on' : ''}" data-act="accVue" data-v="moi">Pour moi</button><button type="button" class="${ACC.vue !== 'moi' ? 'on' : ''}" data-act="accVue" data-v="tous">Tout le monde</button></div>` : '';
   const todo = `<section class="panel"><div class="between"><h2>À traiter</h2>${vue}</div><div class="todo">${groupes.map((g) => `<div class="grp t-${g.mod}"><h3>${esc(g.titre)}${g.n ? `<span class="n">${g.n}</span>` : ''}</h3>
-      ${g.items.length ? g.items.map((it) => `<a class="it${it.fort ? ' fort' : it.bad ? ' bad' : ''}" href="${it.href}"${g.avant ? ' data-act="goSansJ"' : ''}><span>${esc(it.txt)}</span><span class="num">${esc(it.val)}</span></a>`).join('') : `<p class="none">${esc(g.vide || 'Rien.')}</p>`}
+      ${g.items.length ? g.items.map((it) => `<a class="it${it.fort ? ' fort' : it.bad ? ' bad' : ''}" href="${it.href || '#'}"${it.act ? ` data-act="${it.act}"${Object.entries(it.data || {}).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('')}` : g.avant ? ' data-act="goSansJ"' : ''}><span>${esc(it.txt)}</span><span class="num">${esc(it.val)}</span></a>`).join('') : `<p class="none">${esc(g.vide || 'Rien.')}</p>`}
       ${g.plus ? `<a class="btn link" href="${g.plus.href}"${g.avant ? ' data-act="goSansJ"' : ''}>${esc(g.plus.txt)}</a>` : ''}</div>`).join('')}</div></section>`;
 
   const tiles = ORDRE.filter((k) => MODULES[k]).map((k) => {

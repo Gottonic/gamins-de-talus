@@ -67,18 +67,19 @@ ACTIONS.mvtNouveau = (el) => {
   const type = el.dataset.type || 'recolte', s = typeof saisonCourante === 'function' ? saisonCourante() : todayISO().slice(0, 4);
   const culs = typeof cultures === 'function' ? cultures(s) : [];
   let prod = el.dataset.prod || '', cul = el.dataset.culture || '';
+  const ref = el.dataset.ref || '', date = el.dataset.date || todayISO();
   if (!prod && cul) { const p = produitDeCulture(DB.get(cul)); if (p) prod = p.key; }
   if (prod && !cul && type === 'recolte') { const p = DB.get(prod), c = culs.find((x) => p && ((p.fiche && ficheDe(x) === p.fiche) || sansAccentsS(x.nom) === sansAccentsS(p.nom))); if (c) cul = c.key; }
   const titres = { recolte: 'Noter une récolte', perte: 'Sortie de stock', inventaire: 'Compter le stock', ajout: 'Ajouter au stock' };
-  openSheet(`${sheetHead(titres[type] || 'Mouvement de stock')}<form class="sbody form" data-form="mvt"><input type="hidden" name="type" value="${esc(type)}">
-    <div class="grid2">${inp('mv-date', 'Date', todayISO(), { name: 'date', type: 'date' })}
+  openSheet(`${sheetHead(titres[type] || 'Mouvement de stock')}<form class="sbody form" data-form="mvt"><input type="hidden" name="type" value="${esc(type)}"><input type="hidden" name="ref" value="${esc(ref)}">
+    <div class="grid2">${inp('mv-date', 'Date', date, { name: 'date', type: 'date' })}
       ${type === 'recolte' ? sel('mv-cul', `Culture (plan ${s})`, cul, [['', '—']].concat(culs.map((c) => [c.key, c.nom])), { name: 'culture' }) : ''}
       ${sel('mv-prod', 'Produit', prod, [['', type === 'recolte' ? '— (pas de produit)' : 'Choisir…']].concat(produits().map((p) => [p.key, p.nom + ' (' + (p.unite || '') + ')'])), { name: 'prod' })}
       ${inp('mv-q', type === 'inventaire' ? 'Quantité comptée' : 'Quantité', '', { name: 'qte', type: 'number', attrs: { autofocus: '' } })}</div>
     ${type === 'recolte' ? `<label class="row" style="font-size:14px"><input type="checkbox" name="enStock" checked> Ajouter au stock</label><p class="hint">La récolte compte aussi dans la récolte réelle de la culture (Cultures). Sans produit, elle n'entre pas dans le stock.</p>` : ''}
     ${type === 'perte' ? `<p class="hint">Abîmé, mangé, donné… Pour une vente, passe plutôt par « Nouvelle vente » : le stock baisse tout seul.</p>` : ''}
     ${inp('mv-note', 'Note', '', { name: 'note', attrs: { placeholder: 'facultatif' } })}
-    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+    <div class="row-end">${ref ? `<button class="btn" type="button" data-act="recolteSans" data-ref="${esc(ref)}">Pas récolté</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const cs = $('mv-cul'); if (cs) cs.addEventListener('change', () => { const p = produitDeCulture(DB.get(cs.value)); if (p) $('mv-prod').value = p.key; });
 };
 FORMS.mvt = (v) => {
@@ -87,10 +88,34 @@ FORMS.mvt = (v) => {
   if (v.type === 'recolte' && !v.prod && !v.culture) { toast('Choisis une culture ou un produit.'); return; }
   const o = { date: v.date || todayISO(), prod: v.prod || '', qte: v.type === 'perte' ? -q : q, type: v.type, par: Sync.me || '', note: v.note || '', cree: new Date().toISOString() };
   if (v.culture) o.culture = v.culture;
+  if (v.ref) { o.ref = v.ref; marquerOccRecolte(v.ref, { fait: true }); }
   if (v.type === 'recolte' && (!v.enStock || !v.prod)) o.horsStock = true;
   DB.put('mvt:' + uid('m'), o); closeSheet();
   const p = DB.get(v.prod); toast(v.type === 'recolte' ? `Récolte notée${o.horsStock ? '' : ' et ajoutée au stock'}.` : v.type === 'inventaire' ? `Stock de ${p ? p.nom : ''} : ${fmtQ(q, p && p.unite)}.` : 'Enregistré.');
 };
+/* ---------- Récoltes prévues au calendrier (« Chantier de récolte ») ----------
+   Le jour J et ensuite, tant que personne ne l'a enregistrée, la récolte apparaît sur l'accueil (14 jours au plus). */
+function recolteDeLEvenement(k, occ) { const r = 'ev:' + k + ':' + occ; return mouvements().filter((m) => m.type === 'recolte' && m.ref === r).reduce((a, m) => a + num(m.qte), 0); }
+function recoltesAEnregistrer() {
+  if (typeof itemsPeriode !== 'function') return [];
+  const today = todayISO(), refs = new Set(mouvements().filter((m) => m.type === 'recolte' && m.ref).map((m) => m.ref)), out = [];
+  const it = itemsPeriode(addDays(today, -14), today);
+  for (const d of Object.keys(it).sort()) for (const x of it[d]) {
+    if (x.kind !== 'ev') continue; const e = DB.get(x.key); if (!e || e.type !== 'recolte') continue;
+    const st = (e.occ || {})[x.occ] || {}; if (st.sansRecolte || refs.has('ev:' + x.key + ':' + x.occ)) continue;
+    out.push({ key: x.key, occ: x.occ, titre: x.titre, qui: e.qui, culture: e.cultureId || '' });
+  }
+  return out;
+}
+function marquerOccRecolte(ref, champs) {
+  const m = String(ref).match(/^ev:(.+):(\d{4}-\d{2}-\d{2})$/); if (!m) return; const e = DB.get(m[1]); if (!e) return;
+  DB.put(m[1], Object.assign({}, e, { occ: Object.assign({}, e.occ || {}, { [m[2]]: Object.assign({}, (e.occ || {})[m[2]] || {}, champs) }) }));
+}
+ACTIONS.recolteEv = (el) => {
+  const e = DB.get(el.dataset.key); if (!e) return; closeSheet();
+  ACTIONS.mvtNouveau({ dataset: { type: 'recolte', culture: e.cultureId || '', date: el.dataset.occ, ref: 'ev:' + el.dataset.key + ':' + el.dataset.occ } });
+};
+ACTIONS.recolteSans = (el) => { marquerOccRecolte(el.dataset.ref, { sansRecolte: true, fait: true }); closeSheet(); toast('Noté : pas de récolte ce jour-là.'); };
 ACTIONS.stkHist = (el) => {
   const p = DB.get(el.dataset.prod); if (!p) return;
   const l = mouvements().filter((m) => m.prod === el.dataset.prod).sort((a, b) => String(b.date).localeCompare(String(a.date)));

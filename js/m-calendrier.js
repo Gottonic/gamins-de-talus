@@ -154,7 +154,7 @@ function ouvrirJour(d) {
     const det = [e.heureDebut ? e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : '', quiLabel(e.qui), c ? displayName(c) : '', cu ? cu.nom : '', rec ? (RECS.find((r) => r[0] === rec) || [, ''])[1].toLowerCase() : '', x.multi ? `du ${fmtDateCourt(x.occ)} au ${fmtDateCourt(addDays(x.occ, Math.round((new Date((e.fin || e.date) + 'T12:00') - new Date(e.date + 'T12:00')) / 864e5)))}` : ''].filter(Boolean).join(' · ');
     return `<div class="evline" style="--c:var(--ev-${e.type})"><div class="between"><div><strong>${esc(x.titre)}</strong><br><span class="hint">${esc(evType(e.type).court)}${det ? ' · ' + esc(det) : ''}</span></div>
       <label class="row" style="font-size:14px"><input type="checkbox" data-fait="${esc(x.key)}|${x.occ}"${st.fait ? ' checked' : ''}> Fait</label></div>
-      ${e.type === 'recolte' ? (() => { const mv = DB.get(`mvt:ev:${x.key}:${x.occ}`), pr = typeof produitDeCulture === 'function' ? produitDeCulture(DB.get(e.cultureId)) : null; return `<div class="row"><label class="hint" for="kg-${esc(x.key)}">Récolté (kg)</label><input id="kg-${esc(x.key)}" style="max-width:110px" type="text" inputmode="decimal" data-kg="${esc(x.key)}|${x.occ}" value="${st.kg ? esc(fmtH(st.kg)) : ''}">${pr ? `<label class="hint"><input type="checkbox" id="kgs-${esc(x.key)}" data-kgstock="${esc(x.key)}|${x.occ}"${!mv || !mv.horsStock ? ' checked' : ''}> ajouter au stock (${esc(pr.nom)})</label>` : ''}</div>`; })() : ''}
+      ${e.type === 'recolte' ? (() => { const kg = typeof recolteDeLEvenement === 'function' ? recolteDeLEvenement(x.key, x.occ) : 0; return kg ? `<p class="hint">✓ Récolte enregistrée : ${esc(fmtNum(kg, 1))} kg.</p>` : st.sansRecolte ? '<p class="hint">Pas de récolte ce jour-là.</p>' : `<div class="row"><button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button></div>`; })() : ''}
       ${e.remarque ? `<p class="hint" style="white-space:pre-wrap">${esc(e.remarque)}</p>` : ''}
       <div class="row">${e.type === 'livraison' && e.contactId ? `<button class="btn small primary" type="button" data-act="evFacturer" data-key="${esc(x.key)}" data-occ="${x.occ}">Créer la facture</button>` : ''}
         <button class="btn small" type="button" data-act="evEdit" data-key="${esc(x.key)}">Modifier</button>
@@ -176,13 +176,6 @@ function ouvrirJour(d) {
     const o = Object.assign({}, e, { occ: Object.assign({}, e.occ || {}) });
     o.occ[occ] = Object.assign({}, o.occ[occ] || {}, { fait: el.checked }); DB.put(k, o);
   }));
-  sh.querySelectorAll('input[data-kg]').forEach((el) => el.addEventListener('change', () => {
-    const [k, occ] = el.dataset.kg.split('|'); const e = DB.get(k); if (!e) return;
-    const o = Object.assign({}, e, { occ: Object.assign({}, e.occ || {}) }); o.occ[occ] = Object.assign({}, o.occ[occ] || {}, { kg: el.value.trim() === '' ? null : r2(num(el.value)) });
-    if (o.occ[occ].kg) o.occ[occ].fait = true;
-    DB.put(k, o); recolteCalendrierVersStock(k, occ); toast('Récolte notée.');
-  }));
-  sh.querySelectorAll('input[data-kgstock]').forEach((el) => el.addEventListener('change', () => { const [k, occ] = el.dataset.kgstock.split('|'); recolteCalendrierVersStock(k, occ); }));
 }
 ACTIONS.evSauter = (el) => {
   const e = DB.get(el.dataset.key); if (!e) return;
@@ -353,17 +346,6 @@ FORMS.mesHeures = (v) => {
   closeSheet();
   toast(h ? `${fmtH(h)} h notées pour ${nomDe(v.p)} ${v.d === todayISO() ? "aujourd'hui" : 'le ' + fmtDate(v.d)}.` : 'Heures effacées pour ce jour.');
 };
-
-/* Une récolte notée au calendrier devient un mouvement « récolte » (culture + produit lié), dans le stock si la case est cochée */
-function recolteCalendrierVersStock(k, occ) {
-  if (typeof produitDeCulture !== 'function') return;
-  const e = DB.get(k); if (!e) return; const kg = num(((e.occ || {})[occ] || {}).kg), mk = `mvt:ev:${k}:${occ}`;
-  if (!(kg > 0)) { if (DB.get(mk)) DB.del(mk); return; }
-  const pr = produitDeCulture(DB.get(e.cultureId)), cb = $('kgs-' + k);
-  const o = { date: occ, prod: pr ? pr.key : '', qte: kg, type: 'recolte', culture: e.cultureId || '', ref: 'ev:' + k + ':' + occ, par: Sync.me || '', note: 'Calendrier' };
-  if (!pr || (cb && !cb.checked)) o.horsStock = true;
-  DB.put(mk, o);
-}
 
 /* ---------- S'abonner au calendrier depuis Google Agenda, Proton Calendar… (fonction Supabase « calendrier ») ---------- */
 const ICS_URL = (j) => `${SB_URL}/functions/v1/calendrier?t=${j}`;
