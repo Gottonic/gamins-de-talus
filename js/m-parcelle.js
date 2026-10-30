@@ -138,8 +138,8 @@ function rapportAnnee(y) {
   const lignes = [`# Gamins de Talus — rapport de saison ${y}`, '', `Établi le ${fmtDate(todayISO())} à partir de l'app (plan de cultures, récoltes, journal).`, ''];
   lignes.push('## Plan et résultats', '');
   if (!l.length) lignes.push('Aucune culture dans le plan.');
-  for (const c of l) {
-    const reel = c.recolteReelle == null || c.recolteReelle === '' ? recolteNotee(c.key) : num(c.recolteReelle), o = culture(c, P);
+  for (const c0 of l) {
+    const c = typeof avecPrixProduit === 'function' ? avecPrixProduit(c0) : c0, reel = recolteReelleDe(c0), o = culture(c, P);
     lignes.push(`- **${c.nom}** : ${f0(c.planches)} planches (${f1(o.surface)} m²)${c.emplacements && c.emplacements.length ? ', ' + resumeEmplacements(c.emplacements) : ''} · plantation sem. ${c.semPlantation || '?'}, récolte sem. ${c.semRecolte || '?'} · variété ${c.variete || '?'}`);
     lignes.push(`  récolte prévue ${f0(o.recolte)} kg, réelle ${reel ? f0(reel) + ' kg' : 'non notée'}${reel && o.surface ? ` (${fmtNum(reel / o.surface, 2)} kg/m² pour ${fmtNum(c.rendement, 1)} prévus)` : ''} · prix direct ${money(c.prixDirect)} CHF/kg`);
   }

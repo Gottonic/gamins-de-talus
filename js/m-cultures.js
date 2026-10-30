@@ -27,7 +27,7 @@ function renderPlan() {
     const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
     const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture » : tu peux la choisir dans « Nos cultures », avec ses données des années passées.</p></div>';
-    const eff = list.map((c) => Object.assign({}, c, { recolteReelle: recolteReelleDe(c) }));
+    const eff = list.map((c) => Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }));
     const os = eff.map((c) => culture(c, P)), T = totauxCultures(eff, P), cols = list.length;
     const coul = list.map((c, i) => couleurCulture(c, i));
     let gi = 0;
@@ -38,7 +38,7 @@ function renderPlan() {
     const get = (c, f) => f.includes('.') ? ((c[f.split('.')[0]] || {})[f.split('.')[1]]) : c[f];
     const edit = (label, f, o = {}) => `<tr><td>${label}</td>${list.map((c, i) => { const v = get(c, f); const shown = v == null || v === '' ? '' : (o.txt ? v : String(v).replace('.', ',')); return `<td><input class="cell-in${o.txt ? ' txt' : ''}" id="ci-${i}-${f.replace('.', '_')}" data-cu="${esc(c.key)}" data-f="${f}" ${o.txt ? '' : 'inputmode="decimal"'} autocomplete="off" value="${esc(shown)}" placeholder="${esc(o.ph ? o.ph(c, os[i], eff[i]) : '')}" aria-label="${esc(label)} · ${esc(c.nom)}"></td>`; }).join('')}<td class="num tot">${o.tot ?? ''}</td></tr>`;
     /* Ligne venant de la fiche (Nos cultures) : affichée, se modifie dans la fiche */
-    const fic = (label, f, o = {}) => `<tr class="fic"><td>${label}</td>${list.map((c, i) => { const v = get(c, f); const shown = o.fmt ? o.fmt(v, c, os[i]) : v == null || v === '' ? '—' : String(v).replace('.', ','); return `<td><button type="button" class="fic-cell" data-act="ficheEdit" data-key="${esc(ficheDe(c))}" title="Modifier dans la fiche ${esc(c.nom)}">${esc(shown)}</button></td>`; }).join('')}<td class="num tot">${o.tot ?? ''}</td></tr>`;
+    const fic = (label, f, o = {}) => `<tr class="fic"><td>${label}</td>${list.map((c, i) => { const e = eff[i], v = get(e, f); const shown = o.fmt ? o.fmt(v, e, os[i]) : v == null || v === '' ? '—' : String(v).replace('.', ','); const pp = o.prix && e.prixProduit; return `<td><button type="button" class="fic-cell" ${pp ? `data-act="prodEdit" data-key="${esc(e.prixProduit)}" title="Prix du produit (Stock et prix)"` : `data-act="ficheEdit" data-key="${esc(ficheDe(c))}" title="Modifier dans la fiche ${esc(c.nom)}"`}>${esc(shown)}</button></td>`; }).join('')}<td class="num tot">${o.tot ?? ''}</td></tr>`;
     const engr = (P.engrais || []);
     const table = `<div class="table-wrap"><table class="matrix"><thead><tr><th></th>${list.map((c, i) => `<th><button type="button" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button></th>`).join('')}<th>Total</th></tr></thead>
       ${grp('Surface', 4)}
@@ -50,10 +50,10 @@ function renderPlan() {
       ${fic('Rendement kg/m²', 'rendement')}
       ${calc('Récolte prévue kg', (c, o) => f0(o.recolte), f0(T.recolte))}
       ${calc('Récolte réelle kg', (c) => (num(c.recolteReelle) ? f0(c.recolteReelle) : '—'), T.recolteReelle ? f0(T.recolteReelle) : '—')}
-      ${fic('Prix direct CHF/kg', 'prixDirect', { fmt: (v) => (v ? money(v) : '—') })}
+      ${fic('Prix direct CHF/kg', 'prixDirect', { prix: true, fmt: (v) => (v ? money(v) : '—') })}
       ${calc('Ventes directes CHF', (c, o) => f0(o.ventesDirect), f0(T.ventesDirect))}
       ${calc('CHF/m² direct', (c, o) => money(o.chfM2Direct))}
-      ${fic('Prix revendeur CHF/kg', 'prixRevendeur', { fmt: (v, c, o) => (v == null || v === '' ? money(o.prixRevendeur) + ' auto' : money(v)) })}
+      ${fic('Prix revendeur CHF/kg', 'prixRevendeur', { prix: true, fmt: (v, c, o) => (v == null || v === '' ? money(o.prixRevendeur) + ' auto' : money(v)) })}
       ${calc('Ventes revendeur CHF', (c, o) => f0(o.ventesRevendeur), f0(T.ventesRevendeur))}
       ${calc('CHF/m² revendeur', (c, o) => money(o.chfM2Revendeur))}
       ${grp('Plantation', 7)}
@@ -121,7 +121,7 @@ function renderPlan() {
       <div class="panel"><h2>Plan ${s}</h2>
         <p class="hint">Cases blanches : propres à cette saison (planches, longueur), elles se modifient directement. Lignes vertes : données de la culture, qui viennent de « Nos cultures » ; touche une case pour modifier la fiche. Lignes grisées : calculées. Touche le nom d'une culture pour ses réglages de saison ou pour la retirer du plan. Récolte réelle : la somme des récoltes enregistrées avec « + Récolte ».</p>
         ${table}
-        <p class="hint">Surface = planches × longueur × largeur avec passe-pied (${fmtNum(P.facteurSurface, 2)} m). Plantons = longueur ÷ interplant × lignes × planches. Prix revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du prix direct. Corrections d'analyse de sol (hypothèses) : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Chaque engrais couvre le reste de son nutriment principal ; ce qu'il apporte en plus (ex. Mg) est déduit des autres.</p></div>`;
+        <p class="hint">Surface = planches × longueur × largeur avec passe-pied (${fmtNum(P.facteurSurface, 2)} m). Plantons = longueur ÷ interplant × lignes × planches. Prix : ceux du produit lié dans Ventes → Stock et prix (direct = particuliers, revendeur = grossiste) ; sans produit, ceux de la fiche (revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du direct). Corrections d'analyse de sol (hypothèses) : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Chaque engrais couvre le reste de son nutriment principal ; ce qu'il apporte en plus (ex. Mg) est déduit des autres.</p></div>`;
   }
 }
 function brancherPlan() {
@@ -142,6 +142,16 @@ function brancherPlan() {
     }));
   }
 }
+/* Prix d'une culture : une seule source, le produit lié dans Ventes → Stock et prix (vendu au kg).
+   Prix direct = prix « Particuliers & vente directe », prix revendeur = prix « Grossiste ». Les plans passés gardent leurs prix. */
+function produitPrixDeFiche(fk, nom) {
+  if (typeof produits !== 'function' || typeof prixNiveau !== 'function') return null;
+  const n = sansAccentsS(nom), p = produits().find((x) => x.fiche && x.fiche === fk) || produits().find((x) => sansAccentsS(x.nom) === n);
+  if (!p || (p.unite && p.unite !== 'kg')) return null;
+  const d = prixNiveau(p, 'part'), r = prixNiveau(p, 'gros');
+  return d === '' || d == null ? null : { p, prixDirect: num(d), prixRevendeur: r === '' || r == null ? null : num(r) };
+}
+function avecPrixProduit(c) { if (String(c.saison || '9999') < todayISO().slice(0, 4)) return c; const x = produitPrixDeFiche(ficheDe(c), c.nom); return x ? Object.assign({}, c, { prixDirect: x.prixDirect, prixRevendeur: x.prixRevendeur, prixProduit: x.p.key }) : c; }
 /* Récolte réelle = somme des récoltes enregistrées (une seule porte d'entrée : « + Récolte ») ; une ancienne valeur tapée à la main sert encore s'il n'y a rien d'enregistré */
 function recolteReelleDe(c, k) { return recolteNotee(k || c.key) || (c.recolteReelle == null || c.recolteReelle === '' ? 0 : num(c.recolteReelle)); }
 ACTIONS.cuSaison = (el) => { CU.saison = el.dataset.s; render(); };
@@ -255,7 +265,7 @@ function renderFiches(id) {
   const l = fiches(), s = saisonCourante(), dans = new Set(cultures(s).map((c) => ficheDe(c)));
   const sel = id && DB.get(id) ? Object.assign({ key: id }, DB.get(id)) : null;
   const ligne = (f, i) => `<a class="item${sel && sel.key === f.key ? ' sel' : ''}" href="#/cultures/fiches/${encodeURIComponent(f.key)}"><span class="who"><strong><span class="sw" style="background:${f.couleur || CULT_PALETTE[i % CULT_PALETTE.length]}"></span>${esc(f.nom)}</strong>
-    <span class="meta">${[f.rendement ? fmtNum(f.rendement, 1) + ' kg/m²' : '', f.prixDirect ? money(f.prixDirect) + ' CHF/kg' : '', f.semPlantation ? 'plant. sem. ' + esc(f.semPlantation) : '', f.variete ? esc(f.variete) : ''].filter(Boolean).join(' · ') || 'Données à compléter'}</span></span>
+    <span class="meta">${[f.rendement ? fmtNum(f.rendement, 1) + ' kg/m²' : '', (() => { const x = produitPrixDeFiche(f.key, f.nom); const pd = x ? x.prixDirect : f.prixDirect; return pd ? money(pd) + ' CHF/kg' : ''; })(), f.semPlantation ? 'plant. sem. ' + esc(f.semPlantation) : '', f.variete ? esc(f.variete) : ''].filter(Boolean).join(' · ') || 'Données à compléter'}</span></span>
     ${dans.has(f.key) ? `<span class="tpill">plan ${esc(s)}</span>` : ''}</a>`;
   let droite = '<div class="panel"><p class="hint">Choisis une culture pour voir sa fiche et ce qu\'elle a donné chaque saison.</p></div>';
   if (sel) {
@@ -265,7 +275,7 @@ function renderFiches(id) {
         <div class="row">${!dans.has(sel.key) ? `<button class="btn primary small" type="button" data-act="cuAjouter" data-fiche="${esc(sel.key)}">Ajouter au plan ${esc(s)}</button>` : ''}<button class="btn small" type="button" data-act="ficheEdit" data-key="${esc(sel.key)}">Modifier</button></div></div>
       <table class="list"><tbody>
         <tr><td>Rendement</td><td class="r">${v(sel.rendement, 'kg/m²')}</td></tr>
-        <tr><td>Prix direct / revendeur</td><td class="r">${v(sel.prixDirect, 'CHF/kg')} / ${sel.prixRevendeur == null || sel.prixRevendeur === '' ? 'auto' : v(sel.prixRevendeur, 'CHF/kg')}</td></tr>
+        <tr><td>Prix direct / revendeur</td><td class="r">${(() => { const x = produitPrixDeFiche(sel.key, sel.nom); return x ? `${v(x.prixDirect, 'CHF/kg')} / ${x.prixRevendeur == null ? '—' : v(x.prixRevendeur, 'CHF/kg')}<br><a href="#" class="hint" data-act="prodEdit" data-key="${esc(x.p.key)}">du produit ${esc(x.p.nom)}</a>` : `${v(sel.prixDirect, 'CHF/kg')} / ${sel.prixRevendeur == null || sel.prixRevendeur === '' ? 'auto' : v(sel.prixRevendeur, 'CHF/kg')}`; })()}</td></tr>
         <tr><td>Semaine de plantation · de récolte</td><td class="r">${v(sel.semPlantation)} · ${v(sel.semRecolte)}</td></tr>
         <tr><td>Lignes par planche · interplant</td><td class="r">${v(sel.lignes)} · ${v(sel.interplant, 'cm')}</td></tr>
         <tr><td>Variété · fournisseur</td><td class="r">${v(sel.variete)} · ${v(sel.fournisseur)}</td></tr>
@@ -311,13 +321,13 @@ FORMS.cuPlacer = (v) => {
 };
 ACTIONS.ficheNouvelle = () => { closeSheet(); go('#/cultures/fiches'); setTimeout(() => ACTIONS.ficheEdit({ dataset: {} }), 60); };
 ACTIONS.ficheEdit = (el) => {
-  const k = el.dataset.key || '', f = k ? DB.get(k) : { lignes: 1, besoins: {} }, b = f.besoins || {}, s = saisonCourante();
+  const k = el.dataset.key || '', f = k ? DB.get(k) : { lignes: 1, besoins: {} }, b = f.besoins || {}, s = saisonCourante(), pp = k ? produitPrixDeFiche(k, f.nom) : null;
   const n = (id, label, val, name) => inp(id, label, val ?? '', { name, type: 'number', attrs: { step: 'any', inputmode: 'decimal' } });
   openSheet(`${sheetHead(k ? 'Fiche ' + f.nom : 'Nouvelle fiche de culture')}<form class="sbody form" data-form="fiche"><input type="hidden" name="key" value="${esc(k)}">
     ${inp('fi-nom', 'Culture', f.nom, { name: 'nom', req: true })}
     <div class="field"><span class="flabel">Couleur</span><div class="seg">${CULT_PALETTE.map((x) => `<label style="--c:${x}"><input type="radio" name="couleur" value="${x}"${f.couleur === x ? ' checked' : ''}> <span class="blk" style="background:${x};width:18px;height:18px"></span></label>`).join('')}</div></div>
     <div class="grid2">${n('fi-r', 'Rendement kg/m²', f.rendement, 'rendement')}${n('fi-c', 'Compost L/m²', f.compost, 'compost')}
-      ${n('fi-pd', 'Prix direct CHF/kg', f.prixDirect, 'prixDirect')}${n('fi-pr', 'Prix revendeur CHF/kg', f.prixRevendeur, 'prixRevendeur')}
+      ${pp ? `<input type="hidden" name="prixDirect" value="${esc(f.prixDirect ?? '')}"><input type="hidden" name="prixRevendeur" value="${esc(f.prixRevendeur ?? '')}"><div class="field"><span class="flabel">Prix</span><span class="hint">${money(pp.prixDirect)} CHF/kg direct${pp.prixRevendeur != null ? ' · ' + money(pp.prixRevendeur) + ' revendeur' : ''} : ceux du produit <a href="#" data-act="prodEdit" data-key="${esc(pp.p.key)}">${esc(pp.p.nom)}</a> (Stock et prix).</span></div><div></div>` : n('fi-pd', 'Prix direct CHF/kg', f.prixDirect, 'prixDirect') + n('fi-pr', 'Prix revendeur CHF/kg', f.prixRevendeur, 'prixRevendeur')}
       ${inp('fi-sp', 'Semaine de plantation', f.semPlantation, { name: 'semPlantation', attrs: { placeholder: 'ex. 20' } })}${inp('fi-sr', 'Semaines de récolte', f.semRecolte, { name: 'semRecolte', attrs: { placeholder: 'ex. 40-46' } })}
       ${n('fi-l', 'Lignes par planche', f.lignes, 'lignes')}${n('fi-i', 'Interplant cm', f.interplant, 'interplant')}
       ${inp('fi-v', 'Variété', f.variete, { name: 'variete' })}${inp('fi-f', 'Fournisseur', f.fournisseur, { name: 'fournisseur' })}</div>
