@@ -25,7 +25,7 @@ function renderPlan() {
   {
     const s = saisonCourante(), ss = saisons(), list = cultures(s), P = paramsCultures(s);
     const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
-    const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
+    const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="plantonsSheet">Commande de plantons</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture » : tu peux la choisir dans « Nos cultures », avec ses données des années passées.</p></div>';
     const eff = list.map((c) => Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }));
     const os = eff.map((c) => culture(c, P)), T = totauxCultures(eff, P), cols = list.length;
@@ -352,4 +352,40 @@ FORMS.fiche = (v) => {
   const an = todayISO().slice(0, 4);
   for (const c of DB.all('cul:')) if (ficheDe(c) === k && String(c.saison) >= an) DB.put(c.key, Object.assign({}, DB.get(c.key), valeursFiche(o), { fiche: k }));
   closeSheet(); toast('Fiche enregistrée.'); go('#/cultures/fiches/' + encodeURIComponent(k));
+};
+
+/* ---------- Commande de plantons : depuis le plan, par fournisseur, avec la date limite de commande ----------
+   Quantité = plantons du plan + marge (pertes, remplacements), arrondie à la dizaine. Commander « délai » semaines avant la plantation.
+   cfg:plantons = { marge (0,1 = 10 %), delai (semaines) } */
+const reglagesPlantons = () => Object.assign({ marge: 0.1, delai: 6 }, DB.get('cfg:plantons') || {});
+function commandesPlantons(s) {
+  const R = reglagesPlantons(), P = paramsCultures(s), parF = {};
+  for (const c of cultures(s)) {
+    const o = culture(c, P); if (!(o.plantons > 0)) continue;
+    const sem = parseSemaines(c.semPlantation), date = sem ? lundiSemaine(Number(s), sem[0]) : '';
+    const f = (c.fournisseur || '').trim() || 'Sans fournisseur';
+    (parF[f] = parF[f] || []).push({ c, n: Math.ceil(o.plantons * (1 + num(R.marge)) / 10) * 10, plan: Math.round(o.plantons), date, semaine: sem ? sem[0] : null, avant: date ? addDays(date, -7 * num(R.delai)) : '' });
+  }
+  return Object.entries(parF).map(([f, l]) => ({ fournisseur: f, lignes: l.sort((a, b) => String(a.date || '9').localeCompare(String(b.date || '9'))), avant: l.map((x) => x.avant).filter(Boolean).sort()[0] || '' })).sort((a, b) => String(a.avant || '9').localeCompare(String(b.avant || '9')));
+}
+const textePlantons = (g) => [`Commande de plantons — ${cfg().nom || 'Gamins de Talus'}`, '', ...g.lignes.map((x) => `- ${x.c.nom}${x.c.variete ? ' (' + x.c.variete + ')' : ''} : ${x.n} plantons${x.date ? ', livraison semaine ' + x.semaine + ' (dès le ' + fmtDate(x.date) + ')' : ''}`), '', 'Merci !'].join('\n');
+ACTIONS.plantonsSheet = () => {
+  const s = saisonCourante(), R = reglagesPlantons(), gs = commandesPlantons(s), today = todayISO();
+  openSheet(`${sheetHead('Commande de plantons', 'Plan ' + s)}<div class="sbody">
+    <form class="grid2" data-form="plantonsReglages">${inp('pl-m', 'Marge (pertes, remplacements) %', Math.round(num(R.marge) * 100), { name: 'marge', type: 'number' })}${inp('pl-d', 'Commander combien de semaines avant', R.delai, { name: 'delai', type: 'number' })}<div class="row-end" style="grid-column:1/-1"><button class="btn small" type="submit">Recalculer</button></div></form>
+    ${gs.length ? gs.map((g, i) => `<div class="panel" style="margin:10px 0"><div class="between"><h3 style="margin:0">${esc(g.fournisseur)}</h3>${g.avant ? `<span class="${g.avant < today ? 'err' : 'hint'}">commander avant le ${fmtDate(g.avant)}</span>` : ''}</div>
+      <div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Plantons</th><th>Plantation</th></tr></thead><tbody>${g.lignes.map((x) => `<tr><td>${esc(x.c.nom)}${x.c.variete ? `<br><span class="hint">${esc(x.c.variete)}</span>` : ''}</td><td class="r num">${x.n}<br><span class="hint">plan ${x.plan}</span></td><td>${x.date ? `sem. ${x.semaine} · ${fmtDate(x.date)}` : '<span class="hint">semaine à fixer dans la fiche</span>'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="row"><button class="btn small" type="button" data-act="plantonsCopier" data-i="${i}">Copier la commande</button><button class="btn small" type="button" data-act="plantonsTache" data-i="${i}">Créer la tâche « commander »</button></div></div>`).join('')
+      : '<p class="empty">Aucune culture avec des plantons dans ce plan (il faut l\'interplant dans la fiche).</p>'}
+    <p class="hint">Plantons = longueur ÷ interplant × lignes × planches (comme dans le plan), plus la marge, arrondi à la dizaine. Le fournisseur et la variété viennent de la fiche de chaque culture.</p></div>`);
+};
+FORMS.plantonsReglages = (v) => { DB.put('cfg:plantons', { marge: Math.max(0, num(v.marge)) / 100, delai: Math.max(0, Math.round(num(v.delai))) }); ACTIONS.plantonsSheet(); };
+ACTIONS.plantonsCopier = async (el) => {
+  const g = commandesPlantons(saisonCourante())[Number(el.dataset.i)]; if (!g) return;
+  try { await navigator.clipboard.writeText(textePlantons(g)); toast('Commande copiée : colle-la dans un mail au fournisseur.'); } catch (e) { toast("Copie impossible sur cet appareil."); }
+};
+ACTIONS.plantonsTache = (el) => {
+  const g = commandesPlantons(saisonCourante())[Number(el.dataset.i)]; if (!g) return;
+  DB.put('t:' + uid('t'), { titre: `Commander les plantons chez ${g.fournisseur}`, statut: 'afaire', echeance: g.avant || '', responsable: '', tag: 'agri', remarques: textePlantons(g), cree: new Date().toISOString(), creePar: Sync.me || '' });
+  toast(`Tâche créée${g.avant ? ' pour le ' + fmtDate(g.avant) : ''}.`);
 };
