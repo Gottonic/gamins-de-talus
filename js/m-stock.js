@@ -160,9 +160,10 @@ function renderSelfService() {
       </tbody></table></div>
       <p>Encaissé : <b>${chf(b.enc)}</b>${s.statut === 'close' ? ` sur ${chf(b.vendu)} vendus · <b class="${b.taux > 0.1 ? 'bad' : ''}">${b.ecart > 0 ? `${chf(b.ecart)} manquants (${Math.round(b.taux * 100)} %)` : 'rien ne manque'}</b>` : ` · au plus ${chf(b.mis)} si tout part`}</p>
       ${recs.length ? `<p class="hint">${recs.map((r) => `${fmtDate(r.date)} ${esc(r.moyen || '')} ${money(r.montant)}`).join(' · ')}</p>` : ''}
+      ${(() => { const t = twintPourSelf(s); return t.n ? `<div class="banner">TWINT importé pendant cette vente : <b>${chf(t.total)}</b> (${t.n} paiement${t.n > 1 ? 's' : ''}, du ${fmtDateCourt(t.de)} au ${fmtDateCourt(t.a)}). <button class="btn small primary" type="button" data-act="twEncaisser" data-key="${esc(s.key)}">Ajouter comme encaissement</button></div>` : ''; })()}
       <div class="row">${s.statut !== 'close' ? `<button class="btn primary small" type="button" data-act="selfEnc" data-key="${esc(s.key)}">+ Encaissement</button><button class="btn small" type="button" data-act="selfClore" data-key="${esc(s.key)}">Boucler (invendus)</button>` : `<button class="btn small" type="button" data-act="selfRouvrir" data-key="${esc(s.key)}">Rouvrir</button>`}<button class="btn small" type="button" data-act="delItem" data-key="${esc(s.key)}" data-what="cette mise en vente">Supprimer</button></div></div>`;
   };
-  return `<div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Mise en vente directe</button></div>
+  return `<div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Mise en vente directe</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button>${DB.all('tw:').length ? `<button class="btn" type="button" data-act="twListe">Paiements TWINT (${DB.all('tw:').length})</button>` : ''}</div>
     <div class="stats"><div class="stat"><span class="k">Ventes directes bouclées</span><span class="v">${clo.length}</span></div>
       <div class="stat good"><span class="k">Vendu (selon les invendus)</span><span class="v">${chf(tot.v)}</span></div>
       <div class="stat blue"><span class="k">Encaissé (TWINT, espèces)</span><span class="v">${chf(tot.e)}</span></div>
@@ -289,3 +290,114 @@ function dessinerGrille(cv, ps, niv) {
   cv.text('Les clients réguliers gardent le prix de leur dernière commande.', x0, Math.min(y, 282), { size: 8.5 });
   cv.text([s.nom, s.email, s.telephone].filter(Boolean).join(' · '), x0, 287, { size: 8.5 });
 }
+
+/* ---------- Relevé TWINT : import du fichier exporté de TWINT Business (Excel .xlsx, ou .csv) ----------
+   tw:<id> = { date, montant, ref, texte, utilise? (clé de la vente ou de l'encaissement qui l'a pris) }
+   À l'import : un paiement qui correspond à une vente payée par TWINT (même jour, même montant) lui est rattaché.
+   Le reste se propose comme encaissement de la vente directe en cours à ces dates : le taux de vol devient exact. */
+const TW = { lignes: null, entete: [], cols: {} };
+/* Lecture d'un .xlsx sans bibliothèque de plus : c'est un zip de fichiers XML (JSZip est déjà là) */
+async function lireXlsx(file) {
+  const z = await window.JSZip.loadAsync(file), parse = (t) => new DOMParser().parseFromString(t, 'application/xml');
+  const ss = z.file('xl/sharedStrings.xml') ? [...parse(await z.file('xl/sharedStrings.xml').async('string')).getElementsByTagName('si')].map((si) => [...si.getElementsByTagName('t')].map((t) => t.textContent).join('')) : [];
+  const nom = Object.keys(z.files).filter((n) => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0]; if (!nom) throw new Error('feuille introuvable');
+  const lignes = [];
+  for (const row of parse(await z.file(nom).async('string')).getElementsByTagName('row')) {
+    const l = [];
+    for (const c of row.getElementsByTagName('c')) {
+      const ref = c.getAttribute('r') || '', col = ref.replace(/\d+/g, '').split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1, t = c.getAttribute('t');
+      const v = c.getElementsByTagName('v')[0], is = c.getElementsByTagName('is')[0];
+      l[col < 0 ? l.length : col] = t === 's' ? ss[Number(v && v.textContent)] : t === 'inlineStr' ? (is ? is.textContent : '') : v ? (t === 'str' || t === 'b' ? v.textContent : Number(v.textContent)) : '';
+    }
+    lignes.push([...l].map((x) => (x == null ? '' : x)));
+  }
+  return lignes;
+}
+function lireCsv(texte) {
+  const sep = (texte.split('\n')[0].match(/;/g) || []).length >= (texte.split('\n')[0].match(/,/g) || []).length ? ';' : ',';
+  const out = []; let l = [], cur = '', q = false;
+  for (let i = 0; i < texte.length; i++) {
+    const ch = texte[i];
+    if (q) { if (ch === '"' && texte[i + 1] === '"') { cur += '"'; i++; } else if (ch === '"') q = false; else cur += ch; }
+    else if (ch === '"') q = true; else if (ch === sep) { l.push(cur); cur = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && texte[i + 1] === '\n') i++; l.push(cur); out.push(l); l = []; cur = ''; } else cur += ch;
+  }
+  if (cur || l.length) { l.push(cur); out.push(l); }
+  return out.filter((r) => r.some((x) => String(x).trim()));
+}
+const twNombre = (x) => { if (typeof x === 'number') return x; const t = String(x || '').replace(/CHF|Fr\.|\s|'|’/g, ''); if (!t) return NaN; return Number(/,\d{1,2}$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')); };
+function twDate(x) {
+  if (typeof x === 'number' && x > 20000 && x < 80000) return isoDate(new Date(Date.UTC(1899, 11, 30) + Math.floor(x) * 864e5 + 12 * 3600e3)); // date Excel (la partie décimale est l'heure)
+  const t = String(x || '').trim(); let m = t.match(/(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})/); if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return '';
+}
+function twDevine(entete, lignes) {
+  const h = entete.map((x) => sansAccentsS(x));
+  const trouve = (res, test) => { let i = h.findIndex((x) => res.some((r) => r.test(x))); if (i < 0 && test) i = entete.findIndex((_, j) => lignes.slice(0, 20).filter((l) => test(l[j])).length >= Math.min(3, lignes.length)); return i; };
+  return {
+    date: trouve([/^date/, /datum/, /date.*trans/, /zeit/, /time/], (v) => !!twDate(v)),
+    montant: trouve([/montant(?!.*frais)/, /betrag/, /amount/, /brut/, /total/], (v) => isFinite(twNombre(v)) && twNombre(v) !== 0 && !twDate(v)),
+    ref: trouve([/^ref|referen|^id\b|transaction.?id|transaktions.?id/]),
+    texte: trouve([/description|beschreibung|message|nachricht|texte|libelle|magasin|store|point/]),
+  };
+}
+ACTIONS.twImport = () => {
+  openSheet(`${sheetHead('Importer le relevé TWINT', 'Fichier exporté de TWINT Business')}<div class="sbody">
+    <p class="hint">Dans l'app TWINT Business : Transactions → icône de téléchargement → choisir la période → format Excel (.xlsx). Puis choisis le fichier ici. Un paiement déjà importé n'est jamais compté deux fois.</p>
+    <input type="file" id="tw-file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"><div id="tw-res"></div></div>`);
+  $('tw-file').addEventListener('change', async (e) => {
+    const f = e.target.files[0]; if (!f) return; const res = $('tw-res'); res.innerHTML = '<p class="hint">Lecture…</p>';
+    try {
+      const rows = /\.csv$/i.test(f.name) || f.type === 'text/csv' ? lireCsv(await f.text()) : await lireXlsx(f);
+      let hi = rows.findIndex((r) => r.filter((x) => typeof x === 'string' && x.trim() && !twDate(x) && !isFinite(twNombre(x))).length >= 2); if (hi < 0) hi = 0;
+      TW.entete = rows[hi].map((x, j) => String(x || 'Colonne ' + (j + 1))); TW.lignes = rows.slice(hi + 1).filter((r) => r.some((x) => String(x).trim())); TW.cols = twDevine(TW.entete, TW.lignes);
+      twApercu();
+    } catch (err) { res.innerHTML = `<p class="errors">Fichier illisible : ${esc(err.message)}</p>`; }
+  });
+};
+function twApercu() {
+  const res = $('tw-res'); if (!res) return; const c = TW.cols, opts = (v) => `<option value="-1">—</option>${TW.entete.map((h, j) => `<option value="${j}"${j === v ? ' selected' : ''}>${esc(h)}</option>`).join('')}`;
+  const tx = twTransactions();
+  res.innerHTML = `<div class="grid2">${[['date', 'Colonne date'], ['montant', 'Colonne montant'], ['ref', 'Référence (facultatif)'], ['texte', 'Texte (facultatif)']].map(([k, l]) => `<div class="field"><label for="tw-${k}">${l}</label><select id="tw-${k}" data-twc="${k}">${opts(c[k])}</select></div>`).join('')}</div>
+    <p class="hint">${tx.length} paiement${tx.length > 1 ? 's' : ''} reconnu${tx.length > 1 ? 's' : ''}${tx.length ? `, du ${fmtDate(tx[0].date)} au ${fmtDate(tx[tx.length - 1].date)}, total ${chf(tx.reduce((a, t) => a + t.montant, 0))}` : ''}.</p>
+    ${tx.length ? `<div class="table-wrap"><table class="list"><tbody>${tx.slice(0, 5).map((t) => `<tr><td class="num">${fmtDate(t.date)}</td><td>${esc(trunc(t.texte || t.ref, 40))}</td><td class="r num">${money(t.montant)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="row-end"><button class="btn primary" type="button" data-act="twImportOk"${tx.length ? '' : ' disabled'}>Importer</button></div>`;
+  res.querySelectorAll('select[data-twc]').forEach((el) => el.addEventListener('change', () => { TW.cols[el.dataset.twc] = Number(el.value); twApercu(); }));
+}
+function twTransactions() {
+  const c = TW.cols; if (!TW.lignes || c.date < 0 || c.montant < 0) return [];
+  return TW.lignes.map((l) => ({ date: twDate(l[c.date]), montant: r2(twNombre(l[c.montant])), ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '' }))
+    .filter((t) => t.date && isFinite(t.montant) && t.montant !== 0).sort((a, b) => a.date.localeCompare(b.date));
+}
+ACTIONS.twImportOk = () => {
+  const tx = twTransactions(); let n = 0, lies = 0; const deja = new Set(DB.all('tw:').map((t) => t.cle)), vus = {};
+  const ventes = factures().filter((f) => f.payeePar === 'twint' && f.statut === 'payee'), prises = new Set(DB.all('tw:').map((t) => t.utilise).filter(Boolean));
+  for (const t of tx) {
+    const base = t.ref || `${t.date}|${t.montant}|${t.texte}`; vus[base] = (vus[base] || 0) + 1; const cle = t.ref ? t.ref : base + '|' + vus[base];
+    if (deja.has(cle)) continue;
+    const o = Object.assign({ cle, importe: new Date().toISOString(), par: Sync.me || '' }, t);
+    const v = ventes.find((f) => !prises.has(f.key) && (f.payeeLe || f.date) === t.date && Math.abs(num(f.total) - t.montant) < 0.01);
+    if (v) { o.utilise = v.key; prises.add(v.key); lies++; }
+    DB.put('tw:' + uid('w'), o); n++;
+  }
+  closeSheet(); toast(n ? `${n} paiement${n > 1 ? 's' : ''} TWINT importé${n > 1 ? 's' : ''}${lies ? `, dont ${lies} rattaché${lies > 1 ? 's' : ''} à des ventes` : ''}.` : 'Rien de nouveau : ces paiements étaient déjà importés.', 5000);
+};
+/* Paiements TWINT libres pendant une vente directe (de la mise en vente à la clôture, ou aujourd'hui) */
+function twintPourSelf(s) {
+  const fin = s.closeLe || todayISO(), l = DB.all('tw:').filter((t) => (!t.utilise || !DB.get(t.utilise)) && t.montant > 0 && t.date >= s.date && t.date <= fin).sort((a, b) => a.date.localeCompare(b.date));
+  return { n: l.length, total: r2(l.reduce((a, t) => a + t.montant, 0)), de: l.length ? l[0].date : '', a: l.length ? l[l.length - 1].date : '', l };
+}
+ACTIONS.twEncaisser = (el) => {
+  const k = el.dataset.key, s = DB.get(k); if (!s) return; const t = twintPourSelf(Object.assign({ key: k }, s)); if (!t.n) return;
+  const rk = 'rec:' + uid('r');
+  DB.put(rk, { date: t.a, montant: t.total, moyen: 'TWINT', par: cfg().compteDe || Sync.me || '', client: s.lieu || 'Self-service', libelle: `Vente directe ${fmtDate(s.date)} · ${t.n} paiements TWINT importés`, self: k, cree: new Date().toISOString() });
+  for (const x of t.l) DB.put(x.key, Object.assign({}, DB.get(x.key), { utilise: rk }));
+  toast(`${chf(t.total)} ajoutés aux encaissements.`);
+};
+ACTIONS.twListe = () => {
+  const l = DB.all('tw:').sort((a, b) => b.date.localeCompare(a.date));
+  const lib = (t) => { if (!t.utilise) return '<span class="hint">libre</span>'; const x = DB.get(t.utilise); return x ? (String(t.utilise).startsWith('fac:') ? esc(nomVente(x)) : 'vente directe') : '<span class="hint">libre</span>'; };
+  openSheet(`${sheetHead('Paiements TWINT importés', `${l.length} · ${chf(l.reduce((a, t) => a + t.montant, 0))}`)}<div class="sbody"><div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Texte</th><th class="r">Montant</th><th>Compté dans</th></tr></thead><tbody>
+    ${l.slice(0, 300).map((t) => `<tr><td class="num">${fmtDate(t.date)}</td><td>${esc(trunc(t.texte || t.ref || '', 40))}</td><td class="r num">${money(t.montant)}</td><td>${lib(t)}</td></tr>`).join('')}</tbody></table></div>
+    <p class="hint">« Libre » : pas encore compté. Il se propose comme encaissement de la vente directe en cours à cette date.</p></div>`);
+};

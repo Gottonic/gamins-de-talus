@@ -94,7 +94,7 @@ FORMS.cfgAss = (v) => {
 };
 
 /* ---------- Données ---------- */
-const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'fiche:': 'Fiches cultures', 'irr:': 'Irrigation (semaines)', 'msg:': 'Messages', 'mail:': 'Mails', 'mvt:': 'Mouvements de stock', 'self:': 'Mises en vente', 'jnl:': 'Journal de cultures', 'drv:': 'Drive', 'lu:': 'Messages lus', 'cfg:': 'Réglages' };
+const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'fiche:': 'Fiches cultures', 'irr:': 'Irrigation (semaines)', 'msg:': 'Messages', 'mail:': 'Mails', 'mvt:': 'Mouvements de stock', 'self:': 'Mises en vente', 'jnl:': 'Journal de cultures', 'drv:': 'Drive', 'tw:': 'Paiements TWINT importés', 'lu:': 'Messages lus', 'cfg:': 'Réglages' };
 const prefixOf = (k) => Object.keys(PREFIX_LABEL).find((p) => k.startsWith(p)) || '';
 function libelleDe(k, d) { d = d || {}; return d.numero ? 'Facture ' + d.numero : d.texte ? trunc(d.texte, 60) : d.objet || d.titre || d.nom || d.organisation || d.client || d.remarque || (d.date ? fmtDate(d.date) : '') || k; }
 
