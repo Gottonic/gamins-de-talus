@@ -28,7 +28,7 @@ function problemesReglages(cash) {
 }
 
 /* ---------- Brouillon de facture ---------- */
-const draftF = { clientId: '', date: todayISO(), livraison: '', bulletin: '', remarque: '', paiement: 'virement', lignes: [], facture: true, bl: false, blPrix: false, stock: true, moyen: 'especes' };
+const draftF = { clientId: '', date: todayISO(), livraison: '', bulletin: '', remarque: '', paiement: 'virement', lignes: [], facture: true, bl: false, stock: true, moyen: 'especes' };
 const EXAMPLE_CLIENT = { nom: 'Exemple : Grossiste SA', attn: '', rue: "Route de l'Exemple", numero: '1', npa: '1700', localite: 'Fribourg' };
 /* Prix d'un produit selon le type de client ; sinon le prix par défaut. Modifiable ensuite sur chaque facture. */
 const TARIFS = [['grossiste', 'Grossiste'], ['collectivite', 'Restauration collective'], ['pro', 'Client pro (restaurant, épicerie)'], ['particulier', 'Particulier']];
@@ -122,10 +122,7 @@ function renderListeFactures(selKey) {
 }
 function renderDetailFacture(f, dbl) {
   const s = facStatut(f), acts = [];
-  if (f.numero) acts.push(`<button class="btn primary" type="button" data-act="facPdf" data-key="${esc(f.key)}">Facture PDF</button>`);
-  if (f.numero && navigator.canShare) acts.push(`<button class="btn" type="button" data-act="facShare" data-key="${esc(f.key)}">Partager</button>`);
-  acts.push(`<button class="btn${f.numero ? '' : ' primary'}" type="button" data-act="blPdf" data-key="${esc(f.key)}">${f.blNumero ? 'Bulletin PDF' : 'Faire un bulletin'}</button>`);
-  if (!f.numero && s !== 'annulee') acts.push(`<button class="btn" type="button" data-act="venteFacturer" data-key="${esc(f.key)}">Faire la facture</button>`);
+  acts.push(`<button class="btn primary" type="button" data-act="papiersPdf" data-key="${esc(f.key)}">Facture & bulletin PDF</button>`);
   if (s === 'ouverte' || s === 'retard') acts.push(`<button class="btn" type="button" data-act="facPaid" data-key="${esc(f.key)}">Marquer comme payée</button>`);
   if (s === 'payee' && f.paiement !== 'especes') acts.push(`<button class="btn" type="button" data-act="facReopen" data-key="${esc(f.key)}">Remettre en ouverte</button>`);
   if (s !== 'annulee' && (s !== 'payee' || f.paiement === 'especes')) acts.push(`<button class="btn danger" type="button" data-act="facCancel" data-key="${esc(f.key)}">Annuler</button>`);
@@ -152,7 +149,6 @@ function renderNouvelleFacture(contactKey) {
         <label><input type="checkbox" id="d-opt-bl"${draftF.bl ? ' checked' : ''}> Bulletin de livraison</label>
         <label><input type="checkbox" id="d-opt-stock"${draftF.stock ? ' checked' : ''}> Déduire du stock</label></div>
         <span class="sub">${draftF.facture ? 'Facture numérotée (QR ou payée comptant).' : 'Sans facture : vente au marché, au stand, ou facturée plus tard.'}${draftF.bl ? ' Bulletin numéroté automatiquement, à faire signer à la livraison.' : ''}${draftF.stock ? ' Le stock des produits suivis baisse.' : ''}</span></div>
-      ${draftF.bl ? `<label class="row" style="font-size:14px;margin-top:-6px"><input type="checkbox" id="d-opt-blprix"${draftF.blPrix ? ' checked' : ''}> Prix sur le bulletin</label>` : ''}
       ${aideLivraison()}
       ${fld('d-client', 'Client', `<select id="d-client"><option value="">${cl.length ? 'Choisir un client…' : 'Aucun contact : ajoute-en un'}</option>${groups.map(([t, l]) => `<optgroup label="${esc(t.label)}">${l.map((x) => `<option value="${esc(x.key)}"${x.key === draftF.clientId ? ' selected' : ''}>${esc(billName(x) + (attnName(x) ? ' (' + attnName(x) + ')' : ''))}</option>`).join('')}</optgroup>`).join('')}</select>`,
         c ? esc(addr || "Pas d'adresse : nécessaire pour un virement QR, pas pour un paiement comptant.") : `<a href="#/contacts/nouveau">Ajouter un contact</a>`)}
@@ -173,7 +169,7 @@ function renderNouvelleFacture(contactKey) {
       ${inp('d-remarque', 'Remarque sur la facture', draftF.remarque, { attrs: { maxlength: 110, placeholder: 'facultatif' } })}
       <div class="total-row"><strong>Total</strong><span class="v" id="d-total"></span></div>
       <div id="d-errors" class="errors" hidden></div>
-      <div class="row-end"><button class="btn primary" type="button" id="d-create">Enregistrer la vente</button></div>
+      <div class="row-end"><button class="btn" type="button" id="d-save" hidden title="Enregistrer sans télécharger de PDF (ils restent disponibles dans la vente)">Enregistrer</button><button class="btn primary" type="button" id="d-create">Enregistrer la vente</button></div>
     </form>
     <div class="paper-wrap"><div class="paper" id="d-paper"></div><span class="badge-ex" id="d-badge" hidden>Valeurs d'exemple</span></div></div>`;
 }
@@ -191,7 +187,8 @@ function majApercu() {
   const d = factureDepuisBrouillon();
   $('d-paper').innerHTML = draftF.facture ? invoiceSvg(d.inv) : bulletinSvg(Object.assign({}, d.inv, { numero: '', blNumero: draftF.bl ? prochainBL(draftF.date) : '' }), true); $('d-badge').hidden = !d.example || !draftF.facture;
   $('d-total').textContent = chf(d.lignes.reduce((a, l) => a + r2(l.quantite * l.prix), 0));
-  $('d-title').textContent = draftF.facture ? 'Nouvelle vente · facture ' + d.inv.numero : 'Nouvelle vente'; $('d-create').textContent = draftF.facture ? 'Enregistrer et faire la facture ' + d.inv.numero : 'Enregistrer la vente';
+  $('d-title').textContent = draftF.facture ? 'Nouvelle vente · facture ' + d.inv.numero : 'Nouvelle vente'; $('d-create').textContent = draftF.facture ? 'Enregistrer et faire la facture ' + d.inv.numero : draftF.bl ? 'Enregistrer et faire le bulletin' : 'Enregistrer la vente';
+  $('d-save').hidden = !(draftF.facture || draftF.bl);
   draftF.lignes.forEach((l, i) => {
     const t = $('l-t-' + i); if (!t) return;
     const p = DB.get(l.produitId), f = p ? fourchette(p) : '';
@@ -210,7 +207,7 @@ function brancherBrouillon() {
   for (const k of ['date', 'livraison', 'bulletin', 'remarque']) { const el = $('d-' + k); if (el) el.addEventListener('input', (e) => { draftF[k] = e.target.value; majApercu(); }); }
   for (const r of document.querySelectorAll('input[name="d-paiement"]')) r.addEventListener('change', (e) => { draftF.paiement = e.target.value; render(); });
   for (const r of document.querySelectorAll('input[name="d-moyen"]')) r.addEventListener('change', (e) => { draftF.moyen = e.target.value; render(); });
-  for (const [id, k] of [['d-opt-facture', 'facture'], ['d-opt-bl', 'bl'], ['d-opt-stock', 'stock'], ['d-opt-blprix', 'blPrix']]) { const el = $(id); if (el) el.addEventListener('change', () => { draftF[k] = el.checked; render(); }); }
+  for (const [id, k] of [['d-opt-facture', 'facture'], ['d-opt-bl', 'bl'], ['d-opt-stock', 'stock']]) { const el = $(id); if (el) el.addEventListener('change', () => { draftF[k] = el.checked; render(); }); }
   $('d-addline').addEventListener('click', () => { draftF.lignes.push(nouvelleLigne()); render(); const q = $('l-q-' + (draftF.lignes.length - 1)); if (q) q.focus(); });
   $('d-lines').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (!b) return; draftF.lignes.splice(Number(b.dataset.rm), 1); render(); });
   $('d-lines').addEventListener('input', (e) => {
@@ -222,7 +219,12 @@ function brancherBrouillon() {
     } else { l[k] = e.target.value; if (k === 'prix') l.auto = false; }
     majApercu();
   });
-  $('d-create').addEventListener('click', () => {
+  /* « Enregistrer » : la vente est enregistrée (facture et bulletin numérotés si cochés), sans télécharger de PDF */
+  $('d-create').addEventListener('click', () => creerVente(true));
+  $('d-save').addEventListener('click', () => creerVente(false));
+}
+function creerVente(pdf) {
+  {
     const p = problemesBrouillon(), box = $('d-errors');
     if (p.length) { box.innerHTML = `<strong>Il manque encore :</strong><ul>${p.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`; box.hidden = false; return; }
     const d = factureDepuisBrouillon();
@@ -233,16 +235,16 @@ function brancherBrouillon() {
       const m = draftF.moyen || 'especes', date = inv.date;
       Object.assign(inv, m === 'plustard' ? { paiement: 'virement', statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '' } : { paiement: m === 'especes' ? 'especes' : 'virement', statut: 'payee', payeeLe: date, payeePar: m, encaissePar: m === 'virement' ? (cfg().compteDe || Sync.me || '') : (Sync.me || ''), echeance: date });
     }
-    if (draftF.bl) { inv.blNumero = prochainBL(inv.date); if (!inv.bulletin && inv.numero) inv.bulletin = inv.blNumero; inv.blPrix = !!draftF.blPrix; }
+    if (draftF.bl) { inv.blNumero = prochainBL(inv.date); if (!inv.bulletin && inv.numero) inv.bulletin = inv.blNumero; }
     const key = 'fac:' + uid('f');
     DB.put(key, inv); stockPourVente(key, inv);
-    const blPrix = draftF.blPrix;
     Object.assign(draftF, { lignes: [], bulletin: '', remarque: '', livraison: '', paiement: 'virement' });
-    toast(inv.numero ? `Vente enregistrée, facture ${inv.numero}.` : 'Vente enregistrée.');
+    toast((inv.numero ? `Vente enregistrée, facture ${inv.numero}.` : 'Vente enregistrée.') + (!pdf && (inv.numero || inv.blNumero) ? ' Les PDF : bouton « Facture & bulletin PDF ».' : ''), 4500);
     go('#/factures/voir/' + encodeURIComponent(key));
+    if (!pdf) return;
     if (inv.numero) telechargerFacture(key);
-    if (inv.blNumero) setTimeout(() => downloadFile(bulletinFileName(inv), bulletinPdfBlob(inv, blPrix)), 400);
-  });
+    if (inv.blNumero) setTimeout(() => downloadFile(bulletinFileName(inv), bulletinPdfBlob(inv, true)), 400);
+  }
 }
 
 function telechargerFacture(key) {
@@ -286,17 +288,26 @@ function aideLivraison() {
     </ul>
     <p class="hint">Pas besoin de double : imprimer un seul bulletin, le faire signer, le photographier avec « 📷 Photo du bulletin signé » (dans la vente), puis le laisser au client.</p></details>`;
 }
-/* Bulletin de livraison d'une vente (numéroté au premier téléchargement) */
-ACTIONS.blPdf = (el) => {
+/* Facture & bulletin d'une vente : une seule fenêtre pour choisir le papier (le bulletin porte toujours les prix) */
+ACTIONS.papiersPdf = (el) => {
   const k = el.dataset.key, f = DB.get(k); if (!f) return;
-  openSheet(`${sheetHead('Bulletin de livraison', nomVente(f))}<div class="sbody"><p class="hint">${f.blNumero ? 'Bulletin ' + esc(f.blNumero) + '.' : 'Un numéro de bulletin est donné maintenant.'}</p>
-    ${aideLivraison()}
-    <div class="row-end"><button class="btn" type="button" data-act="blPdfOk" data-key="${esc(k)}" data-prix="0">Sans les prix</button><button class="btn primary" type="button" data-act="blPdfOk" data-key="${esc(k)}" data-prix="1">Avec les prix</button></div></div>`);
+  const annulee = facStatut(f) === 'annulee', b = [];
+  if (f.numero) {
+    b.push(`<button class="btn primary" type="button" data-act="facPdfOk" data-key="${esc(k)}">Facture ${esc(f.numero)}</button>`);
+    if (navigator.canShare) b.push(`<button class="btn" type="button" data-act="facShare" data-key="${esc(k)}">Partager la facture</button>`);
+  } else if (!annulee) b.push(`<button class="btn" type="button" data-act="venteFacturer" data-key="${esc(k)}">Faire la facture</button>`);
+  b.push(`<button class="btn${f.numero ? '' : ' primary'}" type="button" data-act="blPdfOk" data-key="${esc(k)}">${f.blNumero ? 'Bulletin ' + esc(f.blNumero) : 'Faire un bulletin'}</button>`);
+  openSheet(`${sheetHead('Facture & bulletin', nomVente(f))}<div class="sbody">
+    <p class="hint">${f.numero ? '' : 'Pas encore de facture pour cette vente. '}${f.blNumero ? '' : 'Le bulletin reçoit son numéro au premier téléchargement. '}Le bulletin indique toujours les prix.</p>
+    <div class="row">${b.join('')}</div>
+    ${aideLivraison()}</div>`);
 };
+ACTIONS.blPdf = ACTIONS.papiersPdf;
+ACTIONS.facPdfOk = (el) => { closeSheet(); telechargerFacture(el.dataset.key); };
 ACTIONS.blPdfOk = (el) => {
   const k = el.dataset.key; let f = DB.get(k); if (!f) return;
   if (!f.blNumero) { f = Object.assign({}, f, { blNumero: prochainBL(f.date) }); DB.put(k, f); }
-  closeSheet(); downloadFile(bulletinFileName(f), bulletinPdfBlob(f, el.dataset.prix === '1'));
+  closeSheet(); downloadFile(bulletinFileName(f), bulletinPdfBlob(f, true));
 };
 /* Photo du bulletin signé par le client : preuve de livraison. Rangée avec les justificatifs (même durée de conservation),
    et mise dans l'archive de fin d'année. f.blSigne = [{ chemin, nom, type, ajoute, par, expire? }] */
@@ -330,7 +341,7 @@ ACTIONS.blSigneOffOk = (el) => {
 };
 /* Faire la facture d'une vente enregistrée sans facture */
 ACTIONS.venteFacturer = (el) => {
-  const k = el.dataset.key, f = DB.get(k); if (!f) return;
+  const k = el.dataset.key, f = DB.get(k); if (!f) return; closeSheet();
   const c = f.client && f.client.id ? DB.get(f.client.id) : null, paye = f.statut === 'payee';
   if (!c) { toast('Cette vente n\'a pas de client : impossible de la facturer.'); return; }
   const pb = problemesReglages(paye); if (pb.length) { toast('Réglages : il manque ' + pb.join(', ')); return; }

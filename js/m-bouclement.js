@@ -194,7 +194,7 @@ ACTIONS.bclZip = async () => {
     etape('Bulletins…');
     for (const f of o.blY) {
       const nb = nomZip(bulletinFileName(f).replace(/\.pdf$/, '') + (f.statut === 'annulee' ? ' (annulée)' : ''));
-      try { dir.file(`Bulletins de livraison/${nb}.pdf`, bulletinPdfBlob(f, !!f.blPrix)); } catch (e) { console.error(e); }
+      try { dir.file(`Bulletins de livraison/${nb}.pdf`, bulletinPdfBlob(f, true)); } catch (e) { console.error(e); }
       const sg = (f.blSigne || []).filter((x) => !x.expire);
       for (let i = 0; i < sg.length; i++) {
         try { dir.file(`Bulletins de livraison/${nb} - signé${sg.length > 1 ? ' (' + (i + 1) + ')' : ''}.${sg[i].chemin.split('.').pop() || 'jpg'}`, await telechargerFichier(sg[i].chemin)); }
