@@ -24,17 +24,19 @@
   --bg: #F8F8F3; --surface: #FFFFFF; --ink: #1B231E; --muted: #5C665F; --line: #DDE1D5;
   --accent: #2E7D4F; --accent-ink: #FFFFFF; --soft: #E4F2E8; --late: #B5471B; --late-soft: #FBE6DC;
   --paid: #2E7D4F; --danger: #B3261E; --blue: #2563A8; --blue-soft: #E3EEFA; --warn: #A86A00; --warn-soft: #FFF1D6;
+  /* Couleurs par paires de modules voisins : Messagerie + Contacts (jaune), Tâches + Calendrier (magenta-orangé),
+     Ventes + Finances (bleu), Cultures + Irrigation (vert). */
   --c-factures: #2563A8; --s-factures: #E6F0FB;
-  --c-finances: #2E7D4F; --s-finances: #E4F3E9;
-  --c-heures: #B86E00; --s-heures: #FDF0D8; --c-calendrier: #B86E00; --s-calendrier: #FDF0D8;
+  --c-finances: #3B4FA3; --s-finances: #E8EBF8;
+  --c-heures: #C0334F; --s-heures: #FCE6EA; --c-calendrier: #C0334F; --s-calendrier: #FCE6EA;
   --ev-travail: #D9822B; --ev-recolte: #5A8A1C; --ev-livraison: #2563A8; --ev-vente: #0E7C83; --ev-vacances: #8E5BB5; --ev-autre: #6B7480;
-  --c-taches: #C2412D; --s-taches: #FCE7E2;
-  --c-cultures: #5A8A1C; --s-cultures: #EEF6DE;
+  --c-taches: #B4237A; --s-taches: #FBE6F1;
+  --c-cultures: #4F7D17; --s-cultures: #EEF6DE;
   --c-inventaire: #7A4FA0; --s-inventaire: #F2EAF8;
-  --c-contacts: #0E7C83; --s-contacts: #DFF3F3;
+  --c-contacts: #7F6A00; --s-contacts: #F6F0D2;
   --c-reglages: #586270; --s-reglages: #EDEFF2;
-  --c-messages: #B4237A; --s-messages: #FBE6F1;
-  --c-irrigation: #1C7FC0; --s-irrigation: #E1F0FA;
+  --c-messages: #A35C00; --s-messages: #FCEFD6;
+  --c-irrigation: #1F7A55; --s-irrigation: #E0F2E9;
   --mod: var(--accent); --mod-soft: var(--soft);
   --font-display: "Bricolage", "Arial Narrow", system-ui, sans-serif;
   --font-body: "Atkinson", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -133,7 +135,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .clip { font-size: 13px; margin-left: 4px; }
 .mbar { display: inline-block; height: 9px; border-radius: 3px; vertical-align: 0; margin-right: 4px; }
 .mbar.et0 { background: var(--warn); }
-.mbar.pluie { background: var(--c-irrigation); }
+.mbar.pluie { background: #1C7FC0; }
 table.irr td { vertical-align: middle; }
 .irr-carte { border-top: 1px solid var(--line); padding: 10px 0; }
 .irr-carte .hint { display: block; margin-top: 3px; }
@@ -212,12 +214,12 @@ table.irr input.cell-in { width: 84px; }
 }
 .star { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 8px 0 0; }
 .star.on { color: #E0A100; }
-.drive.on { background: var(--s-irrigation); color: var(--c-irrigation); }
+.drive.on { background: var(--s-reglages); color: var(--c-reglages); }
 .fil { font-weight: 700; } .fil a { text-decoration: none; }
 .drv-liste { margin-top: 8px; }
 .drv-it { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding: 8px 0; }
 .drv-nom { border: 0; background: none; font: inherit; text-align: left; cursor: pointer; color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; }
-#drv-zone.drag { outline: 3px dashed var(--c-irrigation); }
+#drv-zone.drag { outline: 3px dashed var(--c-reglages); }
 .usage .ulig { display: grid; grid-template-columns: 210px minmax(0, 1fr) 120px; gap: 10px; align-items: center; margin: 6px 0; font-size: 14px; }
 @media (max-width: 640px) { .usage .ulig { grid-template-columns: 1fr; gap: 3px; } }
 .ubar { display: flex; height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
@@ -479,7 +481,7 @@ table.matrix td.neg { color: var(--muted); }
 .cell.today .dn { background: var(--mod); color: #fff; border-radius: 999px; padding: 0 6px; }
 .cell .wk { font-size: 10.5px; color: var(--muted); }
 .cell .hrs { margin-left: auto; display: flex; gap: 3px; }
-.cell .h { font-family: var(--font-mono); font-size: 11px; background: var(--s-calendrier); color: #7A4A00; border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+.cell .h { font-family: var(--font-mono); font-size: 11px; background: var(--s-calendrier); color: #8E2238; border-radius: 4px; padding: 0 4px; white-space: nowrap; }
 .cell .chips { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ch { display: block; font-size: 11.5px; line-height: 1.3; padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--c) 14%, white); border-left: 3px solid var(--c); color: color-mix(in srgb, var(--c) 70%, black); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ch i { font-style: normal; font-family: var(--font-mono); font-size: 10.5px; }
@@ -570,8 +572,8 @@ table.matrix thead th .sw { display: inline-block; width: 10px; height: 10px; bo
 .prio.p2 { background: var(--s-contacts); color: var(--c-contacts); }
 .callbox { background: var(--s-contacts); border-radius: 10px; padding: 12px; }
 .callbox h3 { margin-top: 0; color: var(--c-contacts); }
-.banner.callhours { background: var(--s-contacts); color: #0B5A5F; }
-.banner.callhours b { color: #0B5A5F; }
+.banner.callhours { background: var(--s-contacts); color: #5E4E00; }
+.banner.callhours b { color: #5E4E00; }
 .journal { display: flex; flex-direction: column; gap: 6px; }
 .jl { border-left: 3px solid var(--c-contacts); padding: 4px 0 4px 10px; }
 .jl p { margin: 4px 0 0; white-space: pre-wrap; font-size: 14px; }

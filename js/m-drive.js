@@ -90,7 +90,7 @@ async function chargerUsage() {
 function usageHtml(d) {
   const f = d.fichiers || {}, MB = 1048576, base = num(d.base) || num(d.donnees) + num(d.historique), totF = Object.values(f).reduce((a, x) => a + num(x), 0);
   const barre = (parts, max) => `<span class="ubar">${parts.map(([v, c, t]) => `<span style="width:${Math.min(100, v / max * 100).toFixed(2)}%;background:${c}" title="${esc(t)}"></span>`).join('')}</span>`;
-  const cats = [['drive', 'Drive', 'var(--c-irrigation)'], ['justificatifs', 'Justificatifs', 'var(--c-finances)'], ['messages', 'Photos des messages', 'var(--c-messages)'], ['journal', 'Photos du journal', 'var(--c-cultures)']];
+  const cats = [['drive', 'Drive', 'var(--c-reglages)'], ['justificatifs', 'Justificatifs', 'var(--c-finances)'], ['messages', 'Photos des messages', 'var(--c-messages)'], ['journal', 'Photos du journal', 'var(--c-cultures)']];
   const autres = totF - cats.reduce((a, [k]) => a + num(f[k]), 0);
   return `<div class="panel usage"><h2>Place utilisée${d.exact ? '' : ' (estimation)'}</h2>
     <div class="ulig"><span>Base de données Gamins de Talus</span>${barre([[base, 'var(--c-factures)', 'Données']], 500 * MB)}<span class="num">${tailleTxt(base)} / 500 Mo</span></div>

@@ -4,7 +4,7 @@
    mvt:<id>   { date, prod, qte (+ entrée / − sortie, dans l'unité du produit), type, culture?, ref?, par, note?, horsStock? }
               type : recolte | vente | self (mis au stand) | retour (invendus repris) | perte | ajout | inventaire (compte : qte = total)
               Clés fixes pour ce qui découle d'autre chose : mvt:fac:<facture>:<ligne>, mvt:self:<mise>:<ligne>, mvt:ev:<événement>:<date>.
-   prod:<id>  + { fiche (culture liée), dispo (en stock sans quantité), auChamp, direct: { prix, unite } (vente directe) }
+   prod:<id>  + { fiche (culture liée), dispo (en stock sans quantité), auChamp } — la vente directe prend le prix « particuliers »
    self:<id>  mise en vente directe { date, lieu, lignes: [{ prod, qte, prix }], retours: { i: qte }, statut: ouverte | close, note }
               Les encaissements sont des recettes (rec:) avec self: <id> : ils comptent dans les finances. */
 'use strict';
@@ -38,7 +38,7 @@ function renderStock() {
   const ps = produits(), ms = mouvements();
   const st = ps.map((p) => ({ p, q: stockDe(p.key, ms) }));
   const enStock = st.filter((x) => (x.q != null && x.q > 0) || x.p.dispo || x.p.auChamp);
-  const prix = (p) => [fourchette(p) ? `fourchette ${fourchette(p)}` : '', prixNiveauxTxt(p), p.direct && p.direct.prix ? `vente directe ${money(p.direct.prix)} / ${esc(p.direct.unite || p.unite)}` : ''].filter(Boolean).join(' · ');
+  const prix = (p) => [fourchette(p) ? `fourchette ${fourchette(p)}` : '', prixNiveauxTxt(p)].filter(Boolean).join(' · ');
   const ligne = ({ p, q }) => `<div class="stk${q != null && q < 0 ? ' neg' : ''}">
       <div class="stk-nom"><b>${esc(p.nom)}</b>${p.auChamp ? ' <span class="tpill champ">🌱 au champ</span>' : ''}${p.dispo && (q == null || q <= 0) ? ' <span class="tpill">disponible</span>' : ''}<br><span class="hint">${prix(p) || 'Prix à définir'}</span></div>
       <div class="stk-q num">${q != null ? fmtQ(q, p.unite) : '—'}</div>
@@ -56,7 +56,7 @@ function renderStock() {
       ${st.map(({ p, q }) => `<tr><td><a href="#" data-act="prodEdit" data-key="${esc(p.key)}">${esc(p.nom)}</a>${p.fiche && DB.get(p.fiche) ? ` <span class="hint">· ${esc(DB.get(p.fiche).nom)}</span>` : ''}</td><td>${esc(p.unite || '')}</td><td class="r num">${q != null ? fmtQ(q, '') : '—'}</td>
         <td><input type="checkbox" data-stk="dispo" data-key="${esc(p.key)}"${p.dispo ? ' checked' : ''} aria-label="${esc(p.nom)} disponible"></td><td><input type="checkbox" data-stk="auChamp" data-key="${esc(p.key)}"${p.auChamp ? ' checked' : ''} aria-label="${esc(p.nom)} au champ"></td></tr>`).join('') || '<tr><td colspan="5" class="empty">Aucun produit.</td></tr>'}
       </tbody></table></div>
-      <p class="hint">Touche un produit pour ses prix (fourchette, par type de client, vente directe) et la culture dont il vient. Les prix s'affichent en haut dès qu'il y a du stock.</p></div>`;
+      <p class="hint">Touche un produit pour ses prix (fourchette et prix par type de client) et la culture dont il vient. Les prix s'affichent en haut dès qu'il y a du stock.</p></div>`;
 }
 function brancherStock() {
   $('view').querySelectorAll('input[data-stk]').forEach((el) => el.addEventListener('change', () => { const p = DB.get(el.dataset.key); if (p) DB.put(el.dataset.key, Object.assign({}, p, { [el.dataset.stk]: el.checked })); }));
@@ -130,7 +130,7 @@ function renderSelfService() {
     const b = bilanSelf(s), recs = recettesDirectes().filter((r) => r.self === s.key).sort((a, c) => String(a.date).localeCompare(c.date));
     return `<div class="panel self${s.statut === 'close' ? ' close' : ''}"><div class="between"><h3 style="margin:0">${esc(s.lieu || 'Self-service')} · ${fmtDate(s.date)}</h3><span class="tpill">${s.statut === 'close' ? 'bouclée' : 'en cours'}</span></div>
       <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Mis</th><th class="r">Prix</th>${s.statut === 'close' ? '<th class="r">Invendus</th><th class="r">Vendus</th>' : ''}<th class="r">Valeur</th></tr></thead><tbody>
-      ${(s.lignes || []).map((x, i) => { const p = DB.get(x.prod) || {}, r = num((s.retours || {})[i]), v = Math.max(0, num(x.qte) - r); return `<tr><td>${esc(p.nom || '?')}</td><td class="r num">${fmtQ(num(x.qte), x.unite || (p.direct && p.direct.unite) || p.unite)}</td><td class="r num">${money(x.prix)}</td>${s.statut === 'close' ? `<td class="r num">${fmtNum(r, 0)}</td><td class="r num">${fmtNum(v, 0)}</td>` : ''}<td class="r num">${money((s.statut === 'close' ? v : num(x.qte)) * num(x.prix))}</td></tr>`; }).join('')}
+      ${(s.lignes || []).map((x, i) => { const p = DB.get(x.prod) || {}, r = num((s.retours || {})[i]), v = Math.max(0, num(x.qte) - r); return `<tr><td>${esc(p.nom || '?')}</td><td class="r num">${fmtQ(num(x.qte), x.unite || p.unite)}</td><td class="r num">${money(x.prix)}</td>${s.statut === 'close' ? `<td class="r num">${fmtNum(r, 0)}</td><td class="r num">${fmtNum(v, 0)}</td>` : ''}<td class="r num">${money((s.statut === 'close' ? v : num(x.qte)) * num(x.prix))}</td></tr>`; }).join('')}
       </tbody></table></div>
       <p>Encaissé : <b>${chf(b.enc)}</b>${s.statut === 'close' ? ` sur ${chf(b.vendu)} vendus · <b class="${b.taux > 0.1 ? 'bad' : ''}">${b.ecart > 0 ? `${chf(b.ecart)} manquants (${Math.round(b.taux * 100)} %)` : 'rien ne manque'}</b>` : ` · au plus ${chf(b.mis)} si tout part`}</p>
       ${recs.length ? `<p class="hint">${recs.map((r) => `${fmtDate(r.date)} ${esc(r.moyen || '')} ${money(r.montant)}`).join(' · ')}</p>` : ''}
@@ -145,19 +145,20 @@ function renderSelfService() {
     ${ouv.map(carte).join('')}${clo.slice(0, 12).map(carte).join('')}${!l.length ? '<div class="panel"><p class="empty">Aucune mise en vente pour l\'instant.</p></div>' : ''}`;
 }
 ACTIONS.selfNouveau = () => {
-  const ps = produits().filter((p) => p.direct && num(p.direct.prix) > 0);
-  if (!ps.length) { toast('Mets d\'abord un prix de vente directe sur un produit (Stock et prix → produit).', 5000); return; }
+  /* Prix de vente directe = prix « Particuliers & vente directe » du produit (haut de la fourchette, ou fixé à la main) */
+  const ps = produits().filter((p) => num(prixNiveau(p, 'part')) > 0);
+  if (!ps.length) { toast('Mets d\'abord une fourchette de prix sur un produit (Stock et prix → produit).', 5000); return; }
   openSheet(`${sheetHead('Mise en vente directe')}<form class="sbody form" data-form="self">
     <div class="grid2">${inp('sf-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('sf-lieu', 'Où', 'Self-service', { name: 'lieu' })}</div>
     <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>
-    ${ps.map((p) => { const q = stockDe(p.key); return `<tr><td>${esc(p.nom)}</td><td><input class="cell-in" name="q_${esc(p.key)}" inputmode="decimal" placeholder="0" style="width:70px"> <span class="hint">${esc(p.direct.unite || p.unite)}</span></td><td><input class="cell-in" name="p_${esc(p.key)}" inputmode="decimal" value="${esc(String(p.direct.prix).replace('.', ','))}" style="width:70px"></td><td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('')}
+    ${ps.map((p) => { const q = stockDe(p.key); return `<tr><td>${esc(p.nom)}</td><td><input class="cell-in" name="q_${esc(p.key)}" inputmode="decimal" placeholder="0" style="width:70px"> <span class="hint">${esc(p.unite)}</span></td><td><input class="cell-in" name="p_${esc(p.key)}" inputmode="decimal" value="${esc(String(prixNiveau(p, 'part')).replace('.', ','))}" style="width:70px"></td><td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('')}
     </tbody></table></div>
     ${inp('sf-note', 'Note', '', { name: 'note' })}
-    <p class="hint">Si l'unité de vente directe est la même que celle du stock, le stock baisse de ces quantités.</p>
+    <p class="hint">Prix proposé : le prix « Particuliers & vente directe » du produit, modifiable ici pour cette fois. Le stock baisse de ces quantités.</p>
     <div class="row-end"><button class="btn primary" type="submit">Mettre en vente</button></div></form>`);
 };
 FORMS.self = (v) => {
-  const lignes = produits().filter((p) => num(v['q_' + p.key]) > 0).map((p) => ({ prod: p.key, qte: num(v['q_' + p.key]), prix: r2(num(v['p_' + p.key])), unite: (p.direct && p.direct.unite) || p.unite }));
+  const lignes = produits().filter((p) => num(v['q_' + p.key]) > 0).map((p) => ({ prod: p.key, qte: num(v['q_' + p.key]), prix: r2(num(v['p_' + p.key])), unite: p.unite }));
   if (!lignes.length) { toast('Indique au moins une quantité.'); return; }
   const k = 'self:' + uid('s'), s = { date: v.date || todayISO(), lieu: v.lieu || 'Self-service', lignes, retours: {}, statut: 'ouverte', note: v.note, par: Sync.me || '', cree: new Date().toISOString() };
   DB.put(k, s); stockPourSelf(k, s); closeSheet(); toast('Mise en vente enregistrée.');

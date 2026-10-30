@@ -404,8 +404,6 @@ ACTIONS.prodEdit = (el) => {
     <p class="hint">Calculés depuis la fourchette : grossistes = minimum, restaurants = un tiers de la fourchette, particuliers = maximum (arrondi à 5 ct). Laisser vide pour le calcul automatique, ou écrire un prix pour le fixer à la main.</p>
     <div class="grid2">${NIVEAUX.map(([key, label]) => inp('pr-n-' + key, label, vide(pn[key]) ? '' : pn[key], { name: 'n_' + key, type: 'number', sub: `<span id="pr-auto-${key}"></span>` })).join('')}</div>
     <p class="hint">Un client qui a déjà acheté ce produit garde son prix habituel (celui de sa dernière vente).</p>
-    <h3>Vente directe (self-service)</h3>
-    <div class="grid2">${n('pr-dp', 'Prix de vente directe CHF', p.direct && p.direct.prix, 'directPrix')}${sel('pr-du', 'Par', (p.direct && p.direct.unite) || p.unite || 'pièce', UNITES.concat(['sachet', 'bouquet']).map((u) => [u, u]), { name: 'directUnite' })}</div>
     <h3>Stock</h3>
     ${sel('pr-fiche', 'Vient de la culture', p.fiche || '', [['', '—']].concat((typeof fiches === 'function' ? fiches() : []).map((f) => [f.key, f.nom])), { name: 'fiche', sub: 'Les récoltes de cette culture peuvent entrer dans le stock de ce produit.' })}
     <label class="row" style="font-size:14px"><input type="checkbox" name="dispo"${p.dispo ? ' checked' : ''}> Disponible (sans compter la quantité)</label>
@@ -428,7 +426,7 @@ FORMS.prod = (v) => {
   if (!v.nom) { toast('La désignation est obligatoire.'); return; }
   const val = (x) => (x === '' ? null : r2(num(x)));
   const k = v.key || 'prod:' + uid('p'), old = DB.get(k) || {};
-  const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), remarque: v.remarque || '', prixNiveau: {}, fiche: v.fiche || '', dispo: !!v.dispo, auChamp: !!v.auChamp, direct: v.directPrix === '' ? null : { prix: r2(num(v.directPrix)), unite: v.directUnite } });
+  const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), remarque: v.remarque || '', prixNiveau: {}, fiche: v.fiche || '', dispo: !!v.dispo, auChamp: !!v.auChamp });
   for (const [key] of NIVEAUX) { const x = val(v['n_' + key]); if (x != null && Math.abs(x - num(prixAuto(o, key))) >= 0.005) o.prixNiveau[key] = x; } // égal au calcul : on garde l'automatique
   if (o.prixMin != null && o.prixMax != null && o.prixMin > o.prixMax) { toast('Le minimum dépasse le maximum.'); return; }
   const hors = NIVEAUX.map(([key, l]) => [l, o.prixNiveau[key]]).filter(([, x]) => x != null && ((o.prixMin != null && x < o.prixMin) || (o.prixMax != null && x > o.prixMax)));
