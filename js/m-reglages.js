@@ -224,7 +224,8 @@ ACTIONS.importOk = () => {
 const VAPID_PUBLIC = 'BEWBqzH3etLZ-_g1_ZUOTJSyD-qECUilmuXsm9MIw6COqRTe4Ynqgu75jrlmAW3PGTVDD5VdjtL5zHWpBDUkCi0';
 const NOTIF = { etat: null, enCours: false };
 const NOTIF_CHOIX = [['messages', 'Nouveaux messages de la discussion', 'Sauf les tiens.'], ['mails', 'Nouveaux mails de la boîte', 'Dès qu\'ils sont relevés.'], ['jour', 'Le matin vers 7 h : tes tâches et événements du jour', 'Seulement s\'il y en a.']];
-const prefsNotif = (p) => Object.assign({ messages: true, mails: true, jour: true }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
+/* messages / mails / jour : notification sur les appareils ; d_messages / d_mails / d_jour : sur Discord */
+const prefsNotif = (p) => Object.assign({ messages: true, mails: true, jour: true, d_messages: true, d_mails: false, d_jour: false }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
 const idAppareil = () => { let i = ls.get('gdt-appareil'); if (!i) { i = uid('a'); ls.set('gdt-appareil', i); } return i; };
 const nomAppareil = () => { const u = navigator.userAgent; return (/iPhone|iPad/.test(u) ? 'iPhone/iPad' : /Android/.test(u) ? 'Android' : /Mac/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : /Linux/.test(u) ? 'Linux' : 'Appareil') + ' · ' + (/Firefox/.test(u) ? 'Firefox' : /Edg\//.test(u) ? 'Edge' : /Chrome/.test(u) ? 'Chrome' : /Safari/.test(u) ? 'Safari' : 'navigateur'); };
 const b64uVersOctets = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
@@ -246,13 +247,18 @@ function appareilHtml() {
 }
 function renderNotifs() {
   if (!Sync.me) return '<div class="panel"><p class="empty">Connecte-toi pour régler tes notifications.</p></div>';
-  const p = prefsNotif(), mes = DB.all('push:' + Sync.me + ':');
+  const p = prefsNotif(), mes = DB.all('push:' + Sync.me + ':'), dOn = !!(DB.get('cfg:discord:' + Sync.me) || {}).webhook;
   return `<div class="split"><div class="panel"><h2>Sur cet appareil</h2><div id="notif-appareil">${appareilHtml()}</div>
       ${mes.length ? `<h3>Tes appareils abonnés</h3><div class="items">${mes.map((a) => `<div class="item" style="cursor:default"><span class="who"><strong>${esc(a.appareil || 'Appareil')}</strong><span class="meta">depuis le ${fmtDate(String(a.le || '').slice(0, 10))}${a.key.endsWith(':' + idAppareil()) ? ' · celui-ci' : ''}</span></span><button class="btn small" type="button" data-act="notifRetirer" data-key="${esc(a.key)}">Retirer</button></div>`).join('')}</div>` : ''}
-      <p class="hint">Les notifications arrivent même app fermée (Android, ordinateur ; iPhone : app ajoutée à l'écran d'accueil). Les notifications Discord restent à part, dans la Messagerie.</p></div>
+      <p class="hint">Les notifications arrivent même app fermée (Android, ordinateur ; iPhone : app ajoutée à l'écran d'accueil).</p>
+      <h3>Discord</h3>${dOn ? `<p><b>✓ Ton salon Discord est relié.</b></p>` : '<p class="hint">Facultatif : l\'app peut aussi poster dans ton propre salon Discord.</p>'}
+      <div class="row"><button class="btn${dOn ? '' : ' primary'}" type="button" data-act="discordSheet">${dOn ? 'Changer ou tester' : 'Relier mon Discord'}</button></div></div>
     <div class="panel"><h2>Ce que ${esc(nomDe(Sync.me))} reçoit</h2>
-      ${NOTIF_CHOIX.map(([k, l, sub]) => `<label class="row" style="font-size:15px;align-items:flex-start"><input type="checkbox" data-notif="${k}"${p[k] ? ' checked' : ''}> <span>${esc(l)}<br><span class="hint">${esc(sub)}</span></span></label>`).join('')}
-      <p class="hint">Ces choix valent pour tous tes appareils. Chacun règle les siens.</p></div></div>`;
+      <table class="notif-choix"><thead><tr><th></th><th>📱 Appareils</th><th>Discord</th></tr></thead><tbody>
+      ${NOTIF_CHOIX.map(([k, l, sub]) => `<tr><td>${esc(l)}<br><span class="hint">${esc(sub)}</span></td>
+        <td><input type="checkbox" data-notif="${k}" aria-label="${esc(l)} sur les appareils"${p[k] ? ' checked' : ''}></td>
+        <td><input type="checkbox" data-notif="d_${k}" aria-label="${esc(l)} sur Discord"${p['d_' + k] && dOn ? ' checked' : ''}${dOn ? '' : ' disabled'}></td></tr>`).join('')}</tbody></table>
+      <p class="hint">Ces choix valent pour tous tes appareils. Chacun règle les siens.${dOn ? '' : ' Pour cocher Discord, relie d\'abord ton salon (à gauche).'}</p></div></div>`;
 }
 document.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.notif; if (!k || !Sync.me) return; DB.put('cfg:notif:' + Sync.me, Object.assign(prefsNotif(), { [k]: e.target.checked })); toast('Enregistré.'); });
 ACTIONS.notifOn = async () => {

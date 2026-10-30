@@ -15,6 +15,8 @@ const messages = () => DB.all('msg:').sort((a, b) => String(a.cree).localeCompar
 const luJusqua = (p) => ((DB.get('lu:' + p) || {}).jusqua || '');
 function nonLus(p) { p = p || Sync.me; const l = luJusqua(p); return messages().filter((m) => m.de !== p && String(m.cree) > l); }
 const discordDe = (p) => DB.get('cfg:discord:' + p) || {};
+/* Discord pour les messages : oui par défaut dès qu'un webhook est enregistré (choix dans Réglages → Notifications) */
+const discordMessages = (p) => !!discordDe(p).webhook && (DB.get('cfg:notif:' + p) || {}).d_messages !== false;
 const APP_URL = 'https://gottonic.github.io/gamins-de-talus/';
 /* Petit lien 🔗 au début de chaque message Discord : ouvre la messagerie pour répondre (les < > évitent l'aperçu du site) */
 const LIEN_MSG = `[🔗](<${APP_URL}#/messages>)`;
@@ -80,7 +82,7 @@ function jourMsg(iso) {
 function texteMsg(s) { return esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>').replace(/\n/g, '<br>'); }
 
 function renderMessages() {
-  const ms = messages(), me = Sync.me, prevenus = personnes().filter((p) => discordDe(p.k).webhook).map((p) => p.nom);
+  const ms = messages(), me = Sync.me, prevenus = personnes().filter((p) => discordMessages(p.k)).map((p) => p.nom);
   let jour = '', html = '';
   ms.forEach((m, i) => {
     const j = isoDate(new Date(m.cree));
@@ -98,7 +100,6 @@ function renderMessages() {
     const vus = personnes().filter((p) => p.k !== der.de && p.k !== me && luJusqua(p.k) >= String(der.cree)).map((p) => p.nom);
     if (der.de === me || vus.length) html += `<div class="msg-vu${der.de === me ? ' mine' : ''}">${vus.length ? 'Vu par ' + esc(vus.join(', ')) : 'Pas encore vu'}</div>`;
   }
-  const d = discordDe(me), dOn = !!d.webhook;
   const pins = ms.filter((m) => m.epingle).sort((a, b) => String(a.epingle.le).localeCompare(String(b.epingle.le)));
   const pinsHtml = pins.length ? `<div class="pins">${pins.map((m) => `<button type="button" class="pin" data-act="msgVoir" data-key="${esc(m.key)}">📌 <b>${esc(nomDe(m.de))}</b> ${esc(trunc(apercuMsg(m), 80))}</button>`).join('')}</div>` : '';
   const cible = MSG.repondA ? DB.get(MSG.repondA) : null, edit = MSG.edition ? DB.get(MSG.edition) : null;
@@ -106,8 +107,8 @@ function renderMessages() {
     : cible ? `<div class="msg-prev"><span>↪ Réponse à <b>${esc(nomDe(cible.de))}</b> : ${esc(trunc(apercuMsg(cible), 80))}</span><button type="button" class="btn small" data-act="msgAnnuler">Annuler</button></div>` : '';
   return `<div class="panel chat">
     <div class="between chat-head"><a class="btn small chat-fermer" href="#/" data-act="chatFermer" aria-label="Fermer la discussion">←</a><h2>Entre nous</h2>
-      <button class="btn small${dOn ? ' on' : ''}" type="button" data-act="discordSheet">${ICON_DISCORD}${dOn ? 'Notifications Discord activées' : 'Recevoir les notifications sur Discord'}</button></div>
-    <p class="hint chat-who">${esc(personnes().map((p) => p.nom).join(', '))} · ${prevenus.length ? 'prévenus sur Discord : ' + esc(prevenus.join(', ')) : 'personne n\'est encore prévenu sur Discord'}</p>
+      <a class="btn small" href="#/reglages/notifications">🔔 Notifications</a></div>
+    <p class="hint chat-who">${esc(personnes().map((p) => p.nom).join(', '))}${prevenus.length ? ' · prévenus sur Discord : ' + esc(prevenus.join(', ')) : ''}</p>
     ${pinsHtml}
     <div class="msg-list" id="msg-list" aria-live="polite">${html || '<p class="empty">Aucun message pour l\'instant. Écris le premier !</p>'}</div>
     ${bandeau}
@@ -225,13 +226,13 @@ function notifierDiscord(de, texte, image) {
   /* Avec une photo : envoi direct (une photo ne se garde pas dans la file d'attente) */
   if (image) {
     for (const p of personnes()) {
-      const d = discordDe(p.k); if (p.k === de || !d.webhook) continue;
+      const d = discordDe(p.k); if (p.k === de || !discordMessages(p.k)) continue;
       const c = d.texte === false ? `${LIEN_MSG} 📷 Nouvelle photo de **${nomDe(de)}**` : `${LIEN_MSG} 📷 **${nomDe(de)}**${texte ? ' : ' + trunc(texte, 1500) : ''}`;
       posterDiscord(d.webhook, c, d.texte === false ? null : image).catch(() => {});
     }
     return;
   }
-  const envois = personnes().filter((p) => p.k !== de && discordDe(p.k).webhook).map((p) => {
+  const envois = personnes().filter((p) => p.k !== de && discordMessages(p.k)).map((p) => {
     const d = discordDe(p.k);
     return { webhook: d.webhook, contenu: d.texte === false ? `${LIEN_MSG} Nouveau message de **${nomDe(de)}**` : `${LIEN_MSG} **${nomDe(de)}** : ${trunc(texte, 1500)}` };
   });
@@ -254,7 +255,7 @@ const webhookOk = (u) => /^https:\/\/(?:(?:ptb|canary)\.)?discord(?:app)?\.com\/
 ACTIONS.discordSheet = () => {
   const d = discordDe(Sync.me);
   openSheet(`${sheetHead('Notifications Discord', nomDe(Sync.me))}<form class="sbody form" data-form="discord">
-    <p class="hint">Quand quelqu'un écrit dans la messagerie, l'app poste un message dans <b>ton</b> salon Discord : ton ordinateur ou ton téléphone sonne comme pour n'importe quel message Discord. À faire une seule fois :</p>
+    <p class="hint">L'app poste dans <b>ton</b> salon Discord (nouveaux messages, mails, ta journée : tu choisis dans Réglages → Notifications) : ton ordinateur ou ton téléphone sonne comme pour n'importe quel message Discord. À faire une seule fois :</p>
     <ol class="steps">
       <li>Dans Discord : <b>+</b> (à gauche) → <b>Créer le mien</b> → <b>Pour moi et mes amis</b>. Nomme-le par exemple « Gamins de Talus ». (Ou utilise un salon d'un serveur qui existe déjà.)</li>
       <li>Sur le salon <b>#général</b> : roue dentée <b>Modifier le salon</b> → <b>Intégrations</b> → <b>Webhooks</b> → <b>Nouveau webhook</b> → <b>Copier l'URL du webhook</b>.</li>
@@ -262,7 +263,7 @@ ACTIONS.discordSheet = () => {
       <li>Pour être sûr d'être prévenu : clic droit sur le serveur → <b>Paramètres de notification</b> → <b>Tous les messages</b>.</li>
     </ol>
     ${inp('dc-url', 'Adresse du webhook', d.webhook || '', { name: 'webhook', attrs: { placeholder: 'https://discord.com/api/webhooks/…', autocomplete: 'off', spellcheck: 'false' }, sub: 'Elle reste dans votre base, pas dans le code public. Garde-la pour toi : qui la connaît peut écrire dans ce salon.' })}
-    <label class="row" style="font-size:14px"><input type="checkbox" name="texte"${d.texte === false ? '' : ' checked'}> Mettre le texte du message dans la notification (sinon : juste « Nouveau message de … »)</label>
+    <label class="row" style="font-size:14px"><input type="checkbox" name="texte"${d.texte === false ? '' : ' checked'}> Mettre le contenu dans la notification (sinon : juste « Nouveau message de … », « Nouveau mail »)</label>
     <div class="row-end">${d.webhook ? '<button class="btn danger" type="button" data-act="discordOff">Désactiver</button>' : ''}
       <button class="btn" type="button" data-act="discordTest">Envoyer un test</button><button class="btn primary" type="submit">Enregistrer</button></div>
   </form>`);
@@ -277,7 +278,7 @@ FORMS.discord = (v) => {
 ACTIONS.discordTest = async () => {
   const el = $('dc-url'), u = String((el && el.value) || discordDe(Sync.me).webhook || '').trim();
   if (!webhookOk(u)) { toast("Colle d'abord l'adresse du webhook."); return; }
-  try { await posterDiscord(u, `${LIEN_MSG} ✅ Test : les messages de l'app Gamins de Talus arriveront ici, ${nomDe(Sync.me)}. Le 🔗 au début ouvre la messagerie pour répondre.`); toast('Test envoyé : regarde dans Discord.'); }
+  try { await posterDiscord(u, `${LIEN_MSG} ✅ Test : les notifications de l'app Gamins de Talus arriveront ici, ${nomDe(Sync.me)}. Le 🔗 au début ouvre l'app.`); toast('Test envoyé : regarde dans Discord.'); }
   catch (e) { toast("Envoi impossible : vérifie la connexion et l'adresse."); }
 };
 ACTIONS.discordOff = () => { if (DB.get('cfg:discord:' + Sync.me)) DB.del('cfg:discord:' + Sync.me); closeSheet(); toast('Notifications Discord désactivées.'); };

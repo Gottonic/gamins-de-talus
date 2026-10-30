@@ -85,8 +85,9 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     membre = m.personne;
   }
   const d = String(env('VAPID_PRIVATE') || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
-  if (!d) return json({ erreur: 'Le secret VAPID_PRIVATE manque dans Supabase (Edge Functions → Secrets).' }, 500);
-  if (!(await verifierCle(d))) return json({ erreur: 'Le secret VAPID_PRIVATE ne correspond pas à la clé de l\'app : recopie-le exactement (43 caractères, sans espace ni guillemets).' }, 500);
+  /* Sans clé VAPID valable, pas de notification sur les appareils ; Discord marche quand même */
+  const pbVapid = !d ? 'Le secret VAPID_PRIVATE manque dans Supabase (Edge Functions → Secrets).' : !(await verifierCle(d)) ? 'Le secret VAPID_PRIVATE ne correspond pas à la clé de l\'app : recopie-le exactement (43 caractères, sans espace ni guillemets).' : '';
+  if (pbVapid && corps.test) return json({ erreur: pbVapid }, 500);
   const lire = async (prefixe: string) => { const out: any[] = []; for (let f = 0; ; f += 1000) { const { data, error } = await sb.from('rows').select('key,data').like('key', prefixe + '%').eq('deleted', false).range(f, f + 999); if (error) throw error; out.push(...(data || [])); if (!data || data.length < 1000) break; } return out; };
   const abos = (await lire('push:')).map((r) => Object.assign({ key: r.key, personne: r.key.split(':')[1] }, r.data)).filter((a) => a.endpoint && a.p256dh && a.auth);
   const prefs: Record<string, any> = {}; for (const r of await lire('cfg:notif:')) prefs[r.key.split(':')[2]] = r.data || {};
@@ -94,6 +95,11 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
   const personnes: any[] = reglages.personnes || [{ k: 'nicolas', nom: 'Nicolas' }, { k: 'noe', nom: 'Noé' }];
   const nom = (k: string) => (personnes.find((p) => p.k === k) || { nom: k }).nom;
   const veut = (p: string, quoi: string) => (prefs[p] || {})[quoi] !== false;
+  /* Discord (facultatif) : lignes cfg:discord:<personne> = { webhook, texte }. Les messages de la discussion y sont postés
+     par l'app elle-même (avec les photos) ; ici : les mails et la journée, si la personne l'a coché (d_mails, d_jour). */
+  const discord: Record<string, any> = {}; for (const r of await lire('cfg:discord:')) discord[r.key.split(':')[2]] = r.data || {};
+  const surDiscord = (p: string, quoi: string) => !!(discord[p] && discord[p].webhook) && (prefs[p] || {})['d_' + quoi] === true;
+  const discordEnvois: { personne: string; contenu: string }[] = [];
 
   /* Ce qu'il faut envoyer, à qui */
   const envois: { personne: string; message: any }[] = [];
@@ -103,27 +109,38 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     for (const p of personnes) if (p.k !== m.de && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de), texte: court(m.texte || (m.photo ? '📷 Photo' : ''), 140), url: APP + '#/messages', tag: 'msg' } });
   } else if (String(corps.key || '').startsWith('mail:')) {
     const m = corps.data || {}, de = (m.de && (m.de.nom || m.de.adresse)) || '?';
-    for (const p of personnes) if (veut(p.k, 'mails')) envois.push({ personne: p.k, message: { titre: '📧 ' + court(de, 40), texte: court(m.objet || '(sans objet)', 140), url: APP + '#/mails', tag: 'mail' } });
+    for (const p of personnes) {
+      if (veut(p.k, 'mails')) envois.push({ personne: p.k, message: { titre: '📧 ' + court(de, 40), texte: court(m.objet || '(sans objet)', 140), url: APP + '#/mails', tag: 'mail' } });
+      if (surDiscord(p.k, 'mails')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/mails>) 📧 ` + (discord[p.k].texte === false ? 'Nouveau mail' : `**${court(de, 60)}** : ${court(m.objet || '(sans objet)', 200)}`) });
+    }
   } else if (corps.matin) {
     const jour = aujourdhui(), taches = await lire('t:'), evs = await lire('ev:');
     for (const p of personnes) {
-      if (!veut(p.k, 'jour')) continue;
+      if (!veut(p.k, 'jour') && !surDiscord(p.k, 'jour')) continue;
       const pour = (q: string) => !q || q === 'ensemble' || q === p.k;
       const ts = taches.map((r) => r.data).filter((t) => t && t.statut !== 'termine' && t.statut !== 'suspendu' && t.echeance === jour && pour(t.responsable));
       const es = evs.map((r) => r.data).filter((e) => e && aLieu(e, jour) && pour(e.qui));
       if (!ts.length && !es.length) continue;
       const lignes = [...es.map((e) => '📅 ' + (e.heureDebut ? e.heureDebut + ' ' : '') + (e.titre || 'Événement')), ...ts.map((t) => '✓ ' + t.titre)];
-      envois.push({ personne: p.k, message: { titre: "Aujourd'hui", texte: court(lignes.join(' · '), 180), url: APP + '#/accueil', tag: 'jour' } });
+      if (veut(p.k, 'jour')) envois.push({ personne: p.k, message: { titre: "Aujourd'hui", texte: court(lignes.join(' · '), 180), url: APP + '#/accueil', tag: 'jour' } });
+      if (surDiscord(p.k, 'jour')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/>) **Aujourd'hui**\n` + court(lignes.join('\n'), 1800) });
     }
   }
   /* Envoi à chaque appareil ; un abonnement expiré (404/410) est retiré */
-  let ok = 0; const erreurs: string[] = [];
-  for (const e of envois) for (const a of abos.filter((x) => x.personne === e.personne)) {
+  let ok = 0; const erreurs: string[] = pbVapid && envois.length ? [pbVapid] : [];
+  for (const e of pbVapid ? [] : envois) for (const a of abos.filter((x) => x.personne === e.personne)) {
     try {
       const r = await envoyer(a, e.message, d);
       if (r.status === 404 || r.status === 410) await sb.from('rows').update({ deleted: true }).eq('key', a.key);
       else if (r.ok) ok++; else erreurs.push(`${new URL(a.endpoint).host} ${r.status} ${court(await r.text(), 120)}`);
     } catch (err) { erreurs.push(String((err as Error).message || err)); }
   }
-  return json({ envoyes: ok, appareils: abos.length, erreurs });
+  let discordOk = 0;
+  for (const e of discordEnvois) {
+    try {
+      const r = await fetch(discord[e.personne].webhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: e.contenu, allowed_mentions: { parse: [] } }) });
+      if (r.ok) discordOk++; else erreurs.push(`discord ${r.status}`);
+    } catch (err) { erreurs.push('discord ' + String((err as Error).message || err)); }
+  }
+  return json({ envoyes: ok, appareils: abos.length, discord: discordOk, erreurs });
 });

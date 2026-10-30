@@ -11,7 +11,7 @@ L'app de Gamins de Talus (maraîchage à Marly), pour Noé et Nicolas : factures
 
 | Module | Ce qu'on y fait |
 |---|---|
-| Messages | Discussion entre associés, avec photos : non lus sur l'accueil, « vu par », notifications Discord au choix de chacun (bouton dans la messagerie) |
+| Messages | Discussion entre associés, avec photos : non lus sur l'accueil, « vu par », notifications (appareils et/ou Discord) au choix de chacun dans Réglages → Notifications |
 | Ventes | Factures QR (virement) ou payées comptant, bulletins de livraison, PDF, suivi des paiements, vente directe, stock et prix |
 | Finances | Inventaire et amortissements, achats prévus. Fin d'année (chaque associé télécharge l'archive une fois) : vérifications, comptes en PDF et archive .zip (factures, justificatifs, tableaux) à garder 10 ans. Dépenses (photo du ticket ou PDF de la facture joint), recettes (les factures payées s'y ajoutent seules), résultat de l'année, décompte « qui doit quoi » entre associés et remboursements |
 | Calendrier | Bouton « Enregistrer mes heures » (aujourd'hui, à mon nom) sur l'accueil. Mois en un coup d'œil : heures travaillées, jours off et vacances, journées de travail, chantiers de récolte (kg notés), livraisons et ventes (récurrentes ou non), échéances des tâches et des factures. Onglet Heures : la semaine (une case = un clic pour noter) et le bilan de l'année, agenda |
