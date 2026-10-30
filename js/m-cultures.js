@@ -279,6 +279,7 @@ function renderFiches(id) {
         <tr><td>Semaine de plantation · de récolte</td><td class="r">${v(sel.semPlantation)} · ${v(sel.semRecolte)}</td></tr>
         <tr><td>Lignes par planche · interplant</td><td class="r">${v(sel.lignes)} · ${v(sel.interplant, 'cm')}</td></tr>
         <tr><td>Variété · fournisseur</td><td class="r">${v(sel.variete)} · ${v(sel.fournisseur)}</td></tr>
+        <tr><td>Famille</td><td class="r">${(() => { const fm = familleDe(Object.assign({ key: sel.key }, sel)); return fm ? esc(familleNom(fm)) + (sel.famille ? '' : ' <span class="hint">(devinée)</span>') : '—'; })()}</td></tr>
         <tr><td>Besoins N / P / K / Mg (g/m²)</td><td class="r">${NUTR.map((x) => v(b[x])).join(' / ')}</td></tr>
         <tr><td>Compost</td><td class="r">${v(sel.compost, 'L/m²')}</td></tr>
       </tbody></table>
@@ -331,6 +332,7 @@ ACTIONS.ficheEdit = (el) => {
       ${inp('fi-sp', 'Semaine de plantation', f.semPlantation, { name: 'semPlantation', attrs: { placeholder: 'ex. 20' } })}${inp('fi-sr', 'Semaines de récolte', f.semRecolte, { name: 'semRecolte', attrs: { placeholder: 'ex. 40-46' } })}
       ${n('fi-l', 'Lignes par planche', f.lignes, 'lignes')}${n('fi-i', 'Interplant cm', f.interplant, 'interplant')}
       ${inp('fi-v', 'Variété', f.variete, { name: 'variete' })}${inp('fi-f', 'Fournisseur', f.fournisseur, { name: 'fournisseur' })}</div>
+    ${typeof FAMILLES !== 'undefined' ? sel('fi-fam', 'Famille (rotation)', f.famille || (k ? familleDe(Object.assign({ key: k }, f)) : ''), [['', '—']].concat(FAMILLES.map(([x, l, d]) => [x, l + (d ? ` · retour après ${d} ans` : '')])), { name: 'famille' }) : ''}
     <div class="grid2">${NUTR.map((x) => n('fi-b' + x, 'Besoin brut ' + x + ' g/m²', b[x], 'b_' + x)).join('')}</div>
     ${txt('fi-notes', 'Notes de culture', f.notes, { name: 'notes', rows: 4 })}
     <p class="hint">Les notes restent dans la fiche (conseils, maladies, ce qui a marché…).</p>
@@ -342,7 +344,7 @@ FORMS.fiche = (v) => {
   const k = v.key || cleFiche(v.nom);
   if (!v.key && DB.get(k)) { toast('Une fiche porte déjà ce nom.'); return; }
   const old = DB.get(k) || { cree: new Date().toISOString() }, s = saisonCourante();
-  const o = Object.assign({}, old, { nom: v.nom, couleur: v.couleur || old.couleur || CULT_PALETTE[fiches().length % CULT_PALETTE.length], semPlantation: v.semPlantation, semRecolte: v.semRecolte, variete: v.variete, fournisseur: v.fournisseur, notes: v.notes, majLe: todayISO(), saison: old.saison || s });
+  const o = Object.assign({}, old, { nom: v.nom, couleur: v.couleur || old.couleur || CULT_PALETTE[fiches().length % CULT_PALETTE.length], semPlantation: v.semPlantation, semRecolte: v.semRecolte, variete: v.variete, fournisseur: v.fournisseur, famille: v.famille || '', notes: v.notes, majLe: todayISO(), saison: old.saison || s });
   for (const f of ['rendement', 'compost', 'prixDirect', 'lignes', 'interplant']) o[f] = num(v[f]);
   o.prixRevendeur = v.prixRevendeur === '' ? null : num(v.prixRevendeur);
   o.besoins = {}; for (const x of NUTR) o.besoins[x] = num(v['b_' + x]);

@@ -18,6 +18,32 @@ function resumeEmplacements(l) {
   }).join(' · ');
 }
 
+/* ---------- Rotation : une même famille ne revient pas trop tôt sur la même planche ----------
+   Famille : celle de la fiche (Nos cultures), sinon devinée d'après le nom. Délai de retour en années (règles courantes en maraîchage). */
+const FAMILLES = [
+  ['cucurbitacees', 'Cucurbitacées (courges, courgettes, concombres, melons)', 3], ['solanacees', 'Solanacées (tomates, pommes de terre, aubergines, poivrons)', 4],
+  ['brassicacees', 'Brassicacées (choux, radis, navets, roquette)', 4], ['fabacees', 'Fabacées (pois, haricots, fèves, cacahuètes)', 4],
+  ['alliacees', 'Alliacées (oignons, ail, poireaux, échalotes)', 4], ['apiacees', 'Apiacées (carottes, céleris, panais, fenouil, persil)', 3],
+  ['asteracees', 'Astéracées (salades, chicorées, artichauts, tournesols)', 2], ['amaranthacees', 'Amaranthacées (betteraves, épinards, blettes)', 3],
+  ['convolvulacees', 'Convolvulacées (patates douces)', 3], ['poacees', 'Poacées (maïs, céréales)', 2], ['autre', 'Autre / engrais vert', 0],
+];
+const DEVINE_FAMILLE = [[/patate douce/, 'convolvulacees'], [/courg|courge|potiron|potimarron|butternut|concombre|cornichon|melon|pasteque|citrouille/, 'cucurbitacees'], [/tomate|pomme de terre|patate|aubergine|poivron|piment|physalis/, 'solanacees'],
+  [/chou|brocoli|radis|navet|roquette|rutabaga|kale|pak|moutarde|cresson/, 'brassicacees'], [/pois|haricot|feve|cacahu|arachide|lentille|soja/, 'fabacees'],
+  [/oignon|\bail\b|poireau|echalote|ciboulette/, 'alliacees'], [/carotte|celeri|panais|fenouil|persil|aneth|coriandre/, 'apiacees'],
+  [/salade|laitue|chicoree|endive|artichaut|tournesol|scarole|frisee|batavia/, 'asteracees'], [/betterave|epinard|blette|bette|arroche|quinoa/, 'amaranthacees'],
+  [/\bmais\b|\bble\b|seigle|avoine/, 'poacees']];
+function familleDe(c) { const f = DB.get(ficheDe(c)) || {}; if (f.famille) return f.famille; const n = sansAccentsS(c.nom); const g = DEVINE_FAMILLE.find(([re]) => re.test(n)); return g ? g[1] : ''; }
+const familleNom = (k) => ((FAMILLES.find((f) => f[0] === k) || [, ''])[1]).replace(/ \(.*\)/, '');
+const delaiFamille = (k) => (FAMILLES.find((f) => f[0] === k) || [, , 3])[2];
+/* Ce qui a poussé sur une planche les saisons d'avant */
+function histoPlanche(e, saison) { return DB.all('cul:').filter((c) => String(c.saison) < String(saison) && (c.emplacements || []).includes(e)).sort((a, b) => String(b.saison).localeCompare(String(a.saison))); }
+/* Conflit de rotation pour une culture posée sur une planche : la même famille trop récemment */
+function conflitRotation(c, e) {
+  const fam = familleDe(c); if (!fam) return null; const d = delaiFamille(fam); if (!d) return null;
+  const avant = histoPlanche(e, c.saison).find((x) => familleDe(x) === fam && Number(c.saison) - Number(x.saison) < d);
+  return avant ? { famille: fam, avant, delai: d } : null;
+}
+
 /* ---------- Onglet Planches ---------- */
 function renderPlanches() {
   const s = saisonCourante(), ss = saisons(), list = cultures(s), secs = parcelle().secteurs;
@@ -31,13 +57,15 @@ function renderPlanches() {
       <div class="planches">${Array.from({ length: Math.round(num(sec.planches)) }, (_, i) => {
         const e = `${sec.k}:${i + 1}`, cs = occ[e] || [];
         const conflit = cs.length > 1 && cs.some((a, j) => cs.some((b, m) => m > j && chevauche(a, b)));
+        const rot = cs.map((c) => conflitRotation(c, e)).filter(Boolean);
         const fond = cs.length ? `linear-gradient(90deg, ${cs.map((c, j) => `${coul(c)} ${j / cs.length * 100}% ${(j + 1) / cs.length * 100}%`).join(', ')})` : '';
-        return `<button type="button" class="planche${cs.length ? ' pleine' : ''}${conflit ? ' conflit' : ''}${peint && cs.includes(peint) ? ' sel' : ''}" data-act="paClic" data-e="${esc(e)}" style="${fond ? `background:${fond}` : ''}" title="${esc(sec.nom + ' ' + (i + 1) + (cs.length ? ' : ' + cs.map((c) => c.nom).join(' puis ') : ' : libre'))}"><b>${i + 1}</b><span>${esc(cs.map((c) => c.nom.slice(0, 4)).join('/'))}</span></button>`;
+        return `<button type="button" class="planche${cs.length ? ' pleine' : ''}${conflit ? ' conflit' : ''}${rot.length ? ' rot' : ''}${peint && cs.includes(peint) ? ' sel' : ''}" data-act="paClic" data-e="${esc(e)}" style="${fond ? `background:${fond}` : ''}" title="${esc(sec.nom + ' ' + (i + 1) + (cs.length ? ' : ' + cs.map((c) => c.nom).join(' puis ') : ' : libre') + rot.map((r) => ` · rotation : ${familleNom(r.famille)} déjà en ${r.avant.saison} (${r.avant.nom})`).join(''))}"><b>${i + 1}${rot.length ? ' ⚠' : ''}</b><span>${esc(cs.map((c) => c.nom.slice(0, 4)).join('/'))}</span></button>`;
       }).join('')}</div></div>`).join('')
     : '<div class="panel"><p class="empty">Aucun secteur pour l\'instant. Crée tes secteurs (ex. « Champ du haut », 12 planches) : les planches sont numérotées automatiquement.</p></div>';
-  const recap = list.length ? `<div class="panel"><h2>Où sont les cultures ${s}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévues</th><th class="r">Placées</th><th>Planches</th></tr></thead><tbody>
-      ${list.map((c) => { const n = (c.emplacements || []).length, pr = Math.round(num(c.planches)); return `<tr><td><span class="sw" style="background:${coul(c)}"></span>${esc(c.nom)}</td><td class="r num">${pr}</td><td class="r num ${n !== pr ? 'bad' : ''}">${n}</td><td>${esc(resumeEmplacements(c.emplacements)) || '<span class="hint">pas encore placée</span>'}</td></tr>`; }).join('')}</tbody></table></div>
-      <p class="hint">Une planche peut porter deux cultures qui se suivent dans l'année (couleurs partagées). En rouge : deux cultures qui y seraient en même temps.</p></div>` : '';
+  const recap = list.length ? `<div class="panel"><h2>Où sont les cultures ${s}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévues</th><th class="r">Placées</th><th>Planches</th><th>Rotation</th></tr></thead><tbody>
+      ${list.map((c) => { const n = (c.emplacements || []).length, pr = Math.round(num(c.planches)), rot = (c.emplacements || []).map((e) => [e, conflitRotation(c, e)]).filter(([, r]) => r), fam = familleDe(c);
+        return `<tr><td><span class="sw" style="background:${coul(c)}"></span>${esc(c.nom)}<br><span class="hint">${esc(fam ? familleNom(fam) : 'famille ?')}</span></td><td class="r num">${pr}</td><td class="r num ${n !== pr ? 'bad' : ''}">${n}</td><td>${esc(resumeEmplacements(c.emplacements)) || '<span class="hint">pas encore placée</span>'}</td><td>${rot.length ? `<span class="err">⚠ ${esc(resumeEmplacements(rot.map(([e]) => e)))} : ${esc(familleNom(rot[0][1].famille))} en ${esc(rot[0][1].avant.saison)}</span>` : '<span class="hint">ok</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+      <p class="hint">Une planche peut porter deux cultures qui se suivent dans l'année (couleurs partagées). En rouge : deux cultures qui y seraient en même temps. ⚠ orange : rotation, la même famille y était trop récemment (délai de retour : ${FAMILLES.filter((f) => f[2]).map((f) => `${familleNom(f[0])} ${f[2]} ans`).join(', ')}). La famille se règle dans la fiche de la culture.</p></div>` : '';
   return `<div class="between"><div class="row">${chips}</div><button class="btn small" type="button" data-act="paSecteurs">Secteurs</button></div>${barre}${grille}${recap}`;
 }
 function brancherPlanches() { const s = $('pa-cul'); if (s) s.addEventListener('change', () => { PARC.peindre = s.value; render(); }); }
@@ -46,12 +74,13 @@ ACTIONS.paClic = (el) => {
   const e = el.dataset.e;
   if (PARC.peindre) {
     const c = DB.get(PARC.peindre); if (!c) return; const l = (c.emplacements || []).slice(), i = l.indexOf(e);
-    if (i >= 0) l.splice(i, 1); else l.push(e);
+    if (i >= 0) l.splice(i, 1); else { l.push(e); const r = conflitRotation(c, e); if (r) toast(`Rotation : ${familleNom(r.famille)} déjà sur ${nomPlanche(e)} en ${r.avant.saison} (${r.avant.nom}). Délai conseillé : ${r.delai} ans.`, 5000); }
     DB.put(PARC.peindre, Object.assign({}, c, { emplacements: l })); return;
   }
   const s = saisonCourante(), list = cultures(s);
   openSheet(`${sheetHead('Planche ' + nomPlanche(e), 'Saison ' + s)}<form class="sbody form" data-form="paPlanche"><input type="hidden" name="e" value="${esc(e)}">
     ${list.length ? list.map((c) => `<label class="row" style="font-size:15px"><input type="checkbox" name="c_${esc(c.key)}"${(c.emplacements || []).includes(e) ? ' checked' : ''}> ${esc(c.nom)} <span class="hint">${esc(c.semPlantation ? 'sem. ' + c.semPlantation + (c.semRecolte ? ' → ' + c.semRecolte : '') : '')}</span></label>`).join('') : '<p class="empty">Aucune culture dans le plan.</p>'}
+    ${(() => { const h = histoPlanche(e, s); return h.length ? `<h3>Les saisons d'avant</h3><p class="hint">${h.slice(0, 6).map((c) => `${esc(c.saison)} : ${esc(c.nom)}${familleDe(c) ? ' (' + esc(familleNom(familleDe(c))) + ')' : ''}`).join('<br>')}</p>` : '<p class="hint">Pas d\'historique pour cette planche.</p>'; })()}
     <div class="row-end"><button class="btn" type="button" data-act="jnlNouveau" data-e="${esc(e)}">Note au journal</button><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.paPlanche = (v) => {
