@@ -49,14 +49,15 @@ function renderAccueil() {
     .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero || f.blNumero || 'Vente'} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });
   /* Tâches : d'abord urgentes et en retard, puis les prochaines échéances, puis les autres tâches ouvertes */
   const ouvT = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && pourMoi(t.responsable));
+  const demain = addDays(today, 1);
   const rang = (t) => (t.urgent || (t.echeance && t.echeance < today) ? 0 : t.echeance ? 1 : 2);
   const tch = ouvT.sort((a, c) => rang(a) - rang(c) || String(a.echeance || '9').localeCompare(String(c.echeance || '9')) || String(a.cree || '').localeCompare(String(c.cree || '')));
   groupes.push({ mod: 'taches', titre: 'Tâches urgentes et prochaines', n: ouvT.length, vide: 'Aucune tâche ouverte.',
-    items: tch.slice(0, 7).map((t) => ({ href: '#/taches', txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''), val: t.urgent ? 'urgent' : t.echeance ? (t.echeance < today ? 'en retard' : fmtDateCourt(t.echeance)) : '', bad: rang(t) === 0 })),
+    items: tch.slice(0, 7).map((t) => ({ href: '#/taches', txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''), val: t.urgent ? 'urgent' : t.echeance ? (t.echeance < today ? 'en retard' : t.echeance === today ? "aujourd'hui" : t.echeance === demain ? 'demain' : fmtDateCourt(t.echeance)) : '', bad: rang(t) === 0, fort: !!t.urgent || (!!t.echeance && t.echeance <= demain) })),
     plus: ouvT.length > 7 ? { href: '#/taches', txt: `Voir les ${ouvT.length} tâches` } : null });
   /* Calendrier des 7 prochains jours */
   const prochains = []; const it7 = itemsPeriode(today, addDays(today, 6));
-  for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ href: '#/calendrier', txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : '') });
+  for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ href: '#/calendrier', txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : d === addDays(today, 1) ? 'demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : ''), fort: d <= addDays(today, 1) });
   groupes.push({ mod: 'calendrier', titre: 'Ces 7 prochains jours', n: prochains.length, vide: 'Rien de prévu au calendrier.', items: prochains.slice(0, 7), plus: { href: '#/calendrier/agenda', txt: "Voir l'agenda" } });
   const sansJ = depenses().filter((x) => sansJustificatif(x) && pourMoi(x.par)).sort((a, c) => String(c.date).localeCompare(String(a.date)));
   if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
@@ -75,7 +76,7 @@ function renderAccueil() {
 
   const vue = Sync.me ? `<div class="seg-mini" role="group" aria-label="Afficher"><button type="button" class="${ACC.vue === 'moi' ? 'on' : ''}" data-act="accVue" data-v="moi">Pour moi</button><button type="button" class="${ACC.vue !== 'moi' ? 'on' : ''}" data-act="accVue" data-v="tous">Tout le monde</button></div>` : '';
   const todo = `<section class="panel"><div class="between"><h2>À traiter</h2>${vue}</div><div class="todo">${groupes.map((g) => `<div class="grp t-${g.mod}"><h3>${esc(g.titre)}${g.n ? `<span class="n">${g.n}</span>` : ''}</h3>
-      ${g.items.length ? g.items.map((it) => `<a class="it${it.bad ? ' bad' : ''}" href="${it.href}"${g.avant ? ' data-act="goSansJ"' : ''}><span>${esc(it.txt)}</span><span class="num">${esc(it.val)}</span></a>`).join('') : `<p class="none">${esc(g.vide || 'Rien.')}</p>`}
+      ${g.items.length ? g.items.map((it) => `<a class="it${it.fort ? ' fort' : it.bad ? ' bad' : ''}" href="${it.href}"${g.avant ? ' data-act="goSansJ"' : ''}><span>${esc(it.txt)}</span><span class="num">${esc(it.val)}</span></a>`).join('') : `<p class="none">${esc(g.vide || 'Rien.')}</p>`}
       ${g.plus ? `<a class="btn link" href="${g.plus.href}"${g.avant ? ' data-act="goSansJ"' : ''}>${esc(g.plus.txt)}</a>` : ''}</div>`).join('')}</div></section>`;
 
   const tiles = ORDRE.filter((k) => MODULES[k]).map((k) => {
