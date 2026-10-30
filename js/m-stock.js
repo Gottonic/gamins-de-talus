@@ -38,7 +38,7 @@ function renderStock() {
   const ps = produits(), ms = mouvements();
   const st = ps.map((p) => ({ p, q: stockDe(p.key, ms) }));
   const enStock = st.filter((x) => (x.q != null && x.q > 0) || x.p.dispo || x.p.auChamp);
-  const prix = (p) => [fourchette(p) ? `fourchette ${fourchette(p)}` : '', prixNiveauxTxt(p)].filter(Boolean).join(' · ');
+  const prix = (p) => [fourchette(p) ? `fourchette ${fourchette(p)}` : '', prixNiveauxTxt(p), calibresDe(p).length ? 'à la pièce : ' + calibresDe(p).map((c) => `${c.nom} ${money(prixPiece(p, c, 'part'))}`).join(', ') : ''].filter(Boolean).join(' · ');
   const ligne = ({ p, q }) => `<div class="stk${q != null && q < 0 ? ' neg' : ''}">
       <div class="stk-nom"><b>${esc(p.nom)}</b>${p.auChamp ? ' <span class="tpill champ">🌱 au champ</span>' : ''}${p.dispo && (q == null || q <= 0) ? ' <span class="tpill">disponible</span>' : ''}<br><span class="hint">${prix(p) || 'Prix à définir'}</span></div>
       <div class="stk-q num">${q != null ? fmtQ(q, p.unite) : '—'}</div>
@@ -132,9 +132,10 @@ function stockPourVente(facKey, f) {
   if (f && f.stock && f.statut !== 'annulee') {
     (f.lignes || []).forEach((l, i) => {
       if (!l.produitId || !(num(l.quantite) > 0) || stockDe(l.produitId) == null) return;
-      const p = DB.get(l.produitId); if (!p || (l.unite && p.unite && l.unite !== p.unite)) return;
+      const p = DB.get(l.produitId); if (!p) return;
+      const q = enUniteDeStock(p, l.quantite, l.unite, l.poids); if (q == null) return;
       const k = 'mvt:fac:' + facKey + ':' + i; garder.add(k);
-      DB.put(k, { date: f.livraison || f.date, prod: l.produitId, qte: -num(l.quantite), type: 'vente', ref: facKey, par: f.creePar || Sync.me || '', note: f.client ? f.client.nom : '' });
+      DB.put(k, { date: f.livraison || f.date, prod: l.produitId, qte: -q, type: 'vente', ref: facKey, par: f.creePar || Sync.me || '', note: (f.client ? f.client.nom : '') + (num(l.poids) ? ` · ${fmtNum(num(l.quantite), 0)} pièce(s)` : '') });
     });
   }
   for (const m of avant) if (!garder.has(m.key)) DB.del(m.key);
@@ -155,7 +156,7 @@ function renderSelfService() {
     const b = bilanSelf(s), recs = recettesDirectes().filter((r) => r.self === s.key).sort((a, c) => String(a.date).localeCompare(c.date));
     return `<div class="panel self${s.statut === 'close' ? ' close' : ''}"><div class="between"><h3 style="margin:0">${esc(s.lieu || 'Self-service')} · ${fmtDate(s.date)}</h3><span class="tpill">${s.statut === 'close' ? 'bouclée' : 'en cours'}</span></div>
       <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Mis</th><th class="r">Prix</th>${s.statut === 'close' ? '<th class="r">Invendus</th><th class="r">Vendus</th>' : ''}<th class="r">Valeur</th></tr></thead><tbody>
-      ${(s.lignes || []).map((x, i) => { const p = DB.get(x.prod) || {}, r = num((s.retours || {})[i]), v = Math.max(0, num(x.qte) - r); return `<tr><td>${esc(p.nom || '?')}</td><td class="r num">${fmtQ(num(x.qte), x.unite || p.unite)}</td><td class="r num">${money(x.prix)}</td>${s.statut === 'close' ? `<td class="r num">${fmtNum(r, 0)}</td><td class="r num">${fmtNum(v, 0)}</td>` : ''}<td class="r num">${money((s.statut === 'close' ? v : num(x.qte)) * num(x.prix))}</td></tr>`; }).join('')}
+      ${(s.lignes || []).map((x, i) => { const p = DB.get(x.prod) || {}, r = num((s.retours || {})[i]), v = Math.max(0, num(x.qte) - r); return `<tr><td>${esc(p.nom || '?')}${x.calibre ? ' ' + esc(String(x.calibre).toLowerCase()) : ''}</td><td class="r num">${fmtQ(num(x.qte), x.unite || p.unite)}</td><td class="r num">${money(x.prix)}</td>${s.statut === 'close' ? `<td class="r num">${fmtNum(r, 0)}</td><td class="r num">${fmtNum(v, 0)}</td>` : ''}<td class="r num">${money((s.statut === 'close' ? v : num(x.qte)) * num(x.prix))}</td></tr>`; }).join('')}
       </tbody></table></div>
       <p>Encaissé : <b>${chf(b.enc)}</b>${s.statut === 'close' ? ` sur ${chf(b.vendu)} vendus · <b class="${b.taux > 0.1 ? 'bad' : ''}">${b.ecart > 0 ? `${chf(b.ecart)} manquants (${Math.round(b.taux * 100)} %)` : 'rien ne manque'}</b>` : ` · au plus ${chf(b.mis)} si tout part`}</p>
       ${recs.length ? `<p class="hint">${recs.map((r) => `${fmtDate(r.date)} ${esc(r.moyen || '')} ${money(r.montant)}`).join(' · ')}</p>` : ''}
@@ -176,24 +177,34 @@ ACTIONS.selfNouveau = () => {
   openSheet(`${sheetHead('Mise en vente directe')}<form class="sbody form" data-form="self">
     <div class="grid2">${inp('sf-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('sf-lieu', 'Où', 'Self-service', { name: 'lieu' })}</div>
     <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>
-    ${ps.map((p) => { const q = stockDe(p.key); return `<tr><td>${esc(p.nom)}</td><td><input class="cell-in" name="q_${esc(p.key)}" inputmode="decimal" placeholder="0" style="width:70px"> <span class="hint">${esc(p.unite)}</span></td><td><input class="cell-in" name="p_${esc(p.key)}" inputmode="decimal" value="${esc(String(prixNiveau(p, 'part')).replace('.', ','))}" style="width:70px"></td><td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('')}
+    ${ps.map((p) => { const q = stockDe(p.key), st = `<td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td>`, cs = calibresDe(p);
+      const ligne = (id, nom, unite, prix, stock) => `<tr><td>${nom}</td><td><input class="cell-in" name="q_${esc(id)}" inputmode="decimal" placeholder="0" style="width:70px"> <span class="hint">${esc(unite)}</span></td><td><input class="cell-in" name="p_${esc(id)}" inputmode="decimal" value="${esc(String(prix).replace('.', ','))}" style="width:70px"></td>${stock}</tr>`;
+      return cs.map((c, j) => ligne(p.key + '|' + j, `${esc(p.nom)} <b>${esc(c.nom)}</b> <span class="hint">≈ ${fmtNum(c.poids, 2)} kg</span>`, 'pièces', prixPiece(p, c, 'part'), j === 0 ? st : '<td></td>')).join('')
+        + ligne(p.key, esc(p.nom) + (cs.length ? ' <span class="hint">au ' + esc(p.unite) + '</span>' : ''), p.unite, prixNiveau(p, 'part'), cs.length ? '<td></td>' : st); }).join('')}
     </tbody></table></div>
     ${inp('sf-note', 'Note', '', { name: 'note' })}
     <p class="hint">Prix proposé : le prix « Particuliers & vente directe » du produit, modifiable ici pour cette fois. Le stock baisse de ces quantités.</p>
     <div class="row-end"><button class="btn primary" type="submit">Mettre en vente</button></div></form>`);
 };
 FORMS.self = (v) => {
-  const lignes = produits().filter((p) => num(v['q_' + p.key]) > 0).map((p) => ({ prod: p.key, qte: num(v['q_' + p.key]), prix: r2(num(v['p_' + p.key])), unite: p.unite }));
+  const lignes = [];
+  for (const p of produits()) {
+    calibresDe(p).forEach((c, j) => { const id = p.key + '|' + j; if (num(v['q_' + id]) > 0) lignes.push({ prod: p.key, qte: num(v['q_' + id]), prix: r2(num(v['p_' + id])), unite: 'pièce', calibre: c.nom, poids: num(c.poids) }); });
+    if (num(v['q_' + p.key]) > 0) lignes.push({ prod: p.key, qte: num(v['q_' + p.key]), prix: r2(num(v['p_' + p.key])), unite: p.unite });
+  }
   if (!lignes.length) { toast('Indique au moins une quantité.'); return; }
   const k = 'self:' + uid('s'), s = { date: v.date || todayISO(), lieu: v.lieu || 'Self-service', lignes, retours: {}, statut: 'ouverte', note: v.note, par: Sync.me || '', cree: new Date().toISOString() };
   DB.put(k, s); stockPourSelf(k, s); closeSheet(); toast('Mise en vente enregistrée.');
 };
+/* Quantité vendue exprimée dans l'unité du stock : pièces × poids moyen pour un calibre, sinon même unité seulement */
+function enUniteDeStock(p, qte, unite, poids) { if (num(poids) > 0 && (p.unite || 'kg') === 'kg') return r2(num(qte) * num(poids)); return !unite || !p.unite || unite === p.unite ? num(qte) : null; }
 function stockPourSelf(k, s) {
   (s.lignes || []).forEach((l, i) => {
-    const p = DB.get(l.prod); if (!p || stockDe(l.prod) == null || (l.unite && l.unite !== p.unite)) return;
-    DB.put(`mvt:self:${k.slice(5)}:${i}`, { date: s.date, prod: l.prod, qte: -num(l.qte), type: 'self', ref: k, par: s.par || '' });
+    const p = DB.get(l.prod); if (!p || stockDe(l.prod) == null) return;
+    const q = enUniteDeStock(p, l.qte, l.unite, l.poids); if (q == null) return;
+    DB.put(`mvt:self:${k.slice(5)}:${i}`, { date: s.date, prod: l.prod, qte: -q, type: 'self', ref: k, par: s.par || '', note: num(l.poids) ? `${fmtNum(num(l.qte), 0)} pièce(s) ${l.calibre || ''}`.trim() : '' });
     const r = num((s.retours || {})[i]), kr = `mvt:selfr:${k.slice(5)}:${i}`;
-    if (s.statut === 'close' && r > 0) DB.put(kr, { date: s.closeLe || todayISO(), prod: l.prod, qte: r, type: 'retour', ref: k, par: Sync.me || '' }); else if (DB.get(kr)) DB.del(kr);
+    if (s.statut === 'close' && r > 0) DB.put(kr, { date: s.closeLe || todayISO(), prod: l.prod, qte: enUniteDeStock(p, r, l.unite, l.poids) ?? r, type: 'retour', ref: k, par: Sync.me || '' }); else if (DB.get(kr)) DB.del(kr);
   });
 }
 ACTIONS.selfEnc = (el) => {
@@ -212,7 +223,7 @@ FORMS.selfEnc = (v) => {
 ACTIONS.selfClore = (el) => {
   const k = el.dataset.key, s = DB.get(k); if (!s) return;
   openSheet(`${sheetHead('Boucler la vente directe', 'Compte ce qui reste au stand')}<form class="sbody form" data-form="selfClore"><input type="hidden" name="key" value="${esc(k)}">
-    ${(s.lignes || []).map((l, i) => { const p = DB.get(l.prod) || {}; return inp('sc-' + i, `${p.nom || '?'} : invendus (sur ${fmtQ(num(l.qte), l.unite)})`, (s.retours || {})[i] ?? '', { name: 'r_' + i, type: 'number' }); }).join('')}
+    ${(s.lignes || []).map((l, i) => { const p = DB.get(l.prod) || {}; return inp('sc-' + i, `${p.nom || '?'}${l.calibre ? ' ' + String(l.calibre).toLowerCase() : ''} : invendus (sur ${fmtQ(num(l.qte), l.unite)})`, (s.retours || {})[i] ?? '', { name: 'r_' + i, type: 'number' }); }).join('')}
     <p class="hint">Les invendus en bon état reviennent au stock. Ajoute d'abord les derniers encaissements.</p>
     <div class="row-end"><button class="btn primary" type="submit">Boucler</button></div></form>`);
 };

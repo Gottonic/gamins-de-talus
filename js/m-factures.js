@@ -48,25 +48,39 @@ function prixAncien(p, niv) { const t = p.prixParType || {}, c = niv === 'gros' 
 const prixManuel = (p, niv) => !vide((p.prixNiveau || {})[niv]);
 function prixNiveau(p, niv) { if (!p) return ''; if (prixManuel(p, niv)) return p.prixNiveau[niv]; const a = prixAuto(p, niv); return a !== '' ? a : prixAncien(p, niv); }
 function prixPour(p, type) { return prixNiveau(p, niveauDeType(type)); }
+/* Calibres : jusqu'à 3 tailles d'un produit vendu au kg, avec un poids moyen par pièce. On vend à la pièce,
+   le stock baisse du nombre de pièces × poids moyen. Prix d'une pièce = prix au kg × poids (arrondi à 50 ct en vente directe),
+   ou le prix fixé à la main pour la vente directe. */
+const calibresDe = (p) => (p && Array.isArray(p.calibres) ? p.calibres.filter((c) => num(c.poids) > 0) : []);
+function prixPiece(p, cal, niv) {
+  if (niv === 'part' && cal.prix != null && cal.prix !== '') return num(cal.prix);
+  const kg = num(prixNiveau(p, niv)); if (!kg) return '';
+  const x = kg * num(cal.poids); return niv === 'part' ? Math.max(0.5, Math.round(x * 2) / 2) : arrondi5(x);
+}
+const nomCalibre = (p, cal) => `${p.nom} ${String(cal.nom || '').toLowerCase()}`.trim();
 const prixNiveauxTxt = (p) => NIVEAUX.map(([n]) => [n, prixNiveau(p, n)]).filter(([, x]) => !vide(x)).map(([n, x]) => `${NIVEAU_COURT[n]} ${money(x)}`).join(' · ');
 /* Le prix d'un client = celui de sa dernière vente (non annulée) pour ce produit */
-function prixClient(clientId, prodKey) {
-  if (!clientId || !prodKey) return null;
+function prixClient(clientId, prodKey, calibre) {
+  if (!clientId || !prodKey) return null; const cb = calibre == null ? '' : String(calibre);
   let best = null;
   for (const f of factures()) {
     if (!f.client || f.client.id !== clientId || facStatut(f) === 'annulee') continue;
     const d = String(f.date || '') + String(f.cree || '');
-    for (const l of f.lignes || []) if (l.produitId === prodKey && !vide(l.prix) && (!best || d > best.d)) best = { prix: num(l.prix), date: f.date, d };
+    for (const l of f.lignes || []) if (l.produitId === prodKey && String(l.calibre ?? '') === cb && !vide(l.prix) && (!best || d > best.d)) best = { prix: num(l.prix), date: f.date, d };
   }
   return best;
 }
-function prixLigne(p, key) { const pc = prixClient(draftF.clientId, key || p.key); return pc ? pc.prix : prixPour(p, typeClientBrouillon()); }
+function prixLigne(p, key, calibre) {
+  const pc = prixClient(draftF.clientId, key || p.key, calibre); if (pc) return pc.prix;
+  const cal = calibre == null || calibre === '' ? null : calibresDe(p)[Number(calibre)];
+  return cal ? prixPiece(p, cal, niveauDeType(typeClientBrouillon())) : prixPour(p, typeClientBrouillon());
+}
 function fourchette(p) { if (vide(p.prixMin) && vide(p.prixMax)) return ''; if (vide(p.prixMax) || num(p.prixMin) === num(p.prixMax)) return money(vide(p.prixMin) ? p.prixMax : p.prixMin); if (vide(p.prixMin)) return 'jusqu\'à ' + money(p.prixMax); return money(p.prixMin) + ' – ' + money(p.prixMax); }
 const typeClientBrouillon = () => { const c = DB.get(draftF.clientId); return c ? (c.type || 'autre') : ''; };
 function nouvelleLigne() { const p = produits()[0]; return p ? { produitId: p.key, designation: p.nom, quantite: '', unite: p.unite || 'kg', prix: prixLigne(p), auto: true } : { produitId: '', designation: '', quantite: '', unite: 'kg', prix: '' }; }
 function factureDepuisBrouillon() {
   const s = cfg(), n = prochainNumero(draftF.date), client = DB.get(draftF.clientId);
-  const lignes = draftF.lignes.filter((l) => (l.designation || '').trim() && num(l.quantite) > 0).map((l) => Object.assign({ designation: l.designation.trim(), quantite: r2(num(l.quantite)), unite: l.unite || 'kg', prix: r2(num(l.prix)) }, l.produitId ? { produitId: l.produitId } : {}));
+  const lignes = draftF.lignes.filter((l) => (l.designation || '').trim() && num(l.quantite) > 0).map((l) => Object.assign({ designation: l.designation.trim(), quantite: r2(num(l.quantite)), unite: l.unite || 'kg', prix: r2(num(l.prix)) }, l.produitId ? { produitId: l.produitId } : {}, l.calibre != null && l.calibre !== '' && num(l.poids) > 0 ? { calibre: Number(l.calibre), poids: num(l.poids) } : {}));
   let example = false, shown = lignes;
   if (!shown.length) { example = true; shown = [{ designation: 'Patates douces', quantite: 100, unite: 'kg', prix: 2.5 }]; }
   const cash = draftF.paiement === 'especes';
@@ -202,6 +216,7 @@ function ligneHtml(l, i) {
   const opts = `<option value="">Libre…</option>` + produits().map((p) => `<option value="${esc(p.key)}"${p.key === l.produitId ? ' selected' : ''}>${esc(p.nom)}</option>`).join('');
   return `<div class="line" data-i="${i}">
     <div class="field f-desc"><label for="l-p-${i}">Produit</label><select id="l-p-${i}" data-k="produitId">${opts}</select>
+      ${(() => { const p = l.produitId && DB.get(l.produitId), cs = calibresDe(p); return cs.length ? `<select id="l-c-${i}" data-k="calibre" aria-label="Calibre ligne ${i + 1}"><option value="">au ${esc(p.unite || 'kg')}</option>${cs.map((c, j) => `<option value="${j}"${String(l.calibre ?? '') === String(j) ? ' selected' : ''}>à la pièce : ${esc(c.nom || 'calibre ' + (j + 1))} (≈ ${fmtNum(c.poids, 2)} kg)</option>`).join('')}</select>` : ''; })()}
       <input id="l-d-${i}" data-k="designation" value="${esc(l.designation)}" placeholder="Désignation" maxlength="46" aria-label="Désignation ligne ${i + 1}"></div>
     <div class="field"><label for="l-q-${i}">Quantité</label><input id="l-q-${i}" data-k="quantite" type="text" inputmode="decimal" autocomplete="off" value="${esc(l.quantite)}"></div>
     <div class="field"><label for="l-u-${i}">Unité</label><select id="l-u-${i}" data-k="unite">${UNITES.map((u) => `<option${u === l.unite ? ' selected' : ''}>${u}</option>`).join('')}</select></div>
@@ -217,11 +232,12 @@ function majApercu() {
   draftF.lignes.forEach((l, i) => {
     const t = $('l-t-' + i); if (!t) return;
     const p = DB.get(l.produitId), f = p ? fourchette(p) : '';
-    const hors = p && f && !vide(l.prix) && ((!vide(p.prixMin) && num(l.prix) < num(p.prixMin)) || (!vide(p.prixMax) && num(l.prix) > num(p.prixMax)));
-    const pc = p && draftF.clientId ? prixClient(draftF.clientId, l.produitId) : null, egal = (x) => !vide(l.prix) && Math.abs(num(l.prix) - num(x)) < 0.005;
+    const parKg = num(l.poids) > 0 && !vide(l.prix) ? num(l.prix) / num(l.poids) : null, pk = parKg ?? num(l.prix); // à la pièce : on compare le prix ramené au kg
+    const hors = p && f && !vide(l.prix) && ((!vide(p.prixMin) && pk < num(p.prixMin) - 0.005) || (!vide(p.prixMax) && pk > num(p.prixMax) + 0.005));
+    const pc = p && draftF.clientId ? prixClient(draftF.clientId, l.produitId, l.calibre) : null, egal = (x) => !vide(l.prix) && Math.abs(num(l.prix) - num(x)) < 0.005;
     const origine = !p || vide(l.prix) ? '' : pc ? (egal(pc.prix) ? 'prix habituel de ce client' : `<span class="err">⚠ différent du prix habituel de ce client (${money(pc.prix)}, le ${fmtDate(pc.date)})</span>`)
-      : egal(prixPour(p, typeClientBrouillon())) ? 'tarif ' + NIVEAU_COURT[niveauDeType(typeClientBrouillon())] : `prix modifié (tarif ${NIVEAU_COURT[niveauDeType(typeClientBrouillon())]} : ${money(prixPour(p, typeClientBrouillon()))})`;
-    t.innerHTML = [num(l.quantite) > 0 && l.prix !== '' ? '= ' + money(r2(num(l.quantite) * num(l.prix))) : '', origine, f ? `<span class="${hors ? 'err' : ''}">fourchette ${f}${hors ? ' : hors fourchette' : ''}</span>` : ''].filter(Boolean).join(' · ');
+      : (() => { const ref = prixLigne(p, l.produitId, l.calibre), niv = NIVEAU_COURT[niveauDeType(typeClientBrouillon())]; return egal(ref) ? 'tarif ' + niv + (num(l.poids) ? ' à la pièce' : '') : `prix modifié (tarif ${niv} : ${money(ref)})`; })();
+    t.innerHTML = [num(l.quantite) > 0 && l.prix !== '' ? '= ' + money(r2(num(l.quantite) * num(l.prix))) : '', origine, f ? `<span class="${hors ? 'err' : ''}">${parKg != null ? `≈ ${money(parKg)}/kg, ` : ''}fourchette ${f}${hors ? ' : hors fourchette' : ''}</span>` : ''].filter(Boolean).join(' · ');
   });
 }
 function brancherBrouillon() {
@@ -230,7 +246,7 @@ function brancherBrouillon() {
     draftF.clientId = e.target.value; const c = DB.get(draftF.clientId); if (c && (!c.npa || !c.localite)) draftF.paiement = 'especes';
     const ty = typeClientBrouillon(); let n = 0;
     let hab = 0;
-    for (const l of draftF.lignes) { const p = DB.get(l.produitId); if (p && l.auto) { if (prixClient(draftF.clientId, l.produitId)) hab++; const np = prixLigne(p, l.produitId); if (String(np) !== String(l.prix)) { l.prix = np; n++; } } }
+    for (const l of draftF.lignes) { const p = DB.get(l.produitId); if (p && l.auto) { if (prixClient(draftF.clientId, l.produitId, l.calibre)) hab++; const np = prixLigne(p, l.produitId, l.calibre); if (String(np) !== String(l.prix)) { l.prix = np; n++; } } }
     render(); if (n && c) toast(hab ? 'Prix habituels de ce client appliqués.' : `Prix « ${NIVEAU_COURT[niveauDeType(ty)]} » appliqués.`);
   });
   for (const k of ['date', 'livraison', 'bulletin', 'remarque']) { const el = $('d-' + k); if (el) el.addEventListener('input', (e) => { draftF[k] = e.target.value; majApercu(); }); }
@@ -243,8 +259,13 @@ function brancherBrouillon() {
     const el = e.target.closest('.line'); if (!el) return;
     const i = Number(el.dataset.i), k = e.target.dataset.k, l = draftF.lignes[i]; if (!l || !k) return;
     if (k === 'produitId') {
-      const p = DB.get(e.target.value); l.produitId = e.target.value;
+      const p = DB.get(e.target.value); l.produitId = e.target.value; l.calibre = ''; l.poids = null;
       if (p) { l.designation = p.nom; l.unite = p.unite || 'kg'; l.prix = prixLigne(p, e.target.value); l.auto = true; $('l-d-' + i).value = l.designation; $('l-u-' + i).value = l.unite; $('l-x-' + i).value = l.prix; }
+      render(); return; // affiche (ou retire) le choix du calibre
+    } else if (k === 'calibre') {
+      const p = DB.get(l.produitId), cal = e.target.value === '' ? null : calibresDe(p)[Number(e.target.value)];
+      l.calibre = e.target.value; l.poids = cal ? num(cal.poids) : null; l.unite = cal ? 'pièce' : p.unite || 'kg'; l.designation = cal ? nomCalibre(p, cal) : p.nom; l.prix = prixLigne(p, l.produitId, l.calibre); l.auto = true;
+      render(); return;
     } else { l[k] = e.target.value; if (k === 'prix') l.auto = false; }
     majApercu();
   });
@@ -267,7 +288,7 @@ function creerVente(pdf) {
     if (draftF.bl) { inv.blNumero = prochainBL(inv.date); if (!inv.bulletin && inv.numero) inv.bulletin = inv.blNumero; }
     const key = 'fac:' + uid('f');
     /* Prix qui changent pour ce client (ils deviennent ses nouveaux prix habituels) */
-    const changes = inv.client && inv.client.id ? d.lignes.map((l) => { const pc = l.produitId ? prixClient(inv.client.id, l.produitId) : null; return pc && Math.abs(pc.prix - num(l.prix)) >= 0.005 ? `${l.designation} ${money(l.prix)} (avant ${money(pc.prix)})` : ''; }).filter(Boolean) : [];
+    const changes = inv.client && inv.client.id ? d.lignes.map((l) => { const pc = l.produitId ? prixClient(inv.client.id, l.produitId, l.calibre) : null; return pc && Math.abs(pc.prix - num(l.prix)) >= 0.005 ? `${l.designation} ${money(l.prix)} (avant ${money(pc.prix)})` : ''; }).filter(Boolean) : [];
     DB.put(key, inv); stockPourVente(key, inv);
     Object.assign(draftF, { lignes: [], bulletin: '', remarque: '', livraison: '', paiement: 'virement' });
     toast((inv.numero ? `Vente enregistrée, facture ${inv.numero}.` : 'Vente enregistrée.') + (changes.length ? ` Nouveau prix pour ce client : ${changes.join(', ')}.` : '') + (!pdf && (inv.numero || inv.blNumero) ? ' Les PDF : bouton « Facture & bulletin PDF ».' : ''), changes.length ? 7000 : 4500);
@@ -402,6 +423,9 @@ ACTIONS.prodEdit = (el) => {
     <p class="hint">Calculés depuis la fourchette : grossistes = minimum, restaurants = un tiers de la fourchette, particuliers = maximum (arrondi à 5 ct). Laisser vide pour le calcul automatique, ou écrire un prix pour le fixer à la main.</p>
     <div class="grid2">${NIVEAUX.map(([key, label]) => inp('pr-n-' + key, label, vide(pn[key]) ? '' : pn[key], { name: 'n_' + key, type: 'number', sub: `<span id="pr-auto-${key}"></span>` })).join('')}</div>
     <p class="hint">Un client qui a déjà acheté ce produit garde son prix habituel (celui de sa dernière vente).</p>
+    <h3>Calibres (vente à la pièce)</h3>
+    <p class="hint">Facultatif, pour un produit au kg vendu à la pièce : jusqu'à 3 tailles avec leur poids moyen. En vente directe ou sur une facture, on compte les pièces ; le stock baisse de pièces × poids. Prix d'une pièce : prix au kg × poids, arrondi à 50 ct en vente directe (ou le prix écrit ici).</p>
+    ${[0, 1, 2].map((j) => { const c = (p.calibres || [])[j] || {}; return `<div class="grid3">${inp('pr-cn-' + j, j ? '' : 'Calibre', c.nom || '', { name: 'cn_' + j, attrs: { placeholder: ['Petit', 'Moyen', 'Gros'][j] } })}${inp('pr-cp-' + j, j ? '' : 'Poids moyen kg', c.poids ?? '', { name: 'cp_' + j, type: 'number', attrs: { placeholder: 'ex. ' + ['0,8', '1,5', '2,5'][j] } })}${inp('pr-cx-' + j, j ? '' : 'Prix pièce, vente directe', c.prix ?? '', { name: 'cx_' + j, type: 'number', sub: `<span id="pr-cauto-${j}"></span>` })}</div>`; }).join('')}
     <h3>Stock</h3>
     ${sel('pr-fiche', 'Vient de la culture', p.fiche || '', [['', '—']].concat((typeof fiches === 'function' ? fiches() : []).map((f) => [f.key, f.nom])), { name: 'fiche', sub: 'Les récoltes de cette culture peuvent entrer dans le stock de ce produit.' })}
     <label class="row" style="font-size:14px"><input type="checkbox" name="dispo"${p.dispo ? ' checked' : ''}> Disponible (sans compter la quantité)</label>
@@ -417,7 +441,13 @@ ACTIONS.prodEdit = (el) => {
       sp.textContent = i.value !== '' ? (vide(x) ? 'fixé à la main' : `fixé à la main (auto : ${money(x)})`) : vide(x) ? 'mettre une fourchette' : 'auto';
     }
   };
-  for (const id of ['pr-min', 'pr-max', ...NIVEAUX.map(([key]) => 'pr-n-' + key)]) $(id).addEventListener('input', maj);
+  const majCal = () => {
+    const q = { prixMin: $('pr-min').value === '' ? '' : num($('pr-min').value), prixMax: $('pr-max').value === '' ? '' : num($('pr-max').value), prixParType: p.prixParType, prix: p.prix, prixNiveau: { part: $('pr-n-part').value === '' ? '' : num($('pr-n-part').value) } };
+    for (const j of [0, 1, 2]) { const w = num($('pr-cp-' + j).value), x = w > 0 ? prixPiece(q, { poids: w }, 'part') : ''; $('pr-cx-' + j).placeholder = x === '' ? '' : money(x); $('pr-cauto-' + j).textContent = w > 0 ? ($('pr-cx-' + j).value ? 'fixé à la main' : 'auto') : ''; }
+  };
+  for (const id of ['pr-min', 'pr-max', ...NIVEAUX.map(([key]) => 'pr-n-' + key)]) $(id).addEventListener('input', () => { maj(); majCal(); });
+  for (const j of [0, 1, 2]) for (const x of ['cp', 'cx']) $(`pr-${x}-${j}`).addEventListener('input', majCal);
+  majCal();
   maj();
 };
 FORMS.prod = (v) => {
@@ -425,6 +455,7 @@ FORMS.prod = (v) => {
   const val = (x) => (x === '' ? null : r2(num(x)));
   const k = v.key || 'prod:' + uid('p'), old = DB.get(k) || {};
   const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), remarque: v.remarque || '', prixNiveau: {}, fiche: v.fiche || '', dispo: !!v.dispo, auChamp: !!v.auChamp });
+  o.calibres = [0, 1, 2].map((j) => ({ nom: (v['cn_' + j] || '').trim() || ['Petit', 'Moyen', 'Gros'][j], poids: val(v['cp_' + j]), prix: val(v['cx_' + j]) })).filter((c) => c.poids > 0);
   for (const [key] of NIVEAUX) { const x = val(v['n_' + key]); if (x != null && Math.abs(x - num(prixAuto(o, key))) >= 0.005) o.prixNiveau[key] = x; } // égal au calcul : on garde l'automatique
   if (o.prixMin != null && o.prixMax != null && o.prixMin > o.prixMax) { toast('Le minimum dépasse le maximum.'); return; }
   const hors = NIVEAUX.map(([key, l]) => [l, o.prixNiveau[key]]).filter(([, x]) => x != null && ((o.prixMin != null && x < o.prixMin) || (o.prixMax != null && x > o.prixMax)));
