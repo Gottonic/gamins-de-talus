@@ -10,7 +10,7 @@
 'use strict';
 
 const IRR = { lundi: '' };
-const METEO = { jours: {}, maj: '', charge: false, erreur: '', clim: {} };
+const METEO = { jours: {}, maj: '', charge: false, erreur: '', clim: {}, prev: {}, prevMaj: 0, prevErreur: '' };
 const IRR_DEFAUT = {
   systemes: [
     { k: 'goutte', nom: 'Goutte-à-goutte', type: 'goutte', debitGoutteur: 1, espacement: 20, lignes: 2, efficience: 0.9, arrosages: 3 },
@@ -82,11 +82,27 @@ async function chargerMeteo(force) {
   } catch (e) { METEO.erreur = 'Données météo pas disponibles (' + e.message + ').'; }
   METEO.charge = true;
   if (ROUTE.mod === 'irrigation' || !ROUTE.mod) render();
+  chargerPrevision();
+}
+/* Prévision à 7 jours pour Marly (Open-Meteo, modèles MeteoSuisse pour la Suisse) : ET0 et pluie des jours à venir.
+   Rechargée au plus toutes les 3 heures ; si elle manque, on retombe sur les moyennes et la pluie prévue saisie. */
+async function chargerPrevision() {
+  if (Date.now() - METEO.prevMaj < 3 * 3600e3 || !navigator.onLine) return;
+  METEO.prevMaj = Date.now();
+  try {
+    const u = 'https://api.open-meteo.com/v1/forecast?latitude=46.78&longitude=7.15&daily=et0_fao_evapotranspiration,precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min&timezone=Europe%2FZurich&forecast_days=7';
+    const r = await fetch(u); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = (await r.json()).daily || {}; METEO.prev = {};
+    (d.time || []).forEach((j, i) => { METEO.prev[j] = { et0: d.et0_fao_evapotranspiration[i], pluie: d.precipitation_sum[i], proba: (d.precipitation_probability_max || [])[i], tmin: d.temperature_2m_min[i], tmax: d.temperature_2m_max[i] }; });
+    METEO.prevErreur = '';
+  } catch (e) { METEO.prevErreur = 'Prévision indisponible (' + e.message + ').'; }
+  if (ROUTE.mod === 'irrigation') render();
 }
 const CLIM_DEFAUT = { '01': 0.4, '02': 0.7, '03': 1.4, '04': 2.6, '05': 3.3, '06': 4.5, '07': 4.7, '08': 4.0, '09': 2.4, '10': 1.1, '11': 0.5, '12': 0.3 };
 /* ET0 d'un jour : mesurée, sinon estimée (moitié moyenne des 7 derniers jours mesurés, moitié moyenne du mois à Posieux) */
 function et0Jour(d) {
   const m = METEO.jours[d]; if (m && m.et0 != null) return { v: m.et0, mesure: true };
+  const pv = METEO.prev[d]; if (pv && pv.et0 != null) return { v: pv.et0, mesure: false, prevu: true };
   const clim = METEO.clim[d.slice(5, 7)] ?? CLIM_DEFAUT[d.slice(5, 7)];
   const ds = Object.keys(METEO.jours).filter((x) => x < d && METEO.jours[x].et0 != null).sort().slice(-7);
   const rec = ds.length >= 4 ? ds.reduce((a, x) => a + METEO.jours[x].et0, 0) / ds.length : clim;
@@ -127,8 +143,10 @@ function calculIrrigation(x, lundiCible) {
       if (m && m.pluie != null && e.mesure) { pe += pluieEff(m.pluie, ci); joursMes++; }
     }
     if (!n) continue;
-    /* Pluie des jours pas encore mesurés : la pluie prévue saisie pour la semaine, au prorata */
-    const jf = n - joursMes; if (jf > 0 && num(sem.pluiePrevue) > 0) pe += pluieEff(num(sem.pluiePrevue), ci) * jf / 7;
+    /* Pluie des jours pas encore mesurés : la pluie prévue saisie pour la semaine (au prorata), sinon la prévision météo jour par jour */
+    const jf = n - joursMes;
+    if (jf > 0 && sem.pluiePrevue != null && sem.pluiePrevue !== '') pe += pluieEff(num(sem.pluiePrevue), ci) * jf / 7;
+    else if (jf > 0) for (let i = 0; i < 7; i++) { const d = addDays(l, i); if (d < x.debut || d > x.fin) continue; const m = METEO.jours[d], pv = METEO.prev[d]; if (!(m && m.pluie != null && et0Jour(d).mesure) && pv && pv.pluie != null) pe += pluieEff(pv.pluie, ci); }
     const report = stock;
     const net = Math.max(0, etc - pe - report), brut = net / Math.max(0.3, num(sys.efficience) || 0.85);
     const litresPl = brut * surfPl, heuresPl = sys.type === 'aspersion' ? brut / Math.max(0.5, num(sys.pluviometrie)) : (dp ? litresPl / dp : 0);
@@ -210,11 +228,13 @@ function renderIrrSemaine() {
       <div class="stat blue"><span class="k">ET0 cette semaine</span><span class="v">${fmtNum(ms.et0, 1)} mm</span><span class="s">${ms.mes === 7 ? 'mesurée' : ms.mes ? `${ms.mes} jour${ms.mes > 1 ? 's' : ''} mesuré${ms.mes > 1 ? 's' : ''}, le reste estimé` : 'estimée'}</span></div>
       <div class="stat good"><span class="k">Pluie mesurée cette semaine</span><span class="v">${fmtNum(ms.pluie, 1)} mm</span><span class="s">Semaine passée : ${fmtNum(mp.pluie, 1)} mm · ET0 ${fmtNum(mp.et0, 1)} mm</span></div>
       <div class="stat"><span class="k">Eau à apporter</span><span class="v">${fmtNum(totalM3, 1)} m³</span><span class="s">${num(ci.debitSource) ? `${fmtDuree(totalM3 / num(ci.debitSource))} de pompage à ${fmtNum(ci.debitSource, 1)} m³/h${plMax ? ` · jusqu'à ${plMax} planches à la fois` : ''}` : `${xs.length} culture${xs.length > 1 ? 's' : ''} en place`}</span></div>
-      <div class="stat">${fld('irr-pp', 'Pluie prévue cette semaine (mm)', `<input id="irr-pp" inputmode="decimal" value="${sem.pluiePrevue == null ? '' : esc(String(sem.pluiePrevue).replace('.', ','))}" placeholder="ex. 10">`, 'Selon la météo de la semaine : remplace les jours pas encore mesurés.')}</div>
+      <div class="stat">${fld('irr-pp', 'Pluie prévue cette semaine (mm)', `<input id="irr-pp" inputmode="decimal" value="${sem.pluiePrevue == null ? '' : esc(String(sem.pluiePrevue).replace('.', ','))}" placeholder="${Object.keys(METEO.prev).length ? 'prévision auto' : 'ex. 10'}">`, Object.keys(METEO.prev).length ? 'Vide : la prévision météo est utilisée jour par jour. Un chiffre ici la remplace.' : 'Selon la météo de la semaine : remplace les jours pas encore mesurés.')}</div>
     </div>
+    ${previsionHtml(ci)}
     <div class="panel"><h2>Arrosage conseillé</h2>
       ${xs.length ? `<div class="irr-cartes">${cartes}</div><div class="table-wrap irr-table"><table class="list irr"><thead><tr><th>Culture</th><th class="r">ETc mm</th><th class="r">Pluie eff. mm</th><th class="r">Réserve</th><th class="r">Besoin net mm</th><th class="r">Par planche</th><th class="r">Durée</th><th class="r">m³</th><th>Fait (h)</th></tr></thead><tbody>${lignes}</tbody></table></div>`
         : '<p class="empty">Aucune culture en place cette semaine (d\'après les semaines de plantation et de récolte du plan).</p>'}
+      ${xs.length ? toursHtml(xs, ci) : ''}
       <p class="hint">ETc = Kc × ET0 (besoin en eau de la culture, 1 mm = 1 L/m²). Pluie efficace : pluies d'au moins ${fmtNum(ci.pluieSeuil, 1)} mm, comptées à ${Math.round(num(ci.pluieCoef) * 100)} %. Réserve : ce que la semaine passée a laissé dans le sol (−) ou pas couvert (+), au plus la réserve facilement utilisable de la culture (selon votre sol et ses racines).
         Par planche : besoin net ÷ efficience × surface arrosée (goutte-à-goutte : planche cultivée seule, ${fmtNum(num(paramsCultures(l.slice(0, 4)).longueur) * num(ci.largeurCultivee), 1)} m²). Le nombre d'arrosages est augmenté si la réserve du sol ne tient pas entre deux. « Fait (h) » : heures d'arrosage réelles de la semaine pour une planche ; vide = conseil suivi.</p></div>`;
 }
@@ -316,3 +336,46 @@ FORMS.irrKc = (v) => {
   closeSheet(); toast('Enregistré.');
 };
 ACTIONS.irrKcDefaut = (el) => { const f = DB.get(el.dataset.key); if (!f) return; const o = Object.assign({}, f, { irr: { systeme: (f.irr || {}).systeme || '' } }); DB.put(el.dataset.key, o); closeSheet(); toast('Valeurs de départ remises.'); };
+
+/* ---------- Prévision des prochains jours ---------- */
+function previsionHtml(ci) {
+  const today = todayISO(), js = Object.keys(METEO.prev).filter((d) => d >= today).sort().slice(0, 7);
+  if (!js.length) return METEO.prevErreur ? `<p class="hint">${esc(METEO.prevErreur)}</p>` : '';
+  const p48 = js.slice(0, 3).reduce((a, d) => a + pluieEff(METEO.prev[d].pluie, ci), 0);
+  const J = ['dim', 'lun', 'mar', 'mer', 'jeu', 'ven', 'sam'];
+  return `<div class="panel"><div class="between"><h2 style="margin:0">Prévision Marly</h2><span class="hint">Open-Meteo · modèles MeteoSuisse</span></div>
+    <div class="prev">${js.map((d) => { const v = METEO.prev[d]; return `<div class="prev-j${num(v.pluie) >= num(ci.pluieSeuil) ? ' pluie' : ''}"><b>${d === today ? "auj." : J[new Date(d + 'T12:00').getDay()]}</b><span class="num">${fmtNum(v.pluie || 0, 1)} mm</span><span class="hint">${v.proba != null ? Math.round(v.proba) + ' %' : ''}</span><span class="hint">ET0 ${fmtNum(v.et0 || 0, 1)}</span><span class="hint">${Math.round(v.tmin)}–${Math.round(v.tmax)}°</span></div>`; }).join('')}</div>
+    ${p48 >= 5 ? `<p class="banner">≈ ${fmtNum(p48, 0)} mm de pluie efficace annoncés d'ici après-demain : attendez avant d'arroser, sauf les jeunes plantations.</p>` : ''}
+    <p class="hint">La pluie et l'ET0 prévues remplacent les jours pas encore mesurés dans le calcul de la semaine.</p></div>`;
+}
+
+/* ---------- Tours d'arrosage : qui ouvrir en même temps sans dépasser le débit de la source ----------
+   Débit d'une planche : goutte-à-goutte = goutteurs × débit ; aspersion = pluviométrie × surface.
+   On remplit chaque tour jusqu'au débit de la source, les cultures les plus longues d'abord ; une culture trop gourmande est coupée en plusieurs tours. */
+function toursArrosage(xs, ci) {
+  const source = num(ci.debitSource) * 1000; if (!(source > 0)) return null;
+  const items = xs.filter((x) => x.r.cible && x.r.cible.net > 0.5).map((x) => {
+    const r = x.r.cible, arr = Math.max(1, r.arrosages || 1), dp = x.r.sys.type === 'aspersion' ? num(x.r.sys.pluviometrie) * x.r.surfPl : x.r.dp;
+    return { x, dp, duree: r.heuresPl / arr, arr, planches: Math.round(num(x.c.planches)) };
+  }).filter((i) => i.dp > 0 && i.planches > 0).sort((a, b) => b.duree - a.duree);
+  const tours = []; let cur = null;
+  for (const it of items) {
+    let reste = it.planches, pos = 0;
+    while (reste > 0) {
+      if (!cur || source - cur.debit < it.dp) { cur = { membres: [], debit: 0 }; tours.push(cur); }
+      const n = Math.min(reste, Math.max(1, Math.floor((source - cur.debit) / it.dp)));
+      cur.membres.push({ it, n, de: pos }); cur.debit += n * it.dp; reste -= n; pos += n;
+    }
+  }
+  for (const t of tours) t.duree = Math.max(...t.membres.map((m) => m.it.duree));
+  return tours;
+}
+function toursHtml(xs, ci) {
+  const tours = toursArrosage(xs, ci); if (!tours || !tours.length) return '';
+  const tot = tours.reduce((a, t) => a + t.duree, 0);
+  const place = (m) => { const e = (m.it.x.c.emplacements || []).slice(m.de, m.de + m.n); return e.length && typeof resumeEmplacements === 'function' ? resumeEmplacements(e) : `${m.n} planche${m.n > 1 ? 's' : ''}`; };
+  return `<h3>Tours d'arrosage (source ${fmtNum(ci.debitSource, 1)} m³/h)</h3>
+    <div class="items">${tours.map((t, i) => `<div class="item" style="cursor:default;align-items:flex-start"><span class="who"><strong>Tour ${i + 1} · ${fmtDuree(t.duree)} · ${fmtNum(t.debit / 1000, 1)} m³/h</strong>
+      ${t.membres.map((m) => `<span class="meta">${esc(m.it.x.c.nom)} : ${esc(place(m))} · ${fmtDuree(m.it.duree)}${m.it.duree < t.duree - 1 / 60 ? ' (fermer avant les autres)' : ''}</span>`).join('')}</span></div>`).join('')}</div>
+    <p class="hint">À chaque arrosage : ${tours.length} tour${tours.length > 1 ? 's' : ''}, ${fmtDuree(tot)} de pompage en tout. Les planches d'un même tour s'ouvrent ensemble ; les noms de planches viennent de l'onglet Planches (Cultures). Le nombre d'arrosages de la semaine est indiqué pour chaque culture plus haut.</p>`;
+}

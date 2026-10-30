@@ -138,6 +138,10 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .mbar { display: inline-block; height: 9px; border-radius: 3px; vertical-align: 0; margin-right: 4px; }
 .mbar.et0 { background: var(--warn); }
 .mbar.pluie { background: #1C7FC0; }
+.prev { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 10px 0; }
+.prev-j { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 2px; border-radius: 10px; background: var(--bg); font-size: 13px; text-align: center; }
+.prev-j.pluie { background: #E1F0FA; }
+.prev-j .hint { font-size: 11.5px; }
 table.irr td { vertical-align: middle; }
 .irr-carte { border-top: 1px solid var(--line); padding: 10px 0; }
 .irr-carte .hint { display: block; margin-top: 3px; }
