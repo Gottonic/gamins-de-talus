@@ -5,13 +5,15 @@ MODULES.reglages = {
   titre: 'Réglages',
   tuile() { return { line: DB.dirty.size ? `${DB.dirty.size} changement(s) à envoyer` : 'Coordonnées, associés, données' }; },
   render(sub) {
-    const t = tabs('reglages', [['', 'Entreprise'], ['associes', 'Associés'], ['donnees', 'Données']], sub);
+    const t = tabs('reglages', [['', 'Entreprise'], ['associes', 'Associés'], ['notifications', 'Notifications'], ['donnees', 'Données']], sub);
     if (sub === 'associes') return t + renderRegAssocies();
+    if (sub === 'notifications') return t + renderNotifs();
     if (sub === 'donnees') return t + renderDonnees();
     return t + renderEntreprise();
   },
   after(sub) {
     if (sub === 'donnees' && typeof chargerUsage === 'function') chargerUsage();
+    if (sub === 'notifications') etatPush().then((e) => { NOTIF.etat = e; const b = $('notif-appareil'); if (b) b.innerHTML = appareilHtml(); });
     const ib = $('s-iban'); if (ib) { const upd = () => { const r = ibanCheck(ib.value); const el = $('s-iban-check'); el.textContent = ib.value.trim() ? r.msg : ''; el.className = 'sub check ' + (r.ok ? 'ok' : 'bad'); }; ib.addEventListener('input', upd); upd(); }
     const f = $('imp-file'); if (f) f.addEventListener('change', () => lireImport(f.files[0]));
   },
@@ -94,7 +96,7 @@ FORMS.cfgAss = (v) => {
 };
 
 /* ---------- Données ---------- */
-const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'fiche:': 'Fiches cultures', 'irr:': 'Irrigation (semaines)', 'msg:': 'Messages', 'mail:': 'Mails', 'mvt:': 'Mouvements de stock', 'self:': 'Mises en vente', 'jnl:': 'Journal de cultures', 'drv:': 'Drive', 'tw:': 'Paiements TWINT importés', 'lu:': 'Messages lus', 'cfg:': 'Réglages' };
+const PREFIX_LABEL = { 'fac:': 'Factures', 'ct:': 'Contacts', 'prod:': 'Produits', 'dep:': 'Dépenses', 'rec:': 'Recettes', 'reg:': 'Remboursements', 'h:': 'Heures', 'jour:': 'Remarques du calendrier', 't:': 'Tâches', 'cul:': 'Cultures', 'inv:': 'Inventaire', 'achat:': 'Achats prévus', 'ev:': 'Événements du calendrier', 'fiche:': 'Fiches cultures', 'irr:': 'Irrigation (semaines)', 'msg:': 'Messages', 'mail:': 'Mails', 'mvt:': 'Mouvements de stock', 'self:': 'Mises en vente', 'jnl:': 'Journal de cultures', 'drv:': 'Drive', 'tw:': 'Paiements TWINT importés', 'push:': 'Appareils (notifications)', 'lu:': 'Messages lus', 'cfg:': 'Réglages' };
 const prefixOf = (k) => Object.keys(PREFIX_LABEL).find((p) => k.startsWith(p)) || '';
 function libelleDe(k, d) { d = d || {}; return d.numero ? 'Facture ' + d.numero : d.texte ? trunc(d.texte, 60) : d.objet || d.titre || d.nom || d.organisation || d.client || d.remarque || (d.date ? fmtDate(d.date) : '') || k; }
 
@@ -214,4 +216,71 @@ ACTIONS.importOk = () => {
   for (const [k, v] of IMPORT.ajouts) { if (k in DB.data || k in DB.trash) continue; DB.data[k] = v; DB.sig[k] = canon(v); DB.dirty.add(k); n++; }
   for (const [k, v] of IMPORT.completes) { if (!(k in DB.data)) continue; DB.data[k] = v; DB.sig[k] = canon(v); DB.dirty.add(k); c++; }
   IMPORT = null; Sync.changed(); toast(`${n} élément(s) importé(s)${c ? `, ${c} complété(s)` : ''}.`); render();
+};
+
+/* ---------- Notifications « pop-up » sur le téléphone ou l'ordinateur (Web Push) ----------
+   Chaque appareil s'abonne (ligne push:<personne>:<appareil>) ; chacun choisit ce qu'il reçoit (cfg:notif:<personne>).
+   C'est la fonction Supabase « notifier » qui envoie : à chaque nouveau message ou mail, et le matin pour les tâches et événements du jour. */
+const VAPID_PUBLIC = 'BEWBqzH3etLZ-_g1_ZUOTJSyD-qECUilmuXsm9MIw6COqRTe4Ynqgu75jrlmAW3PGTVDD5VdjtL5zHWpBDUkCi0';
+const NOTIF = { etat: null, enCours: false };
+const NOTIF_CHOIX = [['messages', 'Nouveaux messages de la discussion', 'Sauf les tiens.'], ['mails', 'Nouveaux mails de la boîte', 'Dès qu\'ils sont relevés.'], ['jour', 'Le matin vers 7 h : tes tâches et événements du jour', 'Seulement s\'il y en a.']];
+const prefsNotif = (p) => Object.assign({ messages: true, mails: true, jour: true }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
+const idAppareil = () => { let i = ls.get('gdt-appareil'); if (!i) { i = uid('a'); ls.set('gdt-appareil', i); } return i; };
+const nomAppareil = () => { const u = navigator.userAgent; return (/iPhone|iPad/.test(u) ? 'iPhone/iPad' : /Android/.test(u) ? 'Android' : /Mac/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : /Linux/.test(u) ? 'Linux' : 'Appareil') + ' · ' + (/Firefox/.test(u) ? 'Firefox' : /Edg\//.test(u) ? 'Edge' : /Chrome/.test(u) ? 'Chrome' : /Safari/.test(u) ? 'Safari' : 'navigateur'); };
+const b64uVersOctets = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+async function etatPush() {
+  if (LOCAL_MODE) return { ok: false, raison: 'Pas en mode essai.' };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    const ios = /iPhone|iPad/.test(navigator.userAgent), app = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    return { ok: false, raison: ios && !app ? "Sur iPhone : d'abord Partager → « Sur l'écran d'accueil », puis ouvrir l'app depuis son icône et revenir ici." : "Ce navigateur ne sait pas recevoir de notifications." };
+  }
+  try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); return { ok: true, permission: Notification.permission, abonne: !!sub && !!DB.get('push:' + Sync.me + ':' + idAppareil()) }; }
+  catch (e) { return { ok: false, raison: e.message }; }
+}
+function appareilHtml() {
+  const e = NOTIF.etat; if (!e) return '<p class="hint">Vérification…</p>';
+  if (!e.ok) return `<p class="hint">${esc(e.raison)}</p>`;
+  if (e.permission === 'denied') return '<p class="errors">Les notifications sont bloquées pour ce site dans le navigateur. Autorise-les dans les réglages du navigateur (icône à gauche de l\'adresse), puis reviens ici.</p>';
+  return e.abonne ? `<p><b>✓ Cet appareil reçoit les notifications.</b></p><div class="row"><button class="btn" type="button" data-act="notifTest"${NOTIF.enCours ? ' disabled' : ''}>Envoyer un test</button><button class="btn" type="button" data-act="notifOff">Arrêter sur cet appareil</button></div>`
+    : `<div class="row"><button class="btn primary" type="button" data-act="notifOn"${NOTIF.enCours ? ' disabled' : ''}>${NOTIF.enCours ? 'Activation…' : 'Activer sur cet appareil'}</button></div><p class="hint">Le navigateur demande la permission. À faire sur chaque téléphone ou ordinateur où tu veux les recevoir.</p>`;
+}
+function renderNotifs() {
+  if (!Sync.me) return '<div class="panel"><p class="empty">Connecte-toi pour régler tes notifications.</p></div>';
+  const p = prefsNotif(), mes = DB.all('push:' + Sync.me + ':');
+  return `<div class="split"><div class="panel"><h2>Sur cet appareil</h2><div id="notif-appareil">${appareilHtml()}</div>
+      ${mes.length ? `<h3>Tes appareils abonnés</h3><div class="items">${mes.map((a) => `<div class="item" style="cursor:default"><span class="who"><strong>${esc(a.appareil || 'Appareil')}</strong><span class="meta">depuis le ${fmtDate(String(a.le || '').slice(0, 10))}${a.key.endsWith(':' + idAppareil()) ? ' · celui-ci' : ''}</span></span><button class="btn small" type="button" data-act="notifRetirer" data-key="${esc(a.key)}">Retirer</button></div>`).join('')}</div>` : ''}
+      <p class="hint">Les notifications arrivent même app fermée (Android, ordinateur ; iPhone : app ajoutée à l'écran d'accueil). Les notifications Discord restent à part, dans la Messagerie.</p></div>
+    <div class="panel"><h2>Ce que ${esc(nomDe(Sync.me))} reçoit</h2>
+      ${NOTIF_CHOIX.map(([k, l, sub]) => `<label class="row" style="font-size:15px;align-items:flex-start"><input type="checkbox" data-notif="${k}"${p[k] ? ' checked' : ''}> <span>${esc(l)}<br><span class="hint">${esc(sub)}</span></span></label>`).join('')}
+      <p class="hint">Ces choix valent pour tous tes appareils. Chacun règle les siens.</p></div></div>`;
+}
+document.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.notif; if (!k || !Sync.me) return; DB.put('cfg:notif:' + Sync.me, Object.assign(prefsNotif(), { [k]: e.target.checked })); toast('Enregistré.'); });
+ACTIONS.notifOn = async () => {
+  NOTIF.enCours = true; render();
+  try {
+    if ((await Notification.requestPermission()) !== 'granted') throw new Error('permission refusée');
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uVersOctets(VAPID_PUBLIC) });
+    const j = sub.toJSON();
+    DB.put('push:' + Sync.me + ':' + idAppareil(), { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, appareil: nomAppareil(), le: new Date().toISOString() });
+    toast('Notifications activées sur cet appareil.');
+  } catch (e) { toast("Activation impossible : " + e.message, 6000); }
+  NOTIF.enCours = false; NOTIF.etat = await etatPush(); render();
+};
+ACTIONS.notifOff = async () => {
+  try { const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription(); if (sub) await sub.unsubscribe(); } catch (e) { /* */ }
+  const k = 'push:' + Sync.me + ':' + idAppareil(); if (DB.get(k)) DB.del(k);
+  NOTIF.etat = await etatPush(); render(); toast('Plus de notifications sur cet appareil.');
+};
+ACTIONS.notifRetirer = (el) => { if (el.dataset.key.endsWith(':' + idAppareil())) { ACTIONS.notifOff(); return; } DB.del(el.dataset.key); toast('Appareil retiré.'); };
+ACTIONS.notifTest = async () => {
+  NOTIF.enCours = true; render();
+  await Sync.push().catch(() => {}); // l'abonnement doit être dans la base avant le test
+  try {
+    const { data, error } = await Sync.sb.functions.invoke('notifier', { body: { test: true } });
+    if (error) { let m = error.message; try { const b = await error.context.clone().json(); if (b && b.erreur) m = b.erreur; } catch (_) { /* */ } throw new Error(m); }
+    toast(data && data.envoyes ? 'Test envoyé : la notification devrait arriver.' : 'Envoyé à aucun appareil' + (data && data.erreurs && data.erreurs.length ? ' : ' + data.erreurs[0] : '.'), 6000);
+  } catch (e) { toast('Test impossible : ' + e.message + ' (fonction « notifier » installée dans Supabase ?)', 8000); }
+  NOTIF.enCours = false; render();
 };

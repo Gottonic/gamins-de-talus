@@ -90,6 +90,15 @@ Supabase → SQL Editor → coller tout `supabase/mise-a-jour-2026-10-30-histori
 l'état des mails, l'irrigation de la semaine et la date de sauvegarde ne sont plus copiés dans l'historique (et les copies
 déjà accumulées sont effacées). Rien d'autre n'est touché.
 
+### Notifications sur téléphone et ordinateur (30.10.2026, 3e partie)
+1. Supabase → Edge Functions → **Deploy a new function** → **Via Editor** → nom `notifier` → coller
+   `supabase/functions/notifier/index.ts` → Deploy, puis désactiver **Verify JWT**.
+2. Edge Functions → **Secrets** : `VAPID_PRIVATE` = la clé privée VAPID (envoyée à part, jamais dans ce dépôt public).
+   `CRON_SECRET` existe déjà (relève des mails).
+3. SQL Editor : `supabase/mise-a-jour-2026-10-30-notifications.sql`, avec `LE-SECRET` remplacé par la valeur de `CRON_SECRET`.
+4. Dans l'app, sur chaque appareil : **Réglages → Notifications → Activer sur cet appareil**, puis « Envoyer un test ».
+   Sur iPhone, il faut d'abord ajouter l'app à l'écran d'accueil (Partager → Sur l'écran d'accueil).
+
 ## Installer l'app
 
 - **Téléphone** : ouvrir l'adresse dans le navigateur → menu → **Installer** ou **Ajouter à l'écran d'accueil**.

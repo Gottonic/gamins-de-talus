@@ -1,5 +1,5 @@
 /* Gamins de Talus : fonctionne hors ligne. Changer VERSION à chaque mise à jour du code. */
-const VERSION = 'gdt-2026-10-30-33';
+const VERSION = 'gdt-2026-10-30-34';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/supabase.js', 'lib/jspdf.umd.min.js', 'lib/qrcode.js', 'lib/jszip.min.js',
@@ -25,4 +25,19 @@ self.addEventListener('fetch', (e) => {
     if (r.ok) { const cp = r.clone(); caches.open(VERSION).then((c) => c.put(req.mode === 'navigate' ? 'index.html' : req, cp)); }
     return r;
   }).catch(() => caches.match(req.mode === 'navigate' ? 'index.html' : req).then((hit) => hit || caches.match(req, { ignoreSearch: true }))));
+});
+
+/* Notifications « pop-up » envoyées par la fonction Supabase « notifier » (nouveau message, mail, journée) */
+self.addEventListener('push', (e) => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (_) { d = { texte: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.titre || 'Gamins de Talus', { body: d.texte || '', tag: d.tag || undefined, renotify: !!d.tag, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', data: { url: d.url || './' } }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    const c = cs.find((x) => x.url.startsWith(self.registration.scope));
+    if (c) return c.focus().then((f) => (f && f.navigate ? f.navigate(url) : null)).catch(() => self.clients.openWindow(url));
+    return self.clients.openWindow(url);
+  }));
 });
