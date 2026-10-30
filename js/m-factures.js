@@ -144,7 +144,7 @@ function renderListeFactures(selKey) {
   for (const f of list) { const s = facStatut(f); if (s === 'ouverte' || s === 'retard') open += f.total; if (s === 'retard') { late += f.total; nLate++; } if (s !== 'annulee' && s !== 'groupee' && String(f.date || '').slice(0, 4) === y) year += f.total; }
   const dbl = numerosEnDouble();
   const probs = problemesReglages(false);
-  const setup = probs.length ? `<div class="errors">Pour facturer par virement, il manque ${esc(probs.join(', '))}. <a href="#/reglages">Compléter les réglages</a></div>` : '';
+  const setup = probs.length ? `<div class="errors">Pour facturer par virement, il manque ${esc(probs.join(', '))}. <a href="#/reglages/entreprise">Compléter les réglages</a></div>` : '';
   const table = list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Facture / BL</th><th>Client</th><th>Date</th><th class="r">Montant</th><th>Statut</th></tr></thead><tbody>${list.map((f) => {
     const s = facStatut(f);
     return `<tr class="click${f.key === selKey ? ' sel' : ''}" data-act="go" data-href="#/factures/voir/${encodeURIComponent(f.key)}"><td class="num">${f.numero ? esc(f.numero) : `<span class="hint">${esc(f.blNumero || 'vente')}</span>`}${f.numero && dbl[f.numero] > 1 && s !== 'annulee' ? ' <span class="pill retard">double</span>' : ''}</td><td>${esc(trunc(f.client && f.client.nom, 28))}</td><td class="num">${fmtDate(f.date)}</td><td class="r num">${money(f.total)}</td><td><span class="pill ${s}">${esc(facLabel(f))}</span></td></tr>`;

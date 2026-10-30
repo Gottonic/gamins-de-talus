@@ -5,15 +5,17 @@ MODULES.reglages = {
   titre: 'Réglages',
   tuile() { return { line: DB.dirty.size ? `${DB.dirty.size} changement(s) à envoyer` : 'Coordonnées, associés, données' }; },
   render(sub) {
-    const t = tabs('reglages', [['', 'Entreprise'], ['associes', 'Associés'], ['notifications', 'Notifications'], ['donnees', 'Données']], sub);
+    /* Notifications d'abord (onglet par défaut), puis Associés, Données, Entreprise */
+    if (sub === 'notifications') sub = '';
+    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise']], sub);
     if (sub === 'associes') return t + renderRegAssocies();
-    if (sub === 'notifications') return t + renderNotifs();
     if (sub === 'donnees') return t + renderDonnees();
-    return t + renderEntreprise();
+    if (sub === 'entreprise') return t + renderEntreprise();
+    return t + renderNotifs();
   },
   after(sub) {
     if (sub === 'donnees' && typeof chargerUsage === 'function') chargerUsage();
-    if (sub === 'notifications') etatPush().then((e) => { NOTIF.etat = e; const b = $('notif-appareil'); if (b) b.innerHTML = appareilHtml(); });
+    if (!sub || sub === 'notifications') etatPush().then((e) => { NOTIF.etat = e; const b = $('notif-appareil'); if (b) b.innerHTML = appareilHtml(); });
     const ib = $('s-iban'); if (ib) { const upd = () => { const r = ibanCheck(ib.value); const el = $('s-iban-check'); el.textContent = ib.value.trim() ? r.msg : ''; el.className = 'sub check ' + (r.ok ? 'ok' : 'bad'); }; ib.addEventListener('input', upd); upd(); }
     const f = $('imp-file'); if (f) f.addEventListener('change', () => lireImport(f.files[0]));
   },
