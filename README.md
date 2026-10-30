@@ -85,6 +85,11 @@ il n'est pas dans ce dépôt, qui est public). L'app affiche le contrôle des to
    d'application Infomaniak), et si vous voulez la relève automatique : `CRON_SECRET` = une longue phrase au hasard,
    puis la partie 6 du fichier SQL (avec ce secret). Sans ça, la boîte est relevée quand quelqu'un ouvre l'app.
 
+### Historique allégé (30.10.2026, 2e partie)
+Supabase → SQL Editor → coller tout `supabase/mise-a-jour-2026-10-30-historique.sql` → Run. Les marques « lu »,
+l'état des mails, l'irrigation de la semaine et la date de sauvegarde ne sont plus copiés dans l'historique (et les copies
+déjà accumulées sont effacées). Rien d'autre n'est touché.
+
 ## Installer l'app
 
 - **Téléphone** : ouvrir l'adresse dans le navigateur → menu → **Installer** ou **Ajouter à l'écran d'accueil**.

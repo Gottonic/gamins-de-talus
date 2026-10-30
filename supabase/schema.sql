@@ -59,6 +59,10 @@ begin
   if tg_op = 'UPDATE' and new.data is not distinct from old.data and new.deleted = old.deleted then
     return new;
   end if;
+  -- Lignes qui changent sans cesse sans rien d'utile à garder : pas d'historique
+  if new.key like 'lu:%' or new.key like 'irr:%' or new.key in ('cfg:mails:etat', 'cfg:sauvegarde') then
+    return new;
+  end if;
   insert into public.rows_history (key, data, deleted, changed_at, changed_by)
   values (new.key, new.data, new.deleted, new.updated_at, new.updated_by);
   return new;
