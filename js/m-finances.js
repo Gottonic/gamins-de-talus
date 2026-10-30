@@ -31,14 +31,22 @@ MODULES.finances = {
   titre: 'Finances',
   tuile() { const d = decompteActuel(); return { line: phraseDecompte(d), badge: depenses().filter((x) => sansJustificatif(x) && (typeof pourMoi !== 'function' || pourMoi(x.par))).length }; },
   render(sub) {
-    const t = tabs('finances', [['', "Vue d'ensemble"], ['depenses', 'Dépenses'], ['recettes', 'Recettes'], ['inventaire', 'Inventaire'], ['achats', 'Achats prévus'], ['associes', 'Entre associés'], ['annee', "Fin d'année"]], sub);
-    if (sub === 'inventaire') return t + renderInventaire();
-    if (sub === 'achats') return t + renderAchats();
-    if (sub === 'annee') return t + renderBouclement();
-    if (sub === 'depenses') return t + renderDepenses();
-    if (sub === 'recettes') return t + renderRecettes();
-    if (sub === 'associes') return t + renderAssocies();
-    return t + renderBilan();
+    /* Trois onglets : l'argent qui entre et sort, les comptes entre associés, la fin d'année (comptes, inventaire, archive) */
+    const FINA = ['annee', 'bilan', 'inventaire', 'achats'];
+    const onglet = sub === 'associes' ? 'associes' : FINA.includes(sub) ? 'annee' : '';
+    const t = tabs('finances', [['', 'Dépenses et recettes'], ['associes', 'Associés'], ['annee', "Fin d'année"]], onglet);
+    const sous = (items, cur) => `<nav class="row sousnav" aria-label="Rubriques">${items.map(([k, l]) => `<a class="chip${k === cur ? ' on' : ''}" href="#/finances/${k}">${l}</a>`).join('')}</nav>`;
+    if (onglet === 'associes') return t + renderAssocies();
+    if (onglet === 'annee') {
+      const n = sous([['annee', 'Bouclement et archive'], ['bilan', 'Comptes de l\'année'], ['inventaire', 'Inventaire'], ['achats', 'Achats prévus']], sub);
+      if (sub === 'inventaire') return t + n + renderInventaire();
+      if (sub === 'achats') return t + n + renderAchats();
+      if (sub === 'bilan') return t + n + renderBilan();
+      return t + n + renderBouclement();
+    }
+    const n = sous([['depenses', 'Dépenses'], ['recettes', 'Recettes']], sub === 'recettes' ? 'recettes' : 'depenses');
+    if (sub === 'recettes') return t + n + renderRecettes();
+    return t + n + renderDepenses();
   },
   after() {
     const q = $('fin-q'); if (q) q.addEventListener('input', () => { FIN.q = q.value; const p = q.selectionStart; render(); const n = $('fin-q'); n.focus(); try { n.setSelectionRange(p, p); } catch (e) { /* */ } });
@@ -171,8 +179,8 @@ function renderRecettes() {
   const ys = anneesFin();
   let list = recettesToutes(); if (FIN.annee) list = list.filter((r) => yearOf(r.date) === FIN.annee);
   const tot = list.reduce((a, r) => a + num(r.montant), 0);
-  return `<div class="panel"><div class="between"><h2>Recettes</h2><div class="row"><button class="btn small" type="button" data-act="recCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="recEdit">+ Recette</a></div></div>
-    <p class="hint">Les factures payées s'ajoutent ici toutes seules. Saisis ici le reste : stand (TWINT, espèces), marché, ventes sans facture.</p>
+  return `<div class="panel"><div class="between"><h2>Recettes</h2><div class="row"><button class="btn small" type="button" data-act="recCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="recEdit">+ Autre entrée</a></div></div>
+    <p class="hint">Les ventes arrivent ici toutes seules depuis <a href="#/factures">Ventes</a> : factures payées, ventes sans facture, encaissements de la vente directe. Ici, on saisit seulement l'argent qui n'est pas une vente : subvention, remboursement, indemnité…</p>
     <div class="grid2">${sel('fin-annee', 'Année', FIN.annee, [['', 'Toutes']].concat(ys.map((y) => [y, y])))}</div>
     ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Client / libellé</th><th>Moyen</th><th>Encaissé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((r) => r.src === 'facture'
       ? `<tr class="click" data-act="go" data-href="#/factures/voir/${encodeURIComponent(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle)} <span class="tpill">${esc(r.ref)}</span></td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`
@@ -182,10 +190,11 @@ function renderRecettes() {
 ACTIONS.recEdit = (el) => {
   const k = el.dataset.key || '', r = k ? DB.get(k) : { date: todayISO(), moyen: 'TWINT', par: Sync.me || 'nicolas' };
   const cl = contacts().sort(byName);
-  openSheet(`${sheetHead(k ? 'Modifier la recette' : 'Nouvelle recette')}<form class="sbody form" data-form="rec"><input type="hidden" name="key" value="${esc(k)}">
+  openSheet(`${sheetHead(k ? 'Modifier la recette' : 'Autre entrée d\'argent')}<form class="sbody form" data-form="rec"><input type="hidden" name="key" value="${esc(k)}">
+    ${k ? '' : '<p class="hint">Pour une vente, passe par <a href="#/factures/nouvelle" data-act="closeGo" data-href="#/factures/nouvelle">Ventes → Nouvelle vente</a> : le stock, le prix du client et la recette suivent tout seuls.</p>'}
     <div class="grid2">${inp('rc-date', 'Date', r.date, { name: 'date', type: 'date', req: true })}${inp('rc-montant', 'Montant CHF', r.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}</div>
     ${sel('rc-contact', 'Client (contact)', r.contactId || '', [['', '— aucun / vente au stand —']].concat(cl.map((c) => [c.key, displayName(c)])), { name: 'contactId' })}
-    ${inp('rc-client', 'Libellé', r.client, { name: 'client', attrs: { placeholder: 'Ex. Stand self-service, semaine 44' } })}
+    ${inp('rc-client', 'Libellé', r.client, { name: 'client', attrs: { placeholder: 'Ex. Subvention, remboursement assurance' } })}
     <div class="grid2">${sel('rc-moyen', 'Moyen', r.moyen, MOYENS.map((m) => [m, m]), { name: 'moyen' })}${sel('rc-par', 'Encaissé par', r.par, persOptions(), { name: 'par' })}</div>
     ${inp('rc-just', 'Justificatif', r.justificatif, { name: 'justificatif' })}
     ${inp('rc-rem', 'Remarque', r.remarque, { name: 'remarque' })}
