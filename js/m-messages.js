@@ -108,7 +108,7 @@ function renderMessages() {
   const bandeau = edit ? `<div class="msg-prev"><span>✏️ Modifier ton message</span><button type="button" class="btn small" data-act="msgAnnuler">Annuler</button></div>`
     : cible ? `<div class="msg-prev"><span>↪ Réponse à <b>${esc(nomDe(cible.de))}</b> : ${esc(trunc(apercuMsg(cible), 80))}</span><button type="button" class="btn small" data-act="msgAnnuler">Annuler</button></div>` : '';
   return `<div class="panel chat">
-    <div class="between chat-head"><h2>Entre nous</h2>
+    <div class="between chat-head"><a class="btn small chat-fermer" href="#/messages/mails" aria-label="Fermer la discussion">←</a><h2>Entre nous</h2>
       <button class="btn small${dOn ? ' on' : ''}" type="button" data-act="discordSheet">${ICON_DISCORD}${dOn ? 'Notifications Discord activées' : 'Recevoir les notifications sur Discord'}</button></div>
     <p class="hint chat-who">${esc(personnes().map((p) => p.nom).join(', '))} · ${prevenus.length ? 'prévenus sur Discord : ' + esc(prevenus.join(', ')) : 'personne n\'est encore prévenu sur Discord'}</p>
     ${pinsHtml}
@@ -120,7 +120,7 @@ function renderMessages() {
       <textarea id="msg-txt" name="texte" rows="1" placeholder="Écrire un message…" aria-label="Message">${esc(MSG.draft)}</textarea>
       <button class="btn primary" type="submit"${MSG.envoi ? ' disabled' : ''}>${MSG.envoi ? 'Envoi…' : 'Envoyer'}</button>
     </form>
-    <p class="hint">${matchMedia('(pointer: fine)').matches ? 'Entrée pour envoyer, Maj + Entrée pour aller à la ligne. ' : ''}⋯ sur un message : répondre, épingler (${MAX_EPINGLES} au plus), modifier, supprimer, en faire une tâche. Les messages partent à la corbeille au bout de 3 mois, sauf ceux épinglés.</p></div>`;
+    <p class="hint chat-aide">${matchMedia('(pointer: fine)').matches ? 'Entrée pour envoyer, Maj + Entrée pour aller à la ligne. ' : ''}⋯ sur un message : répondre, épingler (${MAX_EPINGLES} au plus), modifier, supprimer, en faire une tâche. Les messages partent à la corbeille au bout de 3 mois, sauf ceux épinglés.</p></div>`;
 }
 
 const ICON_DISCORD = '<svg class="ic-d" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8.5c4-2 8-2 12 0l1.5 7c-1.5 1.3-3 2-4.5 2.3l-1-1.6m-4 0-1 1.6C7.5 17.5 6 16.8 4.5 15.5z"/><circle cx="9.5" cy="12.5" r="1.1"/><circle cx="14.5" cy="12.5" r="1.1"/></svg>';
@@ -376,3 +376,7 @@ ACTIONS.mailCfg = () => {
 };
 FORMS.mailCfg = (v) => { DB.put('cfg:mails', Object.assign({}, DB.get('cfg:mails') || {}, { adresse: v.adresse, webmail: v.webmail || 'https://mail.infomaniak.com' })); closeSheet(); toast('Enregistré.'); };
 setTimeout(() => releverMails(), 15000);
+
+/* Sur téléphone, la discussion s'ouvre en plein écran (comme une app de messagerie) ; « ← » la ferme et mène aux mails */
+function majChatPlein() { document.body.classList.toggle('chat-plein', /^#\/messages\/?$/.test(location.hash) && matchMedia('(max-width: 700px)').matches); }
+window.addEventListener('hashchange', majChatPlein); window.addEventListener('resize', majChatPlein); majChatPlein();
