@@ -2,6 +2,7 @@
 'use strict';
 
 const ICONS = {
+  drive: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>',
   irrigation: '<svg viewBox="0 0 24 24"><path d="M12 3.5c3.2 4.2 5.5 7.4 5.5 10.2a5.5 5.5 0 0 1-11 0c0-2.8 2.3-6 5.5-10.2z"/><path d="M9.3 14.2a2.8 2.8 0 0 0 2.7 2.6"/></svg>',
   messages: '<svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>',
   factures: '<svg viewBox="0 0 24 24"><path d="M3.5 9.5h17l-1.8 9.2a1.5 1.5 0 0 1-1.5 1.3H6.8a1.5 1.5 0 0 1-1.5-1.3z"/><path d="M8 9.5l3-5.5M16 9.5l-3-5.5"/><path d="M9 13v3.5M12 13v3.5M15 13v3.5"/></svg>',
@@ -13,7 +14,7 @@ const ICONS = {
   contacts: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.5.2 4.3 1.9 4.9 4.9"/></svg>',
   reglages: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
 };
-const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'irrigation', 'contacts'];
+const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'irrigation', 'contacts', 'drive'];
 
 /* Ce que l'accueil montre : « moi » (ce qui me concerne, par défaut) ou « tous » ; mémorisé sur l'appareil */
 const ACC = { vue: ls.get('gdt-accueil-vue') || 'moi' };

@@ -49,6 +49,7 @@
 [data-mod="cultures"], .t-cultures { --mod: var(--c-cultures); --mod-soft: var(--s-cultures); }
 [data-mod="inventaire"], .t-inventaire { --mod: var(--c-inventaire); --mod-soft: var(--s-inventaire); }
 [data-mod="contacts"], .t-contacts { --mod: var(--c-contacts); --mod-soft: var(--s-contacts); }
+[data-mod="drive"], .t-drive { --mod: #5B6B7A; --mod-soft: #EAEEF2; }
 [data-mod="irrigation"], .t-irrigation { --mod: var(--c-irrigation); --mod-soft: var(--s-irrigation); }
 [data-mod="messages"], .t-messages { --mod: var(--c-messages); --mod-soft: var(--s-messages); }
 [data-mod="reglages"], .t-reglages { --mod: var(--c-reglages); --mod-soft: var(--s-reglages); }
@@ -209,6 +210,16 @@ table.irr input.cell-in { width: 84px; }
 }
 .star { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 0 8px 0 0; }
 .star.on { color: #E0A100; }
+.drive.on { background: var(--s-irrigation); color: var(--c-irrigation); }
+.fil { font-weight: 700; } .fil a { text-decoration: none; }
+.drv-liste { margin-top: 8px; }
+.drv-it { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; border-top: 1px solid var(--line); padding: 8px 0; }
+.drv-nom { border: 0; background: none; font: inherit; text-align: left; cursor: pointer; color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; }
+#drv-zone.drag { outline: 3px dashed var(--c-irrigation); }
+.usage .ulig { display: grid; grid-template-columns: 210px minmax(0, 1fr) 120px; gap: 10px; align-items: center; margin: 6px 0; font-size: 14px; }
+@media (max-width: 640px) { .usage .ulig { grid-template-columns: 1fr; gap: 3px; } }
+.ubar { display: flex; height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.ubar span { display: block; height: 100%; }
 .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 10px; }
 .engr-row { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px 0; margin-bottom: 10px; }
 .engr-row.nouveau { border-style: dashed; }
@@ -597,7 +608,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
   <div class="bar-in">
     <a class="home" id="home-btn" href="#/" hidden aria-label="Retour à l'accueil">← Accueil</a>
     <h1 id="title">Gamins de Talus</h1>
-    <a class="drive" id="drive" target="_blank" rel="noopener noreferrer" title="Ouvrir le drive partagé (Proton Drive)" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>Drive</a>
+    <a class="drive" id="drive" href="#/drive" title="Drive : les fichiers de Gamins de Talus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>Drive</a>
     <button class="sync" id="sync" type="button" data-act="syncSheet">…</button>
     <button class="me" id="me" type="button" data-act="syncSheet" hidden></button>
     <a class="gear" href="#/reglages" title="Réglages" aria-label="Réglages"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.3"/></svg></a>
@@ -630,6 +641,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="js/m-stock.js"></script>
 <script src="js/m-parcelle.js"></script>
 <script src="js/m-feuille.js"></script>
+<script src="js/m-drive.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

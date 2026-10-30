@@ -11,6 +11,7 @@ MODULES.reglages = {
     return t + renderEntreprise();
   },
   after(sub) {
+    if (sub === 'donnees' && typeof chargerUsage === 'function') chargerUsage();
     const ib = $('s-iban'); if (ib) { const upd = () => { const r = ibanCheck(ib.value); const el = $('s-iban-check'); el.textContent = ib.value.trim() ? r.msg : ''; el.className = 'sub check ' + (r.ok ? 'ok' : 'bad'); }; ib.addEventListener('input', upd); upd(); }
     const f = $('imp-file'); if (f) f.addEventListener('change', () => lireImport(f.files[0]));
   },
@@ -33,8 +34,8 @@ function renderEntreprise() {
     </div>
     ${inp('s-mention', 'Mention TVA', s.mention, { name: 'mention', sub: "Gamins de Talus n'est pas assujetti à la TVA : aucune TVA n'est ajoutée." })}
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>
-    <form class="panel form" data-form="cfgDrive"><h2>Drive partagé</h2>
-    ${inp('s-drive', 'Lien de partage (Proton Drive)', s.drive, { name: 'drive', type: 'url', attrs: { placeholder: 'https://drive.proton.me/urls/…', autocomplete: 'off' }, sub: 'Un bouton « Drive » apparaît en haut de chaque page. Le lien reste dans la base, pas dans le code public.' })}
+    <form class="panel form" data-form="cfgDrive"><h2>Lien externe (facultatif)</h2>
+    ${inp('s-drive', 'Lien de partage (Proton Drive)', s.drive, { name: 'drive', type: 'url', attrs: { placeholder: 'https://drive.proton.me/urls/…', autocomplete: 'off' }, sub: 'Par exemple votre ancien Proton Drive : un lien s\'affiche dans le Drive de l\'app.' })}
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`;
 }
 FORMS.cfgDrive = (v) => {
