@@ -35,7 +35,7 @@ function comptesAnnee(y) {
   o.part = part; o.P31 = P31;
   o.heures = totalHeures(heuresToutes(), (h) => yearOf(h.date) === y);
   o.facturesY = factures().filter((f) => yearOf(f.date) === y && f.numero).sort((a, b) => String(a.numero).localeCompare(String(b.numero)));
-  o.ouvertes = factures().filter((f) => f.date <= y + '-12-31' && f.statut !== 'payee' && f.statut !== 'annulee');
+  o.ouvertes = factures().filter((f) => f.date <= y + '-12-31' && ['ouverte', 'retard'].includes(facStatut(f)));
   o.valeurInv = inv.reduce((a, i) => a + valeurFinAnnee(i, Number(y), des), 0);
   const lies = new Set(inv.map((i) => i.depenseId).filter(Boolean));
   o.investHorsInv = invest.filter((d) => !lies.has(d.key));

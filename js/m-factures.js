@@ -6,8 +6,8 @@ const factures = () => DB.all('fac:').map((f) => Object.assign(f, { total: r2(f.
 const produits = () => DB.all('prod:').sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || String(a.nom).localeCompare(b.nom, 'fr'));
 const UNITES = ['kg', 'pièce', 'caisse', 'botte', 'forfait'];
 const facStatut = (f) => factureStatut(f, todayISO());
-const FAC_LABEL = { ouverte: 'Ouverte', retard: 'En retard', payee: 'Payée', annulee: 'Annulée' };
-function facLabel(f) { const s = facStatut(f); if (s === 'payee') return 'Payée' + (f.payeePar === 'especes' ? ' comptant' : f.payeePar === 'twint' ? ' TWINT' : '') + (f.payeeLe ? ' le ' + fmtDate(f.payeeLe) : ''); return FAC_LABEL[s]; }
+const FAC_LABEL = { ouverte: 'Ouverte', retard: 'En retard', payee: 'Payée', annulee: 'Annulée', groupee: 'Facturée' };
+function facLabel(f) { const s = facStatut(f); if (s === 'groupee') return 'Facturée (mois)'; if (s === 'payee') return 'Payée' + (f.payeePar === 'especes' ? ' comptant' : f.payeePar === 'twint' ? ' TWINT' : '') + (f.payeeLe ? ' le ' + fmtDate(f.payeeLe) : ''); return FAC_LABEL[s]; }
 function numerosEnDouble() { const c = {}; for (const f of factures()) if (f.statut !== 'annulee' && f.numero) c[f.numero] = (c[f.numero] || 0) + 1; return c; }
 const nomVente = (f) => f.numero ? 'Facture ' + f.numero : f.blNumero ? 'Bulletin ' + f.blNumero : 'Vente';
 function prochainBL(dateIso) {
@@ -141,7 +141,7 @@ MODULES.factures = {
 function renderListeFactures(selKey) {
   const list = factures().sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.seq || 0) - (a.seq || 0) || String(b.cree).localeCompare(String(a.cree)));
   const y = todayISO().slice(0, 4); let open = 0, late = 0, nLate = 0, year = 0;
-  for (const f of list) { const s = facStatut(f); if (s === 'ouverte' || s === 'retard') open += f.total; if (s === 'retard') { late += f.total; nLate++; } if (s !== 'annulee' && String(f.date || '').slice(0, 4) === y) year += f.total; }
+  for (const f of list) { const s = facStatut(f); if (s === 'ouverte' || s === 'retard') open += f.total; if (s === 'retard') { late += f.total; nLate++; } if (s !== 'annulee' && s !== 'groupee' && String(f.date || '').slice(0, 4) === y) year += f.total; }
   const dbl = numerosEnDouble();
   const probs = problemesReglages(false);
   const setup = probs.length ? `<div class="errors">Pour facturer par virement, il manque ${esc(probs.join(', '))}. <a href="#/reglages">Compléter les réglages</a></div>` : '';
@@ -155,7 +155,7 @@ function renderListeFactures(selKey) {
       <div class="stat bad"><span class="k">En retard</span><span class="v">${nLate ? `${nLate} · ${chf(late)}` : 'Aucune'}</span></div>
       <div class="stat"><span class="k">Vendu en ${y}</span><span class="v">${chf(year)}</span></div></div>
     <div class="split">
-      <div class="panel"><div class="between"><h2>Ventes</h2><div class="row"><button class="btn small" type="button" data-act="facCsv">Exporter (CSV)</button><a class="btn primary small" href="#/factures/nouvelle">+ Vente</a></div></div>${table}</div>
+      <div class="panel"><div class="between"><h2>Ventes</h2><div class="row"><button class="btn small" type="button" data-act="facCsv">Exporter (CSV)</button><button class="btn small" type="button" data-act="facMois">Facture du mois</button><a class="btn primary small" href="#/factures/nouvelle">+ Vente</a></div></div>${table}</div>
       <div>${sel ? renderDetailFacture(Object.assign({ key: selKey }, sel), dbl) : (list.length ? '<div class="panel"><p class="hint">Choisis une vente pour voir sa facture ou son bulletin, ou la marquer comme payée.</p></div>' : '')}</div>
     </div>`;
 }
@@ -164,12 +164,14 @@ function renderDetailFacture(f, dbl) {
   acts.push(`<button class="btn primary" type="button" data-act="papiersPdf" data-key="${esc(f.key)}">Facture & bulletin PDF</button>`);
   if (s === 'ouverte' || s === 'retard') acts.push(`<button class="btn" type="button" data-act="facPaid" data-key="${esc(f.key)}">Marquer comme payée</button>`);
   if (s === 'payee' && f.paiement !== 'especes') acts.push(`<button class="btn" type="button" data-act="facReopen" data-key="${esc(f.key)}">Remettre en ouverte</button>`);
-  if (s !== 'annulee' && (s !== 'payee' || f.paiement === 'especes')) acts.push(`<button class="btn danger" type="button" data-act="facCancel" data-key="${esc(f.key)}">Annuler</button>`);
+  if (s !== 'annulee' && s !== 'groupee' && (s !== 'payee' || f.paiement === 'especes')) acts.push(`<button class="btn danger" type="button" data-act="facCancel" data-key="${esc(f.key)}">Annuler</button>`);
   const warn = dbl[f.numero] > 1 && s !== 'annulee' ? `<div class="errors">Deux factures portent le numéro ${esc(f.numero)} (créées en même temps, hors ligne ?). <button class="btn link" type="button" data-act="facRenum" data-key="${esc(f.key)}">Donner un nouveau numéro à celle-ci</button></div>` : '';
+  const grp = s === 'groupee' ? (() => { const g = DB.get(f.groupe); return `<p class="hint">Reprise dans la facture du mois <a href="#/factures/voir/${encodeURIComponent(f.groupe)}">${esc((g && g.numero) || '')}</a> : c'est elle qui sera payée.</p>`; })()
+    : (f.regroupe || []).length ? `<p class="hint">Regroupe ${f.regroupe.length} vente${f.regroupe.length > 1 ? 's' : ''} : ${f.regroupe.map((k) => { const x = DB.get(k) || {}; return `<a href="#/factures/voir/${encodeURIComponent(k)}">${esc(x.blNumero || fmtDateCourt(x.date || ''))}</a>`; }).join(', ')}.</p>` : '';
   const enc = s === 'payee' ? `<p class="hint">Encaissée par ${esc(nomDe(f.encaissePar || cfg().compteDe))}${f.payeePar === 'especes' ? ', en espèces' : f.payeePar === 'twint' ? ', par TWINT' : ', par virement'}.</p>` : '';
   const mv = mouvements().filter((m) => m.ref === f.key);
-  const stockTxt = mv.length ? `<p class="hint">Stock : ${mv.map((m) => `${esc((DB.get(m.prod) || {}).nom || '?')} ${fmtQ(num(m.qte), (DB.get(m.prod) || {}).unite)}`).join(', ')}.</p>` : f.stock === false ? '<p class="hint">Cette vente ne touche pas au stock.</p>' : '';
-  return `<div class="panel"><h3 style="margin-top:0">${esc(nomVente(f))}${f.numero && f.blNumero ? ' · ' + esc(f.blNumero) : ''}</h3><div class="row">${acts.join('')}<span class="pill ${s}">${esc(facLabel(f))}</span></div>${warn}${enc}${stockTxt}${f.blNumero ? blSigneHtml(f) : ''}
+  const stockTxt = mv.length ? `<p class="hint">Stock : ${mv.map((m) => `${esc((DB.get(m.prod) || {}).nom || '?')} ${fmtQ(num(m.qte), (DB.get(m.prod) || {}).unite)}`).join(', ')}.</p>` : f.stock === false && !(f.regroupe || []).length ? '<p class="hint">Cette vente ne touche pas au stock.</p>' : '';
+  return `<div class="panel"><h3 style="margin-top:0">${esc(nomVente(f))}${f.numero && f.blNumero ? ' · ' + esc(f.blNumero) : ''}</h3><div class="row">${acts.join('')}<span class="pill ${s}">${esc(facLabel(f))}</span></div>${warn}${grp}${enc}${stockTxt}${f.blNumero ? blSigneHtml(f) : ''}
     <div class="paper">${f.numero ? invoiceSvg(f) : bulletinSvg(f, true)}</div></div>`;
 }
 
@@ -327,7 +329,9 @@ FORMS.facPaid = (v) => {
 };
 ACTIONS.facReopen = (el) => { const f = DB.get(el.dataset.key); if (!f) return; DB.put(el.dataset.key, Object.assign({}, f, { statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '' })); toast(`${f.numero} remise en ouverte.`); };
 ACTIONS.facCancel = (el) => { const f = DB.get(el.dataset.key); confirmSheet('Annuler ' + nomVente(f) + ' ?', (f.numero ? 'Le numéro reste utilisé et la facture reste dans la liste, barrée.' : 'La vente reste dans la liste, barrée.') + ' Le stock est rendu.', 'facCancelOk', 'Oui, annuler', { key: el.dataset.key }); };
-ACTIONS.facCancelOk = (el) => { const f = DB.get(el.dataset.key); if (!f) return; const o = Object.assign({}, f, { statut: 'annulee' }); DB.put(el.dataset.key, o); stockPourVente(el.dataset.key, o); closeSheet(); toast(`${nomVente(f)} annulée${mouvements().some((m) => m.ref === el.dataset.key) ? '' : ' (le stock est rendu)'}.`); };
+ACTIONS.facCancelOk = (el) => { const f = DB.get(el.dataset.key); if (!f) return; const o = Object.assign({}, f, { statut: 'annulee' }); DB.put(el.dataset.key, o); stockPourVente(el.dataset.key, o);
+  for (const k of f.regroupe || []) { const x = DB.get(k); if (x && x.groupe === el.dataset.key) { const y = Object.assign({}, x); delete y.groupe; DB.put(k, y); } } /* les ventes du mois redeviennent à facturer */
+  closeSheet(); toast(`${nomVente(f)} annulée${mouvements().some((m) => m.ref === el.dataset.key) ? '' : ' (le stock est rendu)'}.`); };
 /* Aide-mémoire : quel papier laisser au client, qui signe quoi */
 function aideLivraison() {
   return `<details class="fold aide-liv"><summary>Que laisser au client, et qui signe quoi ?</summary>
@@ -347,7 +351,7 @@ ACTIONS.papiersPdf = (el) => {
   if (f.numero) {
     b.push(`<button class="btn primary" type="button" data-act="facPdfOk" data-key="${esc(k)}">Facture ${esc(f.numero)}</button>`);
     if (navigator.canShare) b.push(`<button class="btn" type="button" data-act="facShare" data-key="${esc(k)}">Partager la facture</button>`);
-  } else if (!annulee) b.push(`<button class="btn" type="button" data-act="venteFacturer" data-key="${esc(k)}">Faire la facture</button>`);
+  } else if (!annulee && !f.groupe) b.push(`<button class="btn" type="button" data-act="venteFacturer" data-key="${esc(k)}">Faire la facture</button>`);
   b.push(`<button class="btn${f.numero ? '' : ' primary'}" type="button" data-act="blPdfOk" data-key="${esc(k)}">${f.blNumero ? 'Bulletin ' + esc(f.blNumero) : 'Faire un bulletin'}</button>`);
   openSheet(`${sheetHead('Facture & bulletin', nomVente(f))}<div class="sbody">
     <p class="hint">${f.numero ? '' : 'Pas encore de facture pour cette vente. '}${f.blNumero ? '' : 'Le bulletin reçoit son numéro au premier téléchargement. '}Le bulletin indique toujours les prix.</p>
@@ -390,6 +394,57 @@ ACTIONS.blSigneOffOk = (el) => {
   const k = el.dataset.key, f = DB.get(k); closeSheet(); if (!f) return;
   const fs = (f.blSigne || []).slice(); fs.splice(Number(el.dataset.i), 1);
   DB.put(k, Object.assign({}, f, { blSigne: fs })); render();
+};
+/* ---------- Facture du mois : les ventes livrées sans facture d'un client (bulletins), regroupées en une facture QR ----------
+   La facture porte le total par produit et la liste des bulletins ; chaque vente reprise est marquée « groupe » (elle ne compte plus
+   à part : ni à encaisser, ni dans le chiffre d'affaires). Le stock a déjà bougé à la livraison. Annuler la facture libère les ventes. */
+const aFacturer = (clientId) => factures().filter((f) => f.client && f.client.id === clientId && !f.numero && !f.groupe && f.statut !== 'annulee' && f.statut !== 'payee');
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const FM = { client: '', mois: '' };
+ACTIONS.facMois = () => {
+  const parClient = {}; for (const f of factures()) if (f.client && f.client.id && !f.numero && !f.groupe && f.statut !== 'annulee' && f.statut !== 'payee') parClient[f.client.id] = (parClient[f.client.id] || 0) + 1;
+  const ids = Object.keys(parClient).filter((k) => DB.get(k));
+  if (!ids.length) { toast('Aucune vente à facturer : les ventes enregistrées sans facture (avec un client, « paiement plus tard ») apparaissent ici.', 6000); return; }
+  if (!ids.includes(FM.client)) FM.client = ids[0];
+  const ventes = aFacturer(FM.client).sort((a, b) => String(a.date).localeCompare(b.date));
+  const mois = [...new Set(ventes.map((f) => String(f.date).slice(0, 7)))];
+  if (FM.mois && !mois.includes(FM.mois) && FM.mois !== 'tout') FM.mois = '';
+  const m = FM.mois || 'tout', choisies = ventes.filter((f) => m === 'tout' || String(f.date).slice(0, 7) === m);
+  openSheet(`${sheetHead('Facture du mois', 'Ventes livrées sans facture')}<form class="sbody form" data-form="facMois">
+    ${sel('fm-client', 'Client', FM.client, ids.map((k) => [k, `${displayName(DB.get(k))} (${parClient[k]})`]), { name: 'client' })}
+    ${sel('fm-mois', 'Période', m, [['tout', 'Toutes les ventes pas encore facturées']].concat(mois.map((x) => [x, MOIS_FR[Number(x.slice(5)) - 1] + ' ' + x.slice(0, 4)])), { name: 'mois' })}
+    <div class="items">${choisies.map((f) => `<label class="item" style="cursor:pointer"><input type="checkbox" name="v_${esc(f.key)}" checked> <span class="who"><strong>${esc(f.blNumero || 'Vente')} · ${fmtDate(f.date)}</strong><span class="meta">${esc((f.lignes || []).map((l) => l.designation).join(', '))}</span></span><span class="amt">${chf(f.total)}</span></label>`).join('')}</div>
+    <div class="grid2">${inp('fm-date', 'Date de la facture', todayISO(), { name: 'date', type: 'date' })}</div>
+    <p class="hint">La facture reprend le total par produit et cite les bulletins. Chaque vente reprise est marquée « Facturée » ; annuler la facture la libère.</p>
+    <div class="row-end"><button class="btn primary" type="submit">Faire la facture</button></div></form>`);
+  for (const id of ['fm-client', 'fm-mois']) $(id).addEventListener('change', (e) => { if (id === 'fm-client') { FM.client = e.target.value; FM.mois = ''; } else FM.mois = e.target.value; ACTIONS.facMois(); });
+};
+FORMS.facMois = (v) => {
+  const c = DB.get(v.client); if (!c) return;
+  const ventes = aFacturer(v.client).filter((f) => v['v_' + f.key]).sort((a, b) => String(a.date).localeCompare(b.date));
+  if (!ventes.length) { toast('Coche au moins une vente.'); return; }
+  const pb = problemesReglages(false); if (pb.length) { toast('Réglages : il manque ' + pb.join(', ')); return; }
+  if (!c.npa || !c.localite) { toast(`${displayName(c)} n'a pas de NPA ou de localité (obligatoire pour le QR).`); return; }
+  /* Une ligne par produit et par prix (les quantités du mois s'additionnent) */
+  const agg = new Map();
+  for (const f of ventes) for (const l of f.lignes || []) {
+    const k = [l.designation, l.unite, r2(num(l.prix))].join('|'), a = agg.get(k);
+    if (a) a.quantite = r2(a.quantite + num(l.quantite)); else agg.set(k, Object.assign({ designation: l.designation, quantite: r2(num(l.quantite)), unite: l.unite, prix: r2(num(l.prix)) }, l.produitId ? { produitId: l.produitId } : {}, l.calibre != null ? { calibre: l.calibre, poids: l.poids } : {}));
+  }
+  const lignes = [...agg.values()];
+  if (lignes.length > 11) { toast(`${lignes.length} lignes : c'est trop pour une page. Fais deux factures (par exemple par quinzaine).`, 6000); return; }
+  const s = cfg(), date = v.date || todayISO(), n = prochainNumero(date), delai = num(s.delai) >= 0 ? num(s.delai) : 30;
+  const nums = ventes.map((f) => f.blNumero || fmtDateCourt(f.date)), d0 = ventes[0].date, d1 = ventes[ventes.length - 1].date;
+  const emetteur = { nom: s.nom, titulaire: s.titulaire, rue: s.rue, numero: s.numero, npa: s.npa, localite: s.localite, telephone: s.telephone, email: s.email, iban: cleanIban(s.iban), mention: s.mention };
+  const inv = Object.assign({}, n, { date, livraison: '', bulletin: '', delai, echeance: addDays(date, delai), emetteur,
+    client: { id: v.client, nom: billName(c), attn: attnName(c), rue: c.rue || '', numero: c.numero || '', npa: c.npa || '', localite: c.localite || '' },
+    lignes, remarque: trunc(`Livraisons du ${fmtDateCourt(d0)} au ${fmtDate(d1)} · bulletins ${nums.join(', ')}`, 110),
+    paiement: 'virement', statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '', facture: true, stock: false, regroupe: ventes.map((f) => f.key), cree: new Date().toISOString(), creePar: Sync.me || '' });
+  inv.total = factureTotal(inv);
+  const key = 'fac:' + uid('f'); DB.put(key, inv);
+  for (const f of ventes) DB.put(f.key, Object.assign({}, DB.get(f.key), { groupe: key }));
+  closeSheet(); toast(`Facture ${n.numero} faite : ${ventes.length} vente${ventes.length > 1 ? 's' : ''}, ${chf(inv.total)}.`, 5000);
+  go('#/factures/voir/' + encodeURIComponent(key)); telechargerFacture(key);
 };
 /* Faire la facture d'une vente enregistrée sans facture */
 ACTIONS.venteFacturer = (el) => {

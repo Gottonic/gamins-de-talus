@@ -89,12 +89,14 @@ function drawInvoice(cv, inv) {
   cv.text('Montant CHF', 190, ty, { size: 8.5, bold: true, align: 'right' });
   cv.line(20, ty + 2, 190, ty + 2, { w: 0.3 });
   let rowY = ty + 7.5;
+  /* Beaucoup de lignes (facture du mois) : on resserre pour garder la section paiement sur la page */
+  const nL = inv.lignes.length, pas = nL > 6 ? Math.max(3.4, 37 / nL) : 6.2, fs = nL > 6 ? (pas < 4.2 ? 7.8 : 8.6) : 9.5;
   for (const l of inv.lignes) {
-    cv.text(trunc(l.designation, 46), 20, rowY, { size: 9.5 });
-    cv.text(fmtQty(l.quantite) + ' ' + (l.unite || ''), 128, rowY, { size: 9.5, align: 'right' });
-    cv.text(money(l.prix), 158, rowY, { size: 9.5, align: 'right' });
-    cv.text(money(r2(num(l.quantite) * num(l.prix))), 190, rowY, { size: 9.5, align: 'right' });
-    rowY += 6.2;
+    cv.text(trunc(l.designation, 46), 20, rowY, { size: fs });
+    cv.text(fmtQty(l.quantite) + ' ' + (l.unite || ''), 128, rowY, { size: fs, align: 'right' });
+    cv.text(money(l.prix), 158, rowY, { size: fs, align: 'right' });
+    cv.text(money(r2(num(l.quantite) * num(l.prix))), 190, rowY, { size: fs, align: 'right' });
+    rowY += pas;
   }
   cv.line(120, rowY - 2.6, 190, rowY - 2.6, { w: 0.3 });
   cv.text('Total CHF', 158, rowY + 3, { size: 10.5, bold: true, align: 'right' });

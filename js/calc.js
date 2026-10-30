@@ -25,6 +25,7 @@ function parts(cfg, date) {
 /* ---------- Factures ---------- */
 function factureStatut(inv, today) {
   if (inv.statut === 'annulee') return 'annulee';
+  if (inv.groupe) return 'groupee'; // vente reprise dans une facture du mois : c'est cette facture qui compte
   if (inv.statut === 'payee') return 'payee';
   if (inv.echeance && inv.echeance < today) return 'retard';
   return 'ouverte';
