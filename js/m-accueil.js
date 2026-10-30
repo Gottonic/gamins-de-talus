@@ -65,6 +65,9 @@ function renderAccueil() {
   const sansJ = depenses().filter((x) => sansJustificatif(x) && pourMoi(x.par)).sort((a, c) => String(c.date).localeCompare(String(a.date)));
   if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
     plus: sansJ.length > 4 ? { href: '#/finances/depenses', txt: `Voir les ${sansJ.length} dépenses sans justificatif` } : null, avant: () => { FIN.sansJ = true; } });
+  /* Sauvegarde du mois : un rappel pour tous tant que personne n'a exporté depuis un mois */
+  const sv = DB.get('cfg:sauvegarde') || {};
+  if (Object.keys(DB.data).length > 30 && (!sv.le || sv.le.slice(0, 10) < addDays(today, -31))) groupes.push({ mod: 'reglages', titre: 'Sauvegarde du mois', items: [{ href: '#/reglages/donnees', txt: 'Télécharger une copie des données', val: sv.le ? 'dernière le ' + fmtDateCourt(sv.le.slice(0, 10)) : 'jamais faite' }] });
   /* Archive de l'année passée : le rappel reste tant que chaque associé ne l'a pas téléchargée une fois */
   const yb = String(Number(y) - 1);
   if (typeof archiveManquePour === 'function' && (depenses().some((x) => yearOf(x.date) === yb) || recettesToutes().some((x) => yearOf(x.date) === yb))) {

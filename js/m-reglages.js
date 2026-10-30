@@ -103,9 +103,9 @@ function renderDonnees() {
   const trash = Object.entries(DB.trash).sort((a, b) => String(b[1]._supprimeLe || '').localeCompare(String(a[1]._supprimeLe || '')));
   return `<div class="split"><div class="panel"><h2>Sauvegarde</h2>
       <div id="usage-box"></div>
-      <p class="hint">Toutes les données sont dans la base Supabase, avec l'historique de chaque modification. Pour une copie chez toi, exporte un fichier de temps en temps (par exemple chaque mois).</p>
+      <p class="hint">Toutes les données sont dans la base Supabase, avec l'historique de chaque modification. Une copie chez vous chaque mois (l'accueil le rappelle) : rangez-la dans votre Proton Drive.</p>
       <div class="table-wrap"><table class="list"><tbody>${Object.entries(PREFIX_LABEL).filter(([p]) => counts[p]).map(([p, l]) => `<tr><td>${l}</td><td class="r num">${counts[p]}</td></tr>`).join('')}</tbody></table></div>
-      <div class="row"><button class="btn primary" type="button" data-act="exportJson">Exporter tout (fichier JSON)</button></div>
+      ${sauvegardeHtml()}
       <h3>Importer</h3>
       <p class="hint">Ajoute les éléments d'un fichier exporté (ou du fichier de reprise de l'Excel). Ce qui existe déjà n'est jamais écrasé.</p>
       <input type="file" id="imp-file" accept=".json,application/json">
@@ -116,9 +116,59 @@ function renderDonnees() {
       <p class="hint">Ce qui est dans la corbeille depuis 6 mois est effacé pour de bon, historique compris (chaque nuit, par Supabase). Avant ça, tout se restaure.</p></div></div>`;
 }
 ACTIONS.restore = (el) => { if (DB.restore(el.dataset.key)) toast('Restauré.'); };
-ACTIONS.exportJson = () => {
-  const out = { app: 'gamins-de-talus', version: 1, exporte: new Date().toISOString(), par: Sync.me || '', rows: DB.data };
-  downloadFile(`Gamins de Talus sauvegarde ${todayISO()}.json`, JSON.stringify(out, null, 1), 'application/json');
+/* ---------- Sauvegarde : les données sont toujours complètes (un seul fichier suffit, le plus récent) ;
+   les fichiers ne sont pris que s'ils ont été ajoutés depuis la dernière sauvegarde des fichiers (pas de doublons).
+   cfg:sauvegarde = { le, par, fichiersJusqua } est partagé : le rappel mensuel disparaît dès qu'un associé l'a faite. */
+const SAUV = { fichiers: false, tous: false, enCours: false, etape: '' };
+function fichiersASauver() {
+  const out = [], vus = {};
+  const add = (ch, dossier, nom, date, avecExt) => {
+    if (!ch) return; let n = `${dossier}/${nomZip(nom)}`; if (vus[n]) n += ' ' + (++vus[n]); else vus[n] = 1;
+    out.push({ chemin: ch, nom: avecExt ? n : `${n}.${ch.split('.').pop() || 'bin'}`, date: String(date || '') });
+  };
+  if (typeof drv === 'function') for (const d of drv()) if (d.type === 'fichier' && d.chemin) add(d.chemin, ['Drive'].concat(chemin(d.parent).map((c) => nomZip(c.nom))).join('/'), d.nom, d.le, true);
+  for (const d of depenses()) { const fs = (d.fichiers || []).filter((x) => !x.expire); fs.forEach((x, i) => add(x.chemin, 'Justificatifs', `${d.date} D${String(d.n || '').padStart(3, '0')} ${trunc(d.objet || '', 40)}${fs.length > 1 ? ' (' + (i + 1) + ')' : ''}`, x.ajoute)); }
+  for (const f of factures()) { const fs = (f.blSigne || []).filter((x) => !x.expire); fs.forEach((x, i) => add(x.chemin, 'Bulletins signés', `${f.blNumero || 'BL'} ${(f.client && f.client.nom) || ''}${fs.length > 1 ? ' (' + (i + 1) + ')' : ''}`, x.ajoute)); }
+  for (const m of DB.all('msg:')) if (m.photo && m.photo.chemin && !m.photo.expire) add(m.photo.chemin, 'Photos des messages', `${String(m.cree || '').slice(0, 10)} ${nomDe(m.de)}`, m.cree);
+  if (typeof journal === 'function') for (const j of journal()) if (j.photo && j.photo.chemin) add(j.photo.chemin, 'Photos du journal', `${j.date} ${trunc(j.texte || '', 30)}`, j.cree || j.date);
+  return out;
+}
+function sauvegardeHtml() {
+  const e = DB.get('cfg:sauvegarde') || {}, tous = fichiersASauver(), nouveaux = e.fichiersJusqua ? tous.filter((f) => f.date > e.fichiersJusqua) : tous;
+  return `<p class="hint">${e.le ? `Dernière sauvegarde le ${fmtDate(e.le.slice(0, 10))}${e.par ? ' par ' + esc(nomDe(e.par)) : ''}.` : 'Pas encore de sauvegarde.'}</p>
+    <label class="row" style="font-size:14px"><input type="checkbox" id="sv-fich"${SAUV.fichiers ? ' checked' : ''}> Aussi les fichiers (photos, justificatifs, bulletins signés, Drive)</label>
+    ${SAUV.fichiers ? `<p class="hint">${e.fichiersJusqua ? `Seulement les ${nouveaux.length} fichier${nouveaux.length > 1 ? 's' : ''} ajouté${nouveaux.length > 1 ? 's' : ''} depuis la dernière sauvegarde des fichiers (${fmtDate(e.fichiersJusqua.slice(0, 10))}) : rien n'est téléchargé deux fois.
+      <label class="row"><input type="checkbox" id="sv-tous"${SAUV.tous ? ' checked' : ''}> Tous les fichiers (${tous.length}), pour une copie complète</label>` : `Première sauvegarde des fichiers : ${tous.length > 1 ? 'les ' + tous.length + ' fichiers' : tous.length ? 'le seul fichier' : 'aucun fichier pour l\'instant'}.`}</p>` : ''}
+    <div class="row"><button class="btn primary" type="button" data-act="exportJson"${SAUV.enCours ? ' disabled' : ''}>${SAUV.enCours ? esc(SAUV.etape || 'Préparation…') : SAUV.fichiers ? 'Sauvegarder (fichier .zip)' : 'Sauvegarder les données (fichier .json)'}</button></div>
+    <p class="hint">Les données sont toujours complètes : gardez seulement la plus récente. Les fichiers .zip se complètent : gardez-les tous, ils ne contiennent jamais deux fois le même fichier.</p>`;
+}
+document.addEventListener('change', (e) => { if (e.target.id === 'sv-fich') { SAUV.fichiers = e.target.checked; render(); } if (e.target.id === 'sv-tous') { SAUV.tous = e.target.checked; render(); } });
+ACTIONS.exportJson = async () => {
+  if (SAUV.enCours) return;
+  const e = DB.get('cfg:sauvegarde') || {}, maint = new Date().toISOString(), base = `Gamins de Talus sauvegarde ${todayISO()}`;
+  const donnees = JSON.stringify({ app: 'gamins-de-talus', version: 1, exporte: maint, par: Sync.me || '', rows: DB.data }, null, 1);
+  if (!SAUV.fichiers) { downloadFile(base + '.json', donnees, 'application/json'); DB.put('cfg:sauvegarde', Object.assign({}, e, { le: maint, par: Sync.me || '' })); toast('Sauvegarde téléchargée. Range-la dans votre drive.'); return; }
+  if (!window.JSZip) { toast("L'outil d'archive n'est pas chargé. Recharge la page."); return; }
+  if (!navigator.onLine && !LOCAL_MODE) { toast('Il faut du réseau pour récupérer les fichiers.'); return; }
+  const depuis = SAUV.tous ? '' : e.fichiersJusqua || '', fs = fichiersASauver().filter((f) => !depuis || f.date > depuis);
+  SAUV.enCours = true; SAUV.etape = 'Préparation…'; render();
+  const etape = (t) => { SAUV.etape = t; const b = document.querySelector('[data-act="exportJson"]'); if (b) b.textContent = t; };
+  try {
+    const z = new window.JSZip(), dir = z.folder(base), manquants = [];
+    dir.file('donnees.json', donnees);
+    let i = 0;
+    for (const f of fs) { etape(`Fichiers ${++i}/${fs.length}…`); try { dir.file(f.nom, await telechargerFichier(f.chemin)); } catch (err) { manquants.push(f.nom); } }
+    dir.file('LISEZ-MOI.txt', [`Gamins de Talus — sauvegarde du ${fmtDate(todayISO())} par ${nomDe(Sync.me)}.`, '', 'donnees.json : toutes les données de l\'app (se réimporte dans Réglages → Données).',
+      depuis ? `Fichiers : seulement ceux ajoutés depuis le ${fmtDate(depuis.slice(0, 10))} (les plus anciens sont dans les sauvegardes précédentes).` : 'Fichiers : tous les fichiers de l\'app.',
+      manquants.length ? '\nFichiers qui n\'ont pas pu être ajoutés :\n- ' + manquants.join('\n- ') : ''].join('\r\n'));
+    etape('Compression…');
+    const blob = await z.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    downloadFile(base + (depuis ? ` (fichiers depuis le ${fmtDate(depuis.slice(0, 10))})` : '') + '.zip', blob, 'application/zip');
+    /* Si des fichiers ont manqué, la prochaine sauvegarde repart de l'ancienne date pour les reprendre */
+    DB.put('cfg:sauvegarde', Object.assign({}, e, { le: maint, par: Sync.me || '', fichiersJusqua: manquants.length ? e.fichiersJusqua || '' : maint }));
+    toast(manquants.length ? `Sauvegarde téléchargée, mais ${manquants.length} fichier(s) manquent (voir LISEZ-MOI).` : `Sauvegarde téléchargée (${fs.length} fichier${fs.length > 1 ? 's' : ''}). Range-la dans votre drive.`, 6000);
+  } catch (err) { console.error(err); toast("La sauvegarde n'a pas pu être créée : " + (err.message || err), 6000); }
+  SAUV.enCours = false; SAUV.etape = ''; render();
 };
 let IMPORT = null;
 /* Compléter un élément existant : seuls les champs vides sont remplis, jamais une valeur déjà saisie.
