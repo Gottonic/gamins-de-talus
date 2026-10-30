@@ -44,7 +44,7 @@ function renderStock() {
       <div class="stk-q num">${q != null ? fmtQ(q, p.unite) : '—'}</div>
       <div class="row stk-act"><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="recolte">+ Récolte</button><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="perte">− Sortie</button><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="inventaire">Compter</button><button class="btn small" type="button" data-act="stkHist" data-prod="${esc(p.key)}" aria-label="Historique">⋯</button></div></div>`;
   const recents = ms.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || ''))).slice(0, 8);
-  return `<div class="row"><button class="btn primary" type="button" data-act="mvtNouveau" data-type="recolte">+ Noter une récolte</button><a class="btn" href="#/factures/selfservice">Vente directe (self-service)</a></div>
+  return `<div class="row"><button class="btn primary" type="button" data-act="mvtNouveau" data-type="recolte">+ Noter une récolte</button><a class="btn" href="#/factures/selfservice">Vente directe (self-service)</a><button class="btn" type="button" data-act="grilleSheet">Grille de prix (PDF)</button></div>
     <div class="split">
       <div class="panel"><h2>En stock${enStock.length ? ' · ' + enStock.length : ''}</h2>
         ${enStock.length ? enStock.map(ligne).join('') : '<p class="empty">Rien en stock. Note une récolte, ou marque un produit « disponible » ou « au champ » dans la liste plus bas.</p>'}
@@ -237,3 +237,55 @@ FORMS.selfClore = (v) => {
 ACTIONS.selfRouvrir = (el) => { const s = DB.get(el.dataset.key); if (!s) return; const o = Object.assign({}, s, { statut: 'ouverte' }); DB.put(el.dataset.key, o); stockPourSelf(el.dataset.key, o); };
 /* Supprimer une mise en vente retire aussi ses mouvements de stock (les encaissements restent : c'est de l'argent reçu) */
 (() => { const del = ACTIONS.delItemOk; ACTIONS.delItemOk = (el) => { const k = el.dataset.key; del(el); if (String(k).startsWith('self:')) for (const m of mouvements()) if (m.ref === k) DB.del(m.key); }; })();
+
+/* ---------- Grille de prix (PDF) : produits disponibles, prix par type de client, calibres à la pièce ---------- */
+const GRILLE = { dispo: true, niveaux: { part: true, resto: true, gros: true } };
+ACTIONS.grilleSheet = () => {
+  openSheet(`${sheetHead('Grille de prix', 'PDF à imprimer ou à envoyer')}<form class="sbody form" data-form="grille">
+    <div class="field"><span class="flabel">Colonnes</span>${NIVEAUX.slice().reverse().map(([k, l]) => `<label class="row" style="font-size:14px"><input type="checkbox" name="n_${k}"${GRILLE.niveaux[k] ? ' checked' : ''}> ${esc(l)}</label>`).join('')}
+      <span class="sub">Pour un restaurant, ne cochez par exemple que « Restaurant & épicerie ».</span></div>
+    <label class="row" style="font-size:14px"><input type="checkbox" name="dispo"${GRILLE.dispo ? ' checked' : ''}> Seulement ce qui est disponible (en stock, disponible ou au champ)</label>
+    <div class="row-end"><button class="btn primary" type="submit">Télécharger le PDF</button></div></form>`);
+};
+FORMS.grille = (v) => {
+  GRILLE.dispo = !!v.dispo; for (const [k] of NIVEAUX) GRILLE.niveaux[k] = !!v['n_' + k];
+  const niv = NIVEAUX.slice().reverse().filter(([k]) => GRILLE.niveaux[k]);
+  if (!niv.length) { toast('Coche au moins une colonne.'); return; }
+  if (!window.jspdf) { toast("Le générateur PDF n'a pas pu se charger. Recharge la page."); return; }
+  const ms = mouvements();
+  const ps = produits().filter((p) => NIVEAUX.some(([k]) => !vide(prixNiveau(p, k)))).filter((p) => { if (!GRILLE.dispo) return true; const q = stockDe(p.key, ms); return (q != null && q > 0) || p.dispo || p.auChamp; });
+  if (!ps.length) { toast(GRILLE.dispo ? 'Aucun produit disponible avec un prix.' : 'Aucun produit avec un prix.'); return; }
+  const cv = pdfCanvas(); dessinerGrille(cv, ps, niv);
+  closeSheet(); downloadFile(`Grille de prix ${cfg().nom || 'Gamins de Talus'} ${todayISO()}.pdf`, cv.doc.output('blob'), 'application/pdf');
+};
+function dessinerGrille(cv, ps, niv) {
+  const s = cfg(), larg = 170, x0 = 20, colN = 70, colW = (larg - colN) / niv.length;
+  cv.text(s.nom || 'Gamins de Talus', x0, 24, { size: 18, bold: true });
+  cv.text('Grille de prix', x0, 33, { size: 13, bold: true });
+  cv.text(`Valable dès le ${fmtDate(todayISO())}, selon disponibilité. Prix en CHF.`, x0, 39.5, { size: 9 });
+  let y = 52;
+  const tete = () => {
+    cv.text('Produit', x0, y, { size: 9, bold: true });
+    const T = { part: ['Particuliers', 'vente directe'], resto: ['Restaurants', 'épiceries'], gros: ['Grossistes', 'collectivités'] };
+    niv.forEach(([k], i) => { const xs = x0 + colN + colW * (i + 1) - 2; cv.text(T[k][0], xs, y - 3.6, { size: 8.5, bold: true, align: 'right' }); cv.text(T[k][1], xs, y, { size: 8, align: 'right' }); });
+    cv.line(x0, y + 2, x0 + larg, y + 2, { w: 0.4 }); y += 8;
+  };
+  tete();
+  for (const p of ps) {
+    if (y > 270) { cv.doc.addPage(); y = 24; tete(); }
+    cv.text(trunc(p.nom, 38), x0, y, { size: 10, bold: true });
+    niv.forEach(([k], i) => { const x = prixNiveau(p, k); cv.text(vide(x) ? '—' : `${money(x)} / ${p.unite || 'kg'}`, x0 + colN + colW * (i + 1) - 2, y, { size: 10, align: 'right' }); });
+    y += 5.2;
+    for (const c of calibresDe(p)) {
+      if (y > 275) { cv.doc.addPage(); y = 24; tete(); }
+      cv.text(`  ${c.nom}, à la pièce (env. ${fmtNum(c.poids, 2)} kg)`, x0, y, { size: 8.5 });
+      niv.forEach(([k], i) => { const x = prixPiece(p, c, k); cv.text(x === '' ? '—' : `${money(x)} / pièce`, x0 + colN + colW * (i + 1) - 2, y, { size: 8.5, align: 'right' }); });
+      y += 4.6;
+    }
+    if (p.remarque) { cv.text('  ' + trunc(p.remarque, 90), x0, y, { size: 8 }); y += 4.4; }
+    cv.line(x0, y - 2.2, x0 + larg, y - 2.2, { w: 0.1 }); y += 2;
+  }
+  y += 4;
+  cv.text('Les clients réguliers gardent le prix de leur dernière commande.', x0, Math.min(y, 282), { size: 8.5 });
+  cv.text([s.nom, s.email, s.telephone].filter(Boolean).join(' · '), x0, 287, { size: 8.5 });
+}
