@@ -285,11 +285,21 @@ ACTIONS.discordOff = () => { if (DB.get('cfg:discord:' + Sync.me)) DB.del('cfg:d
 /* ---------- Mails de l'adresse commune ----------
    La fonction Supabase « mails » relève la boîte Infomaniak (IMAP) et ajoute chaque nouveau mail :
    mail:<id> = { de: { nom, adresse }, objet, date, extrait, uid, messageId,
-                 statut: '' | 'encours' | 'traite' | 'ignore', par (qui s'en occupe), vus: { personne: date }, tache }
+                 statut: '' | 'encours' | 'traite' | 'ignore', par (à qui il est confié), confiePar, traitePar (qui l'a fermé), vus: { personne: date }, tache }
    cfg:mails = { adresse, webmail } (réglages) ; cfg:mails:etat = { derniere, erreur, nouveaux } (écrit par la fonction). */
 const MAIL = { filtre: 'atraiter', ouvert: '', complet: {}, charge: '' };
 const mails = () => DB.all('mail:').sort((a, b) => String(b.date).localeCompare(String(a.date)));
-const mailsATraiter = () => mails().filter((m) => !['traite', 'ignore'].includes(m.statut || ''));
+const mailFini = (m) => ['traite', 'ignore'].includes(m.statut || '');
+const mailsATraiter = () => mails().filter((m) => !mailFini(m));
+const mailsPourMoi = () => mailsATraiter().filter((m) => m.par && m.par === Sync.me);
+/* Le bouton d'état d'un mail : ce qu'il dit, et sa couleur */
+function etatMail(m) {
+  const qui = m.traitePar || m.par, rep = (m.reponses || []).length;
+  if (m.statut === 'ignore') return { txt: '🙈 Ignoré', cls: 'fini' };
+  if (m.statut === 'traite') return { txt: `${rep ? '↩ Répondu' : '✓ Traité'}${qui ? ' · ' + (qui === Sync.me ? 'toi' : nomDe(qui)) : ''}`, cls: 'fini' };
+  if (m.par) return { txt: m.par === Sync.me ? 'Pour toi…' : `Pour ${nomDe(m.par)}…`, cls: m.par === Sync.me ? 'moi' : 'autre' };
+  return { txt: 'À traiter…', cls: 'afaire' };
+}
 const cfgMails = () => Object.assign({ webmail: 'https://mail.infomaniak.com' }, DB.get('cfg:mails') || {});
 function contactDuMail(adr) { adr = String(adr || '').toLowerCase(); if (!adr) return null; return (typeof tousContacts === 'function' ? tousContacts() : []).find((c) => String(c.email || '').toLowerCase() === adr) || null; }
 function depuis(iso) { const m = Math.round((Date.now() - new Date(iso)) / 60000); return !iso || isNaN(m) ? '—' : m < 1 ? "à l'instant" : m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : 'le ' + fmtDate(String(iso).slice(0, 10)); }
@@ -311,30 +321,28 @@ async function releverMails(force) {
 }
 function renderMails() {
   const c = cfgMails(), etat = DB.get('cfg:mails:etat') || {}, all = mails();
-  const f = MAIL.filtre, list = all.filter((m) => f === 'tous' ? true : f === 'moi' ? m.par === Sync.me && m.statut === 'encours' : f === 'traites' ? ['traite', 'ignore'].includes(m.statut || '') : !['traite', 'ignore'].includes(m.statut || ''));
-  const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', 'Je m\'en occupe'], ['traites', 'Traités'], ['tous', 'Tous']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
+  const f = MAIL.filtre, list = all.filter((m) => f === 'tous' ? true : f === 'moi' ? !mailFini(m) && m.par === Sync.me : f === 'traites' ? mailFini(m) : !mailFini(m));
+  const nMoi = mailsPourMoi().length;
+  const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', `Pour moi${nMoi ? ' · ' + nMoi : ''}`], ['traites', 'Traités'], ['tous', 'Tous']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
   if (!all.length && !etat.derniere) return `<div class="panel"><h2>Mails</h2><p>Les mails reçus sur votre adresse commune (${esc(c.adresse || 'Infomaniak')}) apparaîtront ici : qui s'en occupe, ce qui est traité, en lien avec vos contacts.</p>
     <p class="hint">Il reste à installer la fonction « mails » dans Supabase (voir le README, partie « Mails »). Ensuite, la boîte est relevée chaque fois que quelqu'un ouvre cette page, et toutes les 10 minutes par Supabase.</p>
     <div class="row"><button class="btn primary" type="button" data-act="mailEcrire">✉️ Nouveau mail</button><button class="btn" type="button" data-act="mailRelever">Essayer de relever maintenant</button><button class="btn" type="button" data-act="mailCfg">Réglages</button></div></div>`;
   const carte = (m) => {
     const ct = contactDuMail(m.de && m.de.adresse), vus = Object.keys(m.vus || {}).filter((p) => p !== m.par);
-    const etatTxt = m.statut === 'traite' ? `✓ traité${m.par ? ' par ' + nomDe(m.par) : ''}` : m.statut === 'ignore' ? 'ignoré' : m.statut === 'encours' ? `${m.par === Sync.me ? 'Tu t\'en occupes' : nomDe(m.par) + ' s\'en occupe'}` : 'personne ne s\'en occupe encore';
-    return `<div class="mail${m.statut === 'encours' ? ' encours' : ''}${['traite', 'ignore'].includes(m.statut || '') ? ' fini' : ''}">
+    const et = etatMail(m), confie = !mailFini(m) && m.par && m.confiePar && m.confiePar !== m.par ? `confié par ${m.confiePar === Sync.me ? 'toi' : nomDe(m.confiePar)}` : '';
+    return `<div class="mail${!mailFini(m) && m.par ? ' encours' : ''}${mailFini(m) ? ' fini' : ''}">
       <div class="between"><b>${esc((m.de && (m.de.nom || m.de.adresse)) || '?')}</b><span class="hint">${esc(depuis(m.date))}</span></div>
       <div class="mail-objet">${esc(m.objet || '(sans objet)')}</div>
       ${ct ? `<a class="hint" href="#/${ct.prospect ? 'contacts/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc((m.de && m.de.adresse) || '')}</span>`}
       ${MAIL.complet[m.key] ? mailCompletHtml(m) : `<p class="mail-extrait${MAIL.ouvert === m.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(m.key)}">${esc(m.extrait || '')}</p>
       <button class="btn link small" type="button" data-act="mailLire" data-key="${esc(m.key)}">${MAIL.charge === m.key ? 'Chargement…' : 'Lire en entier et voir les pièces jointes'}</button>`}
-      <div class="mail-etat"><span class="tpill">${esc(etatTxt)}</span>${(m.reponses || []).length ? `<span class="hint">↩ répondu par ${esc(m.reponses.map((r) => nomDe(r.par) + ' le ' + fmtDateCourt(String(r.le).slice(0, 10))).join(', '))}</span>` : ''}${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
+      <div class="mail-etat">${confie ? `<span class="hint">${esc(confie)}</span>` : ''}${(m.reponses || []).length ? `<span class="hint">↩ répondu par ${esc(m.reponses.map((r) => nomDe(r.par) + ' le ' + fmtDateCourt(String(r.le).slice(0, 10))).join(', '))}</span>` : ''}${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
       <div class="row mail-actions">
         <button class="btn primary small" type="button" data-act="mailRepondre" data-key="${esc(m.key)}">↩ Répondre</button>
-        ${!['traite', 'ignore'].includes(m.statut || '') && m.par !== Sync.me ? `<button class="btn small" type="button" data-act="mailMoi" data-key="${esc(m.key)}">Je m'en occupe</button>` : ''}
-        <button class="btn small" type="button" data-act="mailVerifier" data-key="${esc(m.key)}">Je vais juste vérifier</button>
-        ${!['traite', 'ignore'].includes(m.statut || '') ? `<button class="btn small" type="button" data-act="mailStatut" data-s="traite" data-key="${esc(m.key)}">✓ Traité</button>` : `<button class="btn small" type="button" data-act="mailStatut" data-s="" data-key="${esc(m.key)}">Remettre à traiter</button>`}
-        <button class="btn small" type="button" data-act="mailPlus" data-key="${esc(m.key)}" aria-label="Plus d'options">⋯</button></div></div>`;
+        <button class="btn small etat-mail ${et.cls}" type="button" data-act="mailPlus" data-key="${esc(m.key)}" title="Qui s'en occupe, traité, archiver…">${esc(et.txt)}</button></div></div>`;
   };
   return `<div class="panel"><div class="between"><h2>Mails${c.adresse ? ' · ' + esc(c.adresse) : ''}</h2><div class="row"><button class="btn primary small" type="button" data-act="mailEcrire">✉️ Nouveau mail</button><button class="btn small" type="button" data-act="mailRelever">Relever</button><button class="btn small" type="button" data-act="mailCfg">Réglages</button></div></div>
-    <p class="hint">Les mails partent de ${esc(c.adresse || 'votre adresse')} ; une copie va dans « Envoyés ». <a href="${esc(c.webmail)}" target="_blank" rel="noopener">Ouvrir la boîte Infomaniak</a>. Dernière relève ${esc(depuis(etat.derniere))}${etat.erreur ? ` · <span class="bad">problème : ${esc(etat.erreur)}</span>` : ''}. « Je m'en occupe » et « Je vais juste vérifier » ouvrent la boîte Infomaniak dans un nouvel onglet.</p>
+    <p class="hint">Les mails partent de ${esc(c.adresse || 'votre adresse')} ; une copie va dans « Envoyés ». <a href="${esc(c.webmail)}" target="_blank" rel="noopener">Ouvrir la boîte Infomaniak</a>. Dernière relève ${esc(depuis(etat.derniere))}${etat.erreur ? ` · <span class="bad">problème : ${esc(etat.erreur)}</span>` : ''}. Le bouton à côté de « Répondre » dit où en est chaque mail ; on clique dessus pour le confier à quelqu'un, le marquer traité, l'archiver…</p>
     <div class="chips">${chips}</div>
     ${list.length ? list.slice(0, 80).map(carte).join('') : '<p class="empty">Rien ici.</p>'}</div>`;
 }
@@ -342,27 +350,44 @@ const ouvrirWebmail = () => { try { window.open(cfgMails().webmail, '_blank', 'n
 const majMail = (k, o) => { const m = DB.get(k); if (m) DB.put(k, Object.assign({}, m, o, { vus: Object.assign({}, m.vus || {}, Sync.me ? { [Sync.me]: new Date().toISOString() } : {}) })); };
 ACTIONS.mailFiltre = (el) => { MAIL.filtre = el.dataset.k; render(); };
 ACTIONS.mailOuvrir = (el) => { MAIL.ouvert = MAIL.ouvert === el.dataset.key ? '' : el.dataset.key; render(); };
-ACTIONS.mailMoi = (el) => { ouvrirWebmail(); majMail(el.dataset.key, { statut: 'encours', par: Sync.me }); };
-ACTIONS.mailVerifier = (el) => { ouvrirWebmail(); majMail(el.dataset.key, {}); };
-ACTIONS.mailStatut = (el) => { const s = el.dataset.s; majMail(el.dataset.key, s ? { statut: s, par: (DB.get(el.dataset.key) || {}).par || Sync.me } : { statut: '', par: '' }); closeSheet(); if (s) boite(el.dataset.key, 'lu').catch(() => {}); };
+/* Traité / ignoré : on garde à qui il était confié (par) et on note qui l'a fermé (traitePar). Remis à traiter : il revient à la personne à qui il était confié. */
+ACTIONS.mailStatut = (el) => {
+  const s = el.dataset.s, m = DB.get(el.dataset.key) || {};
+  majMail(el.dataset.key, s ? { statut: s, traitePar: Sync.me || m.par || '' } : { statut: m.par ? 'encours' : '', traitePar: '' });
+  closeSheet(); if (s) boite(el.dataset.key, 'lu').catch(() => {});
+};
+/* Confier un mail : à soi, à un associé, ou à personne */
+ACTIONS.mailAssigner = (el) => {
+  const p = el.dataset.p || '';
+  majMail(el.dataset.key, { par: p, statut: p ? 'encours' : '', traitePar: '', confiePar: p && p !== Sync.me ? (Sync.me || '') : '' });
+  closeSheet(); toast(p ? (p === Sync.me ? 'Pour toi.' : `Confié à ${nomDe(p)}.`) : 'Confié à personne.');
+};
+ACTIONS.mailWebmail = () => { closeSheet(); ouvrirWebmail(); };
 ACTIONS.mailRelever = () => releverMails(true);
 ACTIONS.mailPlus = (el) => {
   const k = el.dataset.key, m = DB.get(k); if (!m) return; const ct = contactDuMail(m.de && m.de.adresse);
   const b = (act, txt, extra = '') => `<button type="button" class="menu-it" data-act="${act}" data-key="${esc(k)}"${extra}>${txt}</button>`;
-  openSheet(`${sheetHead(m.objet || '(sans objet)', (m.de && m.de.adresse) || '')}<div class="sbody"><p style="white-space:pre-wrap;margin-top:0">${esc(m.extrait || '')}</p><div class="menu-list">
+  const fini = mailFini(m), et = etatMail(m), moi = Sync.me;
+  const gens = personnes().slice().sort((x, y) => (y.k === moi) - (x.k === moi));
+  const qui = gens.map((p) => `<button type="button" class="chip${!fini && m.par === p.k ? ' on' : ''}" data-act="mailAssigner" data-key="${esc(k)}" data-p="${esc(p.k)}">${esc(p.k === moi ? 'Moi' : p.nom)}</button>`).join('')
+    + `<button type="button" class="chip${!fini && !m.par ? ' on' : ''}" data-act="mailAssigner" data-key="${esc(k)}" data-p="">Personne</button>`;
+  openSheet(`${sheetHead(m.objet || '(sans objet)', (m.de && m.de.adresse) || '')}<div class="sbody"><p class="hint" style="margin-top:0">État : <b>${esc(et.txt.replace(/…$/, ''))}</b>${m.confiePar && m.par && m.confiePar !== m.par && !fini ? ` (confié par ${esc(m.confiePar === moi ? 'toi' : nomDe(m.confiePar))})` : ''}</p>
+    <div class="flabel">Qui s'en occupe ?</div><div class="chips" style="margin-bottom:10px">${qui}</div><div class="menu-list">
+    ${fini ? b('mailStatut', '↩︎ Remettre à traiter', ' data-s=""') : b('mailStatut', '✓ Marquer traité', ' data-s="traite"')}
+    ${b('mailRepondre', '↩ Répondre')}
     ${b('mailTache', '✅ En faire une tâche')}
     ${m.uid ? b('mailArchiver', '🗄️ Archiver (dossier « Archives » chez Infomaniak)') : ''}
     ${m.uid ? b('mailNonLu', '✉️ Marquer comme non lu chez Infomaniak') : ''}
     ${m.uid ? b('mailSuppr', '🗑️ Supprimer (corbeille Infomaniak)') : ''}
-    ${b('mailStatut', '🙈 Pas important : ignorer', ' data-s="ignore"')}
+    ${fini ? '' : b('mailStatut', '🙈 Pas important : ignorer', ' data-s="ignore"')}
     ${!ct && m.de && m.de.adresse ? b('mailContact', '👤 Ajouter l\'expéditeur aux contacts') : ''}
-    ${m.statut ? b('mailStatut', '↩︎ Remettre à traiter', ' data-s=""') : ''}
+    ${b('mailWebmail', '🌐 Ouvrir la boîte Infomaniak')}
   </div></div>`);
 };
 ACTIONS.mailTache = (el) => {
   const m = DB.get(el.dataset.key); if (!m) return; const k = 't:' + uid('t');
   DB.put(k, { titre: trunc('Mail : ' + (m.objet || (m.de && m.de.nom) || ''), 80), statut: 'afaire', responsable: Sync.me || '', tag: 'admin', remarques: `De ${(m.de && (m.de.nom + ' <' + m.de.adresse + '>')) || ''} le ${fmtDate(String(m.date || '').slice(0, 10))}\n\n${m.extrait || ''}`, cree: new Date().toISOString(), creePar: Sync.me || '' });
-  majMail(el.dataset.key, { statut: m.statut || 'encours', par: m.par || Sync.me, tache: k }); closeSheet(); ACTIONS.taEdit({ dataset: { key: k } });
+  majMail(el.dataset.key, mailFini(m) ? { tache: k } : { statut: 'encours', par: m.par || Sync.me, tache: k }); closeSheet(); ACTIONS.taEdit({ dataset: { key: k } });
 };
 ACTIONS.mailContact = (el) => {
   const m = DB.get(el.dataset.key); if (!m || !m.de) return; const k = 'ct:' + uid('c');
@@ -373,7 +398,7 @@ ACTIONS.mailCfg = () => {
   const c = cfgMails();
   openSheet(`${sheetHead('Mails : réglages')}<form class="sbody form" data-form="mailCfg">
     ${inp('ml-adr', 'Adresse relevée', c.adresse, { name: 'adresse', attrs: { placeholder: 'info@gaminsdetalus.ch' }, sub: 'Pour l\'affichage. Le mot de passe, lui, est rangé dans les secrets de Supabase, jamais ici.' })}
-    ${inp('ml-web', 'Adresse du webmail', c.webmail, { name: 'webmail', sub: 'Ouverte par « Je m\'en occupe » et « Je vais juste vérifier ».' })}
+    ${inp('ml-web', 'Adresse du webmail', c.webmail, { name: 'webmail', sub: 'Ouverte depuis le menu d\'un mail (« Ouvrir la boîte Infomaniak »).' })}
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.mailCfg = (v) => { DB.put('cfg:mails', Object.assign({}, DB.get('cfg:mails') || {}, { adresse: v.adresse, webmail: v.webmail || 'https://mail.infomaniak.com' })); closeSheet(); toast('Enregistré.'); };
@@ -404,7 +429,9 @@ const signatureMail = () => { const s = cfg(); return `\n\n${Sync.me ? nomDe(Syn
 const ECR = { pieces: [] };
 function ouvrirComposeur(o) {
   ECR.pieces = []; const emails = [...new Set(tousContacts().map((c) => String(c.email || '').trim()).filter(Boolean))];
+  const mr = o.repond ? DB.get(o.repond) : null, autre = mr && !mailFini(mr) && mr.par && mr.par !== Sync.me ? mr.par : '';
   openSheet(`${sheetHead(o.repond ? 'Répondre' : 'Nouveau mail', 'De ' + (cfgMails().adresse || 'votre adresse Infomaniak'))}<form class="sbody form" data-form="mailEnvoyer">
+    ${autre ? `<p class="warn-line">⚠️ Ce mail est confié à ${esc(nomDe(autre))}. Vérifie avec ${esc(nomDe(autre))} pour ne pas répondre à deux.</p>` : ''}
     <input type="hidden" name="repond" value="${esc(o.repond || '')}">
     ${inp('me-a', 'À', o.a || '', { name: 'a', req: true, attrs: { list: 'me-contacts', autocomplete: 'off', placeholder: 'adresse@exemple.ch' } })}
     <datalist id="me-contacts">${tousContacts().filter((c) => c.email).map((c) => `<option value="${esc(c.email)}">${esc(displayName(c))}</option>`).join('')}</datalist>
@@ -413,7 +440,7 @@ function ouvrirComposeur(o) {
     ${txt('me-t', 'Message', o.texte || signatureMail(), { name: 'texte', rows: 11 })}
     <div class="field"><span class="flabel">Pièces jointes</span><div id="me-pj"></div>
       <label class="btn small"><input type="file" id="me-file" multiple hidden>+ Joindre un fichier</label><span class="sub">8 Mo au total.</span></div>
-    ${o.repond ? '<label class="row" style="font-size:14px"><input type="checkbox" name="traite" checked> Marquer le mail comme traité</label>' : ''}
+    ${o.repond ? '<label class="row" style="font-size:14px"><input type="checkbox" name="traite" checked> Marquer le mail comme répondu (traité)</label>' : ''}
     <div class="row-end"><button class="btn primary" type="submit" id="me-envoyer">Envoyer</button></div></form>`);
   const t = $('me-t'); if (t && o.repond) { t.focus(); t.setSelectionRange(0, 0); } else { const a = $('me-a'); if (a && !o.a) a.focus(); }
   $('me-file').addEventListener('change', (e) => {
@@ -443,7 +470,7 @@ FORMS.mailEnvoyer = async (v) => {
     const m = v.repond ? DB.get(v.repond) : null;
     const { data, error } = await Sync.sb.functions.invoke('mails', { body: { envoyer: { a, cc: String(v.cc || '').trim() || undefined, objet: v.objet, texte: v.texte, pieces, inReplyTo: (m && m.messageId) || undefined, nomExp: cfg().nom } } });
     if (error) { let msg = error.message; try { const x = await error.context.clone().json(); if (x && x.erreur) msg = x.erreur; } catch (_) { /* */ } throw new Error(msg); }
-    if (m) majMail(v.repond, Object.assign({ reponses: (m.reponses || []).concat([{ le: new Date().toISOString(), par: Sync.me || '', a }]) }, v.traite ? { statut: 'traite', par: m.par || Sync.me } : {}));
+    if (m) majMail(v.repond, Object.assign({ reponses: (m.reponses || []).concat([{ le: new Date().toISOString(), par: Sync.me || '', a }]) }, v.traite ? { statut: 'traite', traitePar: Sync.me || '' } : {}));
     ECR.pieces = []; closeSheet(); toast(`Envoyé à ${a}${data && data.copie ? ' (copie dans « Envoyés »)' : ''}.`, 5000);
   } catch (e) { if (b) { b.disabled = false; b.textContent = 'Envoyer'; } toast('Envoi impossible : ' + e.message, 8000); }
 };
@@ -496,7 +523,7 @@ ACTIONS.mailPieceDep = async (el) => {
 ACTIONS.mailNonLu = async (el) => { closeSheet(); try { await boite(el.dataset.key, 'nonlu'); toast('Marqué comme non lu chez Infomaniak.'); } catch (e) { toast('Impossible : ' + e.message, 7000); } };
 ACTIONS.mailArchiver = async (el) => {
   const k = el.dataset.key; closeSheet();
-  try { await boite(k, 'archiver'); majMail(k, { statut: 'traite', par: (DB.get(k) || {}).par || Sync.me, archive: true }); toast('Archivé chez Infomaniak.'); } catch (e) { toast('Archivage impossible : ' + e.message, 7000); }
+  try { await boite(k, 'archiver'); majMail(k, { statut: 'traite', traitePar: Sync.me || '', archive: true }); toast('Archivé chez Infomaniak.'); } catch (e) { toast('Archivage impossible : ' + e.message, 7000); }
 };
 ACTIONS.mailSuppr = (el) => confirmSheet('Supprimer ce mail ?', 'Il part dans la corbeille de la boîte Infomaniak (où il se récupère encore), et disparaît de l\'app.', 'mailSupprOk', 'Supprimer', { key: el.dataset.key });
 ACTIONS.mailSupprOk = async (el) => {

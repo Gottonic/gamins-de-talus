@@ -201,6 +201,11 @@ table.irr input.cell-in { width: 84px; }
 .mail-extrait.open { display: block; -webkit-line-clamp: unset; color: var(--ink); }
 .mail-etat { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 .mail-actions { gap: 6px; }
+.etat-mail.afaire { border-color: var(--c-messages); color: var(--c-messages); font-weight: 700; }
+.etat-mail.moi { background: var(--c-messages); border-color: var(--c-messages); color: #fff; font-weight: 700; }
+.etat-mail.autre { background: var(--s-messages, #FCEFD6); border-color: var(--c-messages); color: var(--c-messages); }
+.etat-mail.fini { color: var(--muted); }
+.warn-line { background: var(--late-soft); color: var(--late); border-radius: 8px; padding: 8px 10px; font-size: 14px; margin: 0 0 8px; }
 .seg.wrap { flex-wrap: wrap; }
 .stk { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; border-top: 1px solid var(--line); padding: 10px 0; }
 .stk-q { font-size: 17px; font-weight: 600; text-align: right; }
