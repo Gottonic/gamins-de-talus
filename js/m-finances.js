@@ -29,7 +29,7 @@ function phraseDecompte(d) {
 
 MODULES.finances = {
   titre: 'Finances',
-  tuile() { const d = decompteActuel(); return { line: phraseDecompte(d) }; },
+  tuile() { const d = decompteActuel(); return { line: phraseDecompte(d), badge: depenses().filter((x) => sansJustificatif(x) && (typeof pourMoi !== 'function' || pourMoi(x.par))).length }; },
   render(sub) {
     const t = tabs('finances', [['', "Vue d'ensemble"], ['depenses', 'Dépenses'], ['recettes', 'Recettes'], ['inventaire', 'Inventaire'], ['achats', 'Achats prévus'], ['associes', 'Entre associés'], ['annee', "Fin d'année"]], sub);
     if (sub === 'inventaire') return t + renderInventaire();

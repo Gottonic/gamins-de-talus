@@ -15,8 +15,9 @@ MODULES.taches = {
   tuile() {
     const open = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu');
     const urg = open.filter((t) => t.urgent || tacheEnRetard(t));
-    if (urg.length) return { line: `${urg.length} urgente${urg.length > 1 ? 's' : ''} ou en retard · ${open.length} ouverte${open.length > 1 ? 's' : ''}`, warn: true };
-    return { line: open.length ? `${open.length} à faire` : 'Rien à faire, bravo' };
+    const demain = addDays(todayISO(), 1), presse = open.filter((t) => (t.urgent || (t.echeance && t.echeance <= demain)) && (typeof pourMoi !== 'function' || pourMoi(t.responsable))).length;
+    if (urg.length) return { line: `${urg.length} urgente${urg.length > 1 ? 's' : ''} ou en retard · ${open.length} ouverte${open.length > 1 ? 's' : ''}`, warn: true, badge: presse };
+    return { line: open.length ? `${open.length} à faire` : 'Rien à faire, bravo', badge: presse };
   },
   render(sub) {
     if (sub === 'semaine') return tabs('taches', [['', 'Tâches'], ['semaine', 'Feuille de la semaine']], 'semaine') + renderFeuille();

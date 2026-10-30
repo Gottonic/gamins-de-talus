@@ -61,7 +61,8 @@ MODULES.calendrier = {
   tuile() {
     const l = lundiDe(todayISO()), fin = addDays(l, 6), t = totalHeures(heuresToutes(), (h) => h.date >= l && h.date <= fin);
     const prochains = Object.entries(itemsPeriode(todayISO(), addDays(todayISO(), 6))).reduce((a, [, xs]) => a + xs.filter((x) => x.kind === 'ev' && x.debut).length, 0);
-    return { line: `Semaine : ${personnes().map((p) => `${p.nom} ${fmtH(t[p.k] || 0)} h`).join(' · ')}${prochains ? ` · ${prochains} événement${prochains > 1 ? 's' : ''} à venir` : ''}` };
+    const auj = (itemsPeriode(todayISO(), todayISO())[todayISO()] || []).filter((x) => x.kind === 'ev' && (typeof pourMoi !== 'function' || pourMoi(x.qui))).length;
+    return { line: `Semaine : ${personnes().map((p) => `${p.nom} ${fmtH(t[p.k] || 0)} h`).join(' · ')}${prochains ? ` · ${prochains} événement${prochains > 1 ? 's' : ''} à venir` : ''}`, badge: auj };
   },
   render(sub) {
     if (sub === 'semaine') { setTimeout(() => location.replace('#/calendrier/heures'), 0); return ''; }
