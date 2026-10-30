@@ -244,7 +244,7 @@ function renderAgenda() {
   const today = todayISO(), a = addDays(today, 55), items = itemsPeriode(today, a);
   const days = Object.keys(items).sort().filter((d) => items[d].some((x) => x.kind !== 'heures'));
   const ic = (x) => x.kind === 'ev' ? `var(--ev-${x.type})` : x.kind === 'tache' ? 'var(--c-taches)' : x.kind === 'facture' ? 'var(--c-factures)' : x.kind === 'relance' ? 'var(--c-contacts)' : 'var(--c-cultures)';
-  return `<div class="panel"><div class="between"><h2>Les 8 prochaines semaines</h2><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div>
+  return `<div class="panel"><div class="between"><h2>Les 8 prochaines semaines</h2><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
     ${days.length ? days.map((d) => `<div class="agday"><button type="button" class="agdate" data-act="calDay" data-d="${d}"><b>${d === today ? "Aujourd'hui" : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b><span>${fmtDateCourt(d)}</span></button>
       <div class="agitems">${items[d].filter((x) => x.kind !== 'heures' && !(x.kind === 'ev' && x.multi && !x.debut && d !== today)).map((x) => `<div class="agit${x.fait ? ' fait' : ''}" style="--c:${ic(x)}">${x.heure ? `<span class="num">${esc(x.heure)}</span> ` : ''}${esc(x.kind === 'tache' ? '⚑ ' + x.titre : x.titre)}${x.qui ? ` <span class="hint">· ${esc(quiLabel(x.qui))}</span>` : ''}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}</div></div>`).join('')
       : '<p class="empty">Rien de prévu. Ajoute des journées de travail, récoltes ou livraisons avec « + Événement ».</p>'}</div>`;
@@ -363,3 +363,22 @@ function recolteCalendrierVersStock(k, occ) {
   if (!pr || (cb && !cb.checked)) o.horsStock = true;
   DB.put(mk, o);
 }
+
+/* ---------- S'abonner au calendrier depuis Google Agenda, Proton Calendar… (fonction Supabase « calendrier ») ---------- */
+const ICS_URL = (j) => `${SB_URL}/functions/v1/calendrier?t=${j}`;
+ACTIONS.icsSheet = () => {
+  const k = 'cfg:ics:' + (Sync.me || 'local'), c = DB.get(k);
+  if (!c) { const a = new Uint8Array(24); crypto.getRandomValues(a); DB.put(k, { jeton: [...a].map((x) => x.toString(16).padStart(2, '0')).join(''), tout: false }); }
+  const d = DB.get(k), url = ICS_URL(d.jeton);
+  openSheet(`${sheetHead('Voir ce calendrier dans mon agenda', nomDe(Sync.me))}<div class="sbody">
+    <p>Ton adresse personnelle (à garder pour toi : qui l'a peut lire le calendrier) :</p>
+    <div class="row"><input id="ics-url" readonly value="${esc(url)}" style="flex:1;font-family:var(--font-mono);font-size:12px"><button class="btn" type="button" data-act="copy" data-v="${esc(url)}">Copier</button></div>
+    <label class="row" style="font-size:14px;margin-top:8px"><input type="checkbox" id="ics-tout"${d.tout ? ' checked' : ''}> Tout le monde (sinon : ce qui me concerne, et ce qui est pour toute l'équipe)</label>
+    <h3>Google Agenda</h3><p class="hint">Sur ordinateur : calendar.google.com → « Autres agendas » → <b>+</b> → <b>À partir de l'URL</b> → colle l'adresse. Il apparaît ensuite aussi sur le téléphone. Google le met à jour plusieurs fois par jour (pas tout de suite).</p>
+    <h3>Proton Calendar</h3><p class="hint">Calendrier → <b>+</b> à côté de « Mes agendas » → <b>Ajouter un agenda</b> → <b>S'abonner via un lien</b> (ou « Autres calendriers » selon la version) → colle l'adresse.</p>
+    <h3>Apple, Thunderbird…</h3><p class="hint">« S'abonner à un calendrier » / « Nouveau calendrier en réseau » avec la même adresse.</p>
+    <p class="hint">Contenu : événements (livraisons, récoltes, journées, vacances…) et échéances des tâches, de 2 mois en arrière à 1 an en avant. Lecture seule : on modifie dans l'app.</p>
+    <div class="row-end"><button class="btn danger" type="button" data-act="icsNouveau">Changer l'adresse</button></div></div>`);
+  $('ics-tout').addEventListener('change', (e) => { DB.put(k, Object.assign({}, DB.get(k), { tout: e.target.checked })); });
+};
+ACTIONS.icsNouveau = () => { const k = 'cfg:ics:' + (Sync.me || 'local'); if (DB.get(k)) DB.del(k); closeSheet(); setTimeout(() => { ACTIONS.icsSheet(); toast("Nouvelle adresse : l'ancienne ne marche plus."); }, 50); };

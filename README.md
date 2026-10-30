@@ -71,6 +71,20 @@ GitHub → dépôt `gamins-de-talus` → **Settings** → **Pages** → Source :
 Se connecter, puis **Réglages → Données → Importer** et choisir le fichier de reprise (`gdt-reprise.json`, envoyé à part :
 il n'est pas dans ce dépôt, qui est public). L'app affiche le contrôle des totaux avant d'importer. Ce qui existe déjà n'est jamais écrasé.
 
+## Mise à jour du 30.10.2026 (Drive, corbeille, calendrier dans Google/Proton, mails)
+
+1. **SQL** : Supabase → SQL Editor → coller tout `supabase/mise-a-jour-2026-10-30.sql` → Run.
+   (Drive : tous types de fichiers jusqu'à 25 Mo ; corbeille vidée après 6 mois ; place utilisée.)
+2. **Fonction « calendrier »** (pour voir le calendrier dans Google Agenda, Proton…) : Supabase → Edge Functions →
+   **Deploy a new function** → **Via Editor** → nom `calendrier` → coller `supabase/functions/calendrier/index.ts` → Deploy.
+   Puis dans les réglages de la fonction : désactiver **Verify JWT** (les agendas ne peuvent pas se connecter ; c'est le jeton
+   personnel dans l'adresse qui protège). Dans l'app : Calendrier → Agenda → « Dans mon agenda ».
+3. **Fonction « mails »** : même chose avec le nom `mails` et `supabase/functions/mails/index.ts`, Verify JWT désactivé
+   (la fonction vérifie elle-même que l'appel vient d'un membre). Puis Edge Functions → **Secrets** :
+   `IMAP_USER` = l'adresse (ex. info@gaminsdetalus.ch), `IMAP_PASSWORD` = son mot de passe (idéalement un mot de passe
+   d'application Infomaniak), et si vous voulez la relève automatique : `CRON_SECRET` = une longue phrase au hasard,
+   puis la partie 6 du fichier SQL (avec ce secret). Sans ça, la boîte est relevée quand quelqu'un ouvre l'app.
+
 ## Installer l'app
 
 - **Téléphone** : ouvrir l'adresse dans le navigateur → menu → **Installer** ou **Ajouter à l'écran d'accueil**.
@@ -80,8 +94,9 @@ Se connecter une fois par appareil.
 
 ## Sécurité des données
 
-- **Rien n'est effacé définitivement** : supprimer met l'élément dans la corbeille (Réglages → Données), d'où on peut le restaurer.
-  L'app n'a d'ailleurs pas le droit d'effacer une ligne de la base.
+- **Corbeille** : supprimer met l'élément dans la corbeille (Réglages → Données), d'où on peut le restaurer pendant 6 mois ;
+  ensuite Supabase l'efface pour de bon, historique compris. L'app elle-même n'a pas le droit d'effacer une ligne de la base.
+  Messages : à la corbeille au bout de 3 mois (sauf épinglés).
 - **Historique complet** : chaque version de chaque élément (qui, quand, quoi) est gardée dans la table `rows_history`,
   que personne ne peut modifier depuis l'app. Utile pour retrouver une ancienne valeur : Supabase → Table Editor → `rows_history`.
 - **Hors ligne** : chaque appareil garde une copie ; les changements en attente partent au retour du réseau
