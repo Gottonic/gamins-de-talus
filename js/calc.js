@@ -37,7 +37,7 @@ function recettesUnifiees(recettes, factures, cfg) {
   for (const r of recettes) out.push({ src: 'recette', key: r.key, date: r.date, montant: r2(r.montant), par: r.par, libelle: r.client || r.libelle || '', moyen: r.moyen || '', ref: r.justificatif || '' });
   for (const f of factures) {
     if (f.statut !== 'payee') continue;
-    out.push({ src: 'facture', key: f.key, date: f.payeeLe || f.date, montant: r2(f.total), par: f.encaissePar || (cfg && cfg.compteDe) || 'nicolas', libelle: (f.client && f.client.nom) || '', moyen: f.payeePar === 'especes' ? 'Espèces' : 'Virement', ref: f.numero });
+    out.push({ src: 'facture', key: f.key, date: f.payeeLe || f.date, montant: r2(f.total), par: f.encaissePar || (cfg && cfg.compteDe) || 'nicolas', libelle: (f.client && f.client.nom) || '', moyen: f.payeePar === 'especes' ? 'Espèces' : f.payeePar === 'twint' ? 'TWINT' : 'Virement', ref: f.numero || f.blNumero || 'vente' });
   }
   return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }

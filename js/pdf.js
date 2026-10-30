@@ -100,7 +100,7 @@ function drawInvoice(cv, inv) {
   cv.text('Total CHF', 158, rowY + 3, { size: 10.5, bold: true, align: 'right' });
   cv.text(money(inv.total), 190, rowY + 3, { size: 10.5, bold: true, align: 'right' });
   let ny = rowY + 13;
-  if (cash) cv.text(`Montant de CHF ${money(inv.total)} reçu comptant, en espèces, le ${fmtDate(inv.payeeLe || inv.date)}. Merci !`, 20, ny, { size: 8.5 });
+  if (cash) cv.text(`Montant de CHF ${money(inv.total)} reçu ${inv.payeePar === 'twint' ? 'par TWINT' : inv.payeePar === 'virement' ? 'par virement' : 'comptant, en espèces,'} le ${fmtDate(inv.payeeLe || inv.date)}. Merci !`, 20, ny, { size: 8.5 });
   else cv.text(`Payable dans les ${inv.delai} jours, au plus tard le ${fmtDate(inv.echeance)}, avec la section paiement ci-dessous.`, 20, ny, { size: 8.5 });
   ny += 4.3;
   if (E.mention) { cv.text(trunc(E.mention, 100), 20, ny, { size: 8.5 }); ny += 4.3; }
@@ -142,3 +142,40 @@ function drawInvoice(cv, inv) {
 function invoiceSvg(inv) { const cv = svgCanvas(); try { drawInvoice(cv, inv); } catch (e) { return `<p class="empty">Aperçu indisponible : ${esc(e.message)}</p>`; } return cv.svg(); }
 function invoicePdfBlob(inv) { const cv = pdfCanvas(); drawInvoice(cv, inv); return cv.doc.output('blob'); }
 function invoiceFileName(inv) { return `Facture ${inv.numero} ${inv.client.nom}`.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + '.pdf'; }
+
+/* ---------- Bulletin de livraison (A4, sans section paiement) ---------- */
+function drawBulletin(cv, v, avecPrix) {
+  const E = v.emetteur || cfg(), C = v.client || {};
+  cv.text(E.nom || '', 20, 24, { size: 18, bold: true });
+  let y = 30.5;
+  for (const l of [E.titulaire, street(E), place(E), E.telephone, E.email].filter(Boolean)) { cv.text(l, 20, y, { size: 9 }); y += 4.2; }
+  let ry = 52;
+  cv.text(trunc(C.nom || '', 44), 118, ry, { size: 10.5, bold: true }); ry += 5;
+  for (const l of [C.attn ? "À l'att. de " + C.attn : '', street(C), place(C)].filter(Boolean)) { cv.text(trunc(l, 46), 118, ry, { size: 10 }); ry += 4.6; }
+  cv.text('Bulletin de livraison ' + (v.blNumero || ''), 20, 92, { size: 15, bold: true });
+  const meta = [['Livré le', fmtDate(v.livraison || v.date)]];
+  if (v.numero) meta.push(['Facture', v.numero]);
+  let my = 100;
+  for (const [k, x] of meta) { cv.text(k, 20, my, { size: 9 }); cv.text(x, 58, my, { size: 9, bold: true }); my += 4.6; }
+  const ty = 118;
+  cv.text('Désignation', 20, ty, { size: 8.5, bold: true });
+  cv.text('Quantité', 128, ty, { size: 8.5, bold: true, align: 'right' });
+  if (avecPrix) { cv.text('Prix unitaire', 158, ty, { size: 8.5, bold: true, align: 'right' }); cv.text('Montant CHF', 190, ty, { size: 8.5, bold: true, align: 'right' }); }
+  cv.line(20, ty + 2, 190, ty + 2, { w: 0.3 });
+  let rowY = ty + 7.5;
+  for (const l of v.lignes || []) {
+    cv.text(trunc(l.designation, 46), 20, rowY, { size: 9.5 });
+    cv.text(fmtQty(l.quantite) + ' ' + (l.unite || ''), 128, rowY, { size: 9.5, align: 'right' });
+    if (avecPrix) { cv.text(money(l.prix), 158, rowY, { size: 9.5, align: 'right' }); cv.text(money(r2(num(l.quantite) * num(l.prix))), 190, rowY, { size: 9.5, align: 'right' }); }
+    rowY += 6.2;
+  }
+  if (avecPrix) { cv.line(120, rowY - 2.6, 190, rowY - 2.6, { w: 0.3 }); cv.text('Total CHF', 158, rowY + 3, { size: 10.5, bold: true, align: 'right' }); cv.text(money(v.total), 190, rowY + 3, { size: 10.5, bold: true, align: 'right' }); rowY += 8; }
+  if (v.remarque) { cv.text(trunc(v.remarque, 110), 20, rowY + 6, { size: 8.5 }); rowY += 5; }
+  const sy = Math.max(rowY + 22, 200);
+  cv.text('Marchandise reçue en bon état :', 20, sy, { size: 9 });
+  cv.line(20, sy + 18, 90, sy + 18, { w: 0.3 }); cv.text('Date, nom et signature', 20, sy + 22, { size: 7 });
+  cv.line(118, sy + 18, 190, sy + 18, { w: 0.3 }); cv.text('Livré par', 118, sy + 22, { size: 7 });
+}
+function bulletinPdfBlob(v, avecPrix) { const cv = pdfCanvas(); drawBulletin(cv, v, avecPrix); return cv.doc.output('blob'); }
+function bulletinSvg(v, avecPrix) { const cv = svgCanvas(); try { drawBulletin(cv, v, avecPrix); } catch (e) { return `<p class="empty">Aperçu indisponible : ${esc(e.message)}</p>`; } return cv.svg(); }
+function bulletinFileName(v) { return `Bulletin ${v.blNumero} ${(v.client && v.client.nom) || ''}`.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() + '.pdf'; }

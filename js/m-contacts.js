@@ -122,7 +122,7 @@ function contactFiche(c) {
     ${lignesContact(c)}
     ${c.notes ? `<div><h3>Notes</h3><div class="notes">${esc(c.notes)}</div></div>` : ''}
     <div><h3>Factures</h3>${invs.length ? `<p class="hint">Facturé : <span class="num">${chf(billed)}</span>${open ? ` · à encaisser : <span class="num">${chf(open)}</span>` : ''}</p>
-      <div class="table-wrap"><table class="list"><tbody>${invs.map((i) => `<tr class="click" data-act="go" data-href="#/factures/voir/${encodeURIComponent(i.key)}"><td class="num">${esc(i.numero)}</td><td class="num">${fmtDate(i.date)}</td><td class="r num">${money(i.total)}</td><td><span class="pill ${facStatut(i)}">${esc(facLabel(i))}</span></td></tr>`).join('')}</tbody></table></div>`
+      <div class="table-wrap"><table class="list"><tbody>${invs.map((i) => `<tr class="click" data-act="go" data-href="#/factures/voir/${encodeURIComponent(i.key)}"><td class="num">${esc(i.numero || i.blNumero || 'Vente')}</td><td class="num">${fmtDate(i.date)}</td><td class="r num">${money(i.total)}</td><td><span class="pill ${facStatut(i)}">${esc(facLabel(i))}</span></td></tr>`).join('')}</tbody></table></div>`
       : '<p class="hint">Aucune facture pour ce contact.</p>'}</div>
     ${recs.length ? `<div><h3>Ventes directes</h3><div class="items">${recs.map((r) => `<div class="item" style="cursor:default"><span class="who"><span>${fmtDate(r.date)} · ${esc(r.moyen || '')}</span></span><span class="amt">${chf(r.montant)}</span></div>`).join('')}</div></div>` : ''}
     ${(c.journal || []).length ? `<details class="fold"><summary>Historique de prospection (${c.journal.length})</summary>${(c.prospection || {}).pourquoi ? `<p class="hint">${esc(c.prospection.pourquoi)}</p>` : ''}${journalHtml(c)}</details>` : ''}

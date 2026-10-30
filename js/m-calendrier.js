@@ -33,6 +33,7 @@ function titreEv(e) {
 }
 /* Récoltes notées au calendrier pour une culture (kg) */
 function recolteNotee(cultureKey) {
+  if (typeof recoltesDeCulture === 'function') return recoltesDeCulture(cultureKey);
   let kg = 0;
   for (const e of evenements()) if (e.type === 'recolte' && e.cultureId === cultureKey) for (const o of Object.values(e.occ || {})) kg += num(o.kg);
   return kg;
@@ -48,7 +49,7 @@ function itemsPeriode(de, a) {
     }
   }
   for (const t of taches()) if (t.statut !== 'termine' && t.echeance && t.echeance >= de && t.echeance <= a) add(t.echeance, { kind: 'tache', key: t.key, titre: t.titre, urgent: t.urgent, qui: t.responsable });
-  for (const f of factures()) { const s = facStatut(f); if ((s === 'ouverte' || s === 'retard') && f.echeance >= de && f.echeance <= a) add(f.echeance, { kind: 'facture', key: f.key, titre: `Échéance ${f.numero} · ${f.client.nom}`, montant: f.total }); }
+  for (const f of factures()) { const s = facStatut(f); if ((s === 'ouverte' || s === 'retard') && f.echeance >= de && f.echeance <= a) add(f.echeance, { kind: 'facture', key: f.key, titre: `Échéance ${f.numero || f.blNumero || 'vente'} · ${f.client.nom}`, montant: f.total }); }
   for (const h of heuresToutes()) if (h.date >= de && h.date <= a) add(h.date, { kind: 'heures', personne: h.personne, heures: num(h.heures), off: !!h.off });
   for (const c of relancesProspection(de, a)) add(c.prospection.relanceLe, { kind: 'relance', key: c.key, titre: 'Relancer ' + displayName(c) });
   return jours;
@@ -152,7 +153,7 @@ function ouvrirJour(d) {
     const det = [e.heureDebut ? e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : '', quiLabel(e.qui), c ? displayName(c) : '', cu ? cu.nom : '', rec ? (RECS.find((r) => r[0] === rec) || [, ''])[1].toLowerCase() : '', x.multi ? `du ${fmtDateCourt(x.occ)} au ${fmtDateCourt(addDays(x.occ, Math.round((new Date((e.fin || e.date) + 'T12:00') - new Date(e.date + 'T12:00')) / 864e5)))}` : ''].filter(Boolean).join(' · ');
     return `<div class="evline" style="--c:var(--ev-${e.type})"><div class="between"><div><strong>${esc(x.titre)}</strong><br><span class="hint">${esc(evType(e.type).court)}${det ? ' · ' + esc(det) : ''}</span></div>
       <label class="row" style="font-size:14px"><input type="checkbox" data-fait="${esc(x.key)}|${x.occ}"${st.fait ? ' checked' : ''}> Fait</label></div>
-      ${e.type === 'recolte' ? `<div class="row"><label class="hint" for="kg-${esc(x.key)}">Récolté (kg)</label><input id="kg-${esc(x.key)}" style="max-width:110px" type="text" inputmode="decimal" data-kg="${esc(x.key)}|${x.occ}" value="${st.kg ? esc(fmtH(st.kg)) : ''}"></div>` : ''}
+      ${e.type === 'recolte' ? (() => { const mv = DB.get(`mvt:ev:${x.key}:${x.occ}`), pr = typeof produitDeCulture === 'function' ? produitDeCulture(DB.get(e.cultureId)) : null; return `<div class="row"><label class="hint" for="kg-${esc(x.key)}">Récolté (kg)</label><input id="kg-${esc(x.key)}" style="max-width:110px" type="text" inputmode="decimal" data-kg="${esc(x.key)}|${x.occ}" value="${st.kg ? esc(fmtH(st.kg)) : ''}">${pr ? `<label class="hint"><input type="checkbox" id="kgs-${esc(x.key)}" data-kgstock="${esc(x.key)}|${x.occ}"${!mv || !mv.horsStock ? ' checked' : ''}> ajouter au stock (${esc(pr.nom)})</label>` : ''}</div>`; })() : ''}
       ${e.remarque ? `<p class="hint" style="white-space:pre-wrap">${esc(e.remarque)}</p>` : ''}
       <div class="row">${e.type === 'livraison' && e.contactId ? `<button class="btn small primary" type="button" data-act="evFacturer" data-key="${esc(x.key)}" data-occ="${x.occ}">Créer la facture</button>` : ''}
         <button class="btn small" type="button" data-act="evEdit" data-key="${esc(x.key)}">Modifier</button>
@@ -178,8 +179,9 @@ function ouvrirJour(d) {
     const [k, occ] = el.dataset.kg.split('|'); const e = DB.get(k); if (!e) return;
     const o = Object.assign({}, e, { occ: Object.assign({}, e.occ || {}) }); o.occ[occ] = Object.assign({}, o.occ[occ] || {}, { kg: el.value.trim() === '' ? null : r2(num(el.value)) });
     if (o.occ[occ].kg) o.occ[occ].fait = true;
-    DB.put(k, o); toast('Récolte notée.');
+    DB.put(k, o); recolteCalendrierVersStock(k, occ); toast('Récolte notée.');
   }));
+  sh.querySelectorAll('input[data-kgstock]').forEach((el) => el.addEventListener('change', () => { const [k, occ] = el.dataset.kgstock.split('|'); recolteCalendrierVersStock(k, occ); }));
 }
 ACTIONS.evSauter = (el) => {
   const e = DB.get(el.dataset.key); if (!e) return;
@@ -350,3 +352,14 @@ FORMS.mesHeures = (v) => {
   closeSheet();
   toast(h ? `${fmtH(h)} h notées pour ${nomDe(v.p)} ${v.d === todayISO() ? "aujourd'hui" : 'le ' + fmtDate(v.d)}.` : 'Heures effacées pour ce jour.');
 };
+
+/* Une récolte notée au calendrier devient un mouvement « récolte » (culture + produit lié), dans le stock si la case est cochée */
+function recolteCalendrierVersStock(k, occ) {
+  if (typeof produitDeCulture !== 'function') return;
+  const e = DB.get(k); if (!e) return; const kg = num(((e.occ || {})[occ] || {}).kg), mk = `mvt:ev:${k}:${occ}`;
+  if (!(kg > 0)) { if (DB.get(mk)) DB.del(mk); return; }
+  const pr = produitDeCulture(DB.get(e.cultureId)), cb = $('kgs-' + k);
+  const o = { date: occ, prod: pr ? pr.key : '', qte: kg, type: 'recolte', culture: e.cultureId || '', ref: 'ev:' + k + ':' + occ, par: Sync.me || '', note: 'Calendrier' };
+  if (!pr || (cb && !cb.checked)) o.horsStock = true;
+  DB.put(mk, o);
+}

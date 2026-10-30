@@ -34,7 +34,7 @@ function comptesAnnee(y) {
   const P31 = parts(c, y + '-12-31'); ps.forEach((p) => { part[p.k] -= o.amort * P31[p.k]; });
   o.part = part; o.P31 = P31;
   o.heures = totalHeures(heuresToutes(), (h) => yearOf(h.date) === y);
-  o.facturesY = factures().filter((f) => yearOf(f.date) === y).sort((a, b) => String(a.numero).localeCompare(String(b.numero)));
+  o.facturesY = factures().filter((f) => yearOf(f.date) === y && f.numero).sort((a, b) => String(a.numero).localeCompare(String(b.numero)));
   o.ouvertes = factures().filter((f) => f.date <= y + '-12-31' && f.statut !== 'payee' && f.statut !== 'annulee');
   o.valeurInv = inv.reduce((a, i) => a + valeurFinAnnee(i, Number(y), des), 0);
   const lies = new Set(inv.map((i) => i.depenseId).filter(Boolean));
@@ -148,7 +148,7 @@ function pdfComptes(o) {
   if (o.ouvertes.length) {
     titre('Factures à recevoir au 31.12');
     tableau([{ titre: 'N°', l: 30 }, { titre: 'Date', l: 22 }, { titre: 'Client', l: 90 }, { titre: 'Échéance', l: 20 }, { titre: 'Montant', l: 12, r: true }],
-      o.ouvertes.map((f) => [f.numero, fmtDate(f.date), f.client.nom, fmtDate(f.echeance), pdfM(f.total)]));
+      o.ouvertes.map((f) => [f.numero || f.blNumero || 'vente', fmtDate(f.date), f.client.nom, fmtDate(f.echeance), pdfM(f.total)]));
   }
   pied();
   return doc.output('blob');
