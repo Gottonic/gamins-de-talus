@@ -4,9 +4,10 @@
 'use strict';
 
 const TYPES = [
-  { k: 'grossiste', label: 'Grossiste' }, { k: 'collectivite', label: 'Restauration collective' }, { k: 'pro', label: 'Client pro' },
+  { k: 'grossiste', label: 'Grossiste' }, { k: 'collectivite', label: 'Restauration collective' }, { k: 'pro', label: 'Restaurant & épicerie' },
   { k: 'particulier', label: 'Particulier' }, { k: 'fournisseur', label: 'Fournisseur' }, { k: 'partenaire', label: 'Partenaire' }, { k: 'autre', label: 'Autre' },
 ];
+const TARIF_AIDE = 'Prix sur les ventes : grossiste et restauration collective = minimum de la fourchette ; restaurant et épicerie = un tiers ; les autres = maximum. Ensuite, le client garde son dernier prix.';
 const typeLabel = (k) => (TYPES.find((t) => t.k === k) || { label: 'Autre' }).label;
 const billName = (c) => (c.organisation || c.nom || '').trim();
 const attnName = (c) => (c.organisation && c.nom ? c.nom.trim() : '');
@@ -142,7 +143,7 @@ function contactForm(c, prospect) {
       ${inp('ct-organisation', 'Établissement / organisation', c.organisation, { name: 'organisation', attrs: { maxlength: 90 } })}
       ${inp('ct-nom', 'Personne de contact', c.nom, { name: 'nom', attrs: { maxlength: 70, placeholder: 'facultatif' } })}
       ${inp('ct-fonction', 'Fonction', c.fonction, { name: 'fonction', attrs: { maxlength: 70, placeholder: 'ex. resp. achats, chef' } })}
-      ${isP ? sel('ct-pcat', 'Catégorie', p.categorie || 'Autre', CATEGORIES_P.map((x) => [x, x]), { name: 'categorie' }) : sel('ct-type', 'Type', c.type || 'autre', TYPES.map((t) => [t.k, t.label]), { name: 'type' })}
+      ${isP ? sel('ct-pcat', 'Catégorie', p.categorie || 'Autre', CATEGORIES_P.map((x) => [x, x]), { name: 'categorie' }) : sel('ct-type', 'Type', c.type || 'autre', TYPES.map((t) => [t.k, t.label]), { name: 'type', sub: TARIF_AIDE })}
       ${inp('ct-telephone', 'Téléphone', c.telephone, { name: 'telephone', type: 'tel', attrs: { maxlength: 90 } })}
       ${inp('ct-email', 'E-mail', c.email, { name: 'email', attrs: { maxlength: 160 } })}
       ${inp('ct-site', 'Site internet', c.site, { name: 'site', attrs: { maxlength: 120 } })}
@@ -281,7 +282,7 @@ function formConversion(c) {
   return `<form class="panel form" data-form="convertir"><input type="hidden" name="key" value="${esc(c.key)}">
     <h2>${esc(displayName(c))} devient client</h2>
     <p class="hint">Sa fiche passe dans « Clients et contacts », avec tout son journal d'appels. Vérifie le type (il fixe les prix sur les factures) et l'adresse (nécessaire pour une facture QR).</p>
-    ${sel('cv-type', 'Type de client', c.type || TYPE_DE_CATEGORIE[p.categorie] || 'pro', TYPES.map((t) => [t.k, t.label]), { name: 'type' })}
+    ${sel('cv-type', 'Type de client', c.type || TYPE_DE_CATEGORIE[p.categorie] || 'pro', TYPES.map((t) => [t.k, t.label]), { name: 'type', sub: TARIF_AIDE })}
     <div class="grid2">
       ${inp('cv-org', 'Nom sur la facture', c.organisation || c.nom, { name: 'organisation' })}${inp('cv-nom', "À l'attention de", c.organisation ? c.nom : '', { name: 'nom' })}
       ${inp('cv-rue', 'Rue', c.rue, { name: 'rue' })}${inp('cv-num', 'N°', c.numero, { name: 'numero' })}
@@ -307,10 +308,10 @@ const PITCH_DEFAUT = "1. Qui : « Bonjour, je suis [prénom], maraîcher à Marl
 /* Boîte « pitch et prix », repliable, en haut de la prospection */
 function pitchBox() {
   const P = DB.get('cfg:prospection') || {}, ouvert = ls.get('gdt-pitch-ouvert') === '1';
-  const prods = produits(), cols = TARIFS.filter(([k]) => prods.some((p) => !vide((p.prixParType || {})[k])));
-  const prix = prods.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Fourchette</th>${cols.map(([, l]) => `<th class="r">${esc(l.replace(/ \(.*\)/, ''))}</th>`).join('')}</tr></thead><tbody>
-    ${prods.map((p) => `<tr><td>${esc(p.nom)}${p.remarque ? `<br><span class="hint">${esc(p.remarque)}</span>` : ''}</td><td class="r num" style="white-space:nowrap">${fourchette(p) || '—'}</td>${cols.map(([k]) => `<td class="r num">${vide((p.prixParType || {})[k]) ? '—' : money(p.prixParType[k])}</td>`).join('')}</tr>`).join('')}
-    </tbody></table></div><p class="hint">CHF par ${esc(prods[0].unite || 'kg')}. À modifier dans Factures → <a href="#/factures/produits">Produits et prix</a>.</p>` : '<p class="hint">Aucun produit. Ajoute-les dans Factures → Produits et prix.</p>';
+  const prods = produits(), cols = NIVEAUX;
+  const prix = prods.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Fourchette</th>${cols.map(([k]) => `<th class="r">${esc(NIVEAU_COURT[k])}</th>`).join('')}</tr></thead><tbody>
+    ${prods.map((p) => `<tr><td>${esc(p.nom)}${p.remarque ? `<br><span class="hint">${esc(p.remarque)}</span>` : ''}</td><td class="r num" style="white-space:nowrap">${fourchette(p) || '—'}</td>${cols.map(([k]) => `<td class="r num">${vide(prixNiveau(p, k)) ? '—' : money(prixNiveau(p, k))}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div><p class="hint">CHF par ${esc(prods[0].unite || 'kg')}. À modifier dans Ventes → <a href="#/factures/stock">Stock et prix</a>.</p>` : '<p class="hint">Aucun produit. Ajoute-les dans Ventes → Stock et prix.</p>';
   return `<details class="pitchbox" id="pitchbox"${ouvert ? ' open' : ''}><summary><span>Pitch d'appel et prix</span><span class="hint">${ouvert ? 'fermer' : 'ouvrir'}</span></summary>
     <div class="split"><div class="form"><div class="between"><h3>Pitch</h3><button class="btn small" type="button" data-act="pitchEdit">Modifier</button></div>
       <div class="notes">${esc(P.pitch || PITCH_DEFAUT)}</div>${P.memo ? `<h3>À avoir sous la main</h3><div class="notes">${esc(P.memo)}</div>` : ''}</div>

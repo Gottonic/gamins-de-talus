@@ -38,7 +38,7 @@ function renderStock() {
   const ps = produits(), ms = mouvements();
   const st = ps.map((p) => ({ p, q: stockDe(p.key, ms) }));
   const enStock = st.filter((x) => (x.q != null && x.q > 0) || x.p.dispo || x.p.auChamp);
-  const prix = (p) => [fourchette(p) ? `fourchette ${fourchette(p)}` : '', ...TARIFS.filter(([k]) => !vide((p.prixParType || {})[k])).map(([k, l]) => `${l.replace(/ \(.*\)/, '')} ${money(p.prixParType[k])}`), p.direct && p.direct.prix ? `vente directe ${money(p.direct.prix)} / ${esc(p.direct.unite || p.unite)}` : ''].filter(Boolean).join(' · ');
+  const prix = (p) => [fourchette(p) ? `fourchette ${fourchette(p)}` : '', prixNiveauxTxt(p), p.direct && p.direct.prix ? `vente directe ${money(p.direct.prix)} / ${esc(p.direct.unite || p.unite)}` : ''].filter(Boolean).join(' · ');
   const ligne = ({ p, q }) => `<div class="stk${q != null && q < 0 ? ' neg' : ''}">
       <div class="stk-nom"><b>${esc(p.nom)}</b>${p.auChamp ? ' <span class="tpill champ">🌱 au champ</span>' : ''}${p.dispo && (q == null || q <= 0) ? ' <span class="tpill">disponible</span>' : ''}<br><span class="hint">${prix(p) || 'Prix à définir'}</span></div>
       <div class="stk-q num">${q != null ? fmtQ(q, p.unite) : '—'}</div>
