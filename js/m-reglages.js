@@ -30,7 +30,7 @@ function renderEntreprise() {
     </div>
     ${fld('s-iban', 'IBAN (compte BAS)', `<input id="s-iban" name="iban" class="num" value="${esc(fmtIban(s.iban))}" autocomplete="off" maxlength="30">`, '<span id="s-iban-check"></span>')}
     <div class="grid2">
-      ${sel('s-compte', 'Le compte appartient à', s.compteDe, persOptions(), { name: 'compteDe', sub: 'Les virements reçus comptent comme encaissés par cette personne.' })}
+      ${sel('s-compte', 'Le compte appartient à', s.compteDe, persOptions(), { name: 'compteDe', sub: 'Les virements reçus comptent comme encaissés par cette personne, et c\'est sur son tableau de bord qu\'apparaissent les factures échues à vérifier.' })}
       ${inp('s-delai', 'Délai de paiement (jours)', s.delai, { name: 'delai', type: 'number', attrs: { min: 0, max: 120 } })}
       ${inp('s-pre', 'Préfixe des numéros', s.prefixe, { name: 'prefixe', attrs: { maxlength: 6 }, sub: `Ex. ${esc(s.prefixe || 'GDT')}-${todayISO().slice(0, 4)}-001` })}
     </div>

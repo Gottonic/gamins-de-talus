@@ -312,9 +312,10 @@ function creerVente(pdf) {
    Envoi direct depuis l'app par la boîte Infomaniak (fonction « mails », copie dans « Envoyés »), ou, à défaut,
    « Ouvrir dans ma messagerie » : partage du PDF sur téléphone, ou mail prérempli + PDF téléchargé sur ordinateur. */
 const blobB64 = (b) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = ko; r.readAsDataURL(b); });
-function texteMailFacture(f) {
+function texteMailFacture(f, rappel) {
   const s = cfg(), c = f.client && f.client.id ? DB.get(f.client.id) : null, salut = c && attnName(c) ? 'Bonjour ' + attnName(c) : c && c.type === 'particulier' && c.nom ? 'Bonjour ' + c.nom : 'Bonjour';
   const paye = facStatut(f) === 'payee';
+  if (rappel && f.numero && !paye) return { objet: `Rappel : facture ${f.numero} – ${s.nom}`, texte: `${salut},\n\nsauf erreur de notre part, nous n'avons pas encore reçu le paiement de la facture ${f.numero} du ${fmtDate(f.date)}, d'un montant de CHF ${money(f.total)}, qui était payable jusqu'au ${fmtDate(f.echeance)}. Vous la trouverez à nouveau ci-jointe, avec le QR-code pour le paiement.\nSi le versement est déjà parti, merci beaucoup et ne tenez pas compte de ce message.\n\nBelle journée,\n${Sync.me ? nomDe(Sync.me) + '\n' : ''}${s.nom}${s.telephone ? '\n' + s.telephone : ''}${s.email ? '\n' + s.email : ''}` };
   const corps = f.numero
     ? `vous trouverez ci-joint la facture ${f.numero} du ${fmtDate(f.date)}, d'un montant de CHF ${money(f.total)}${paye ? ', déjà réglée : merci !' : `, payable jusqu'au ${fmtDate(f.echeance)} avec le QR-code en bas de la facture.`}${f.blNumero ? `\nLe bulletin de livraison ${f.blNumero} est joint aussi.` : ''}`
     : `vous trouverez ci-joint le bulletin de livraison ${f.blNumero} du ${fmtDate(f.livraison || f.date)}.`;
@@ -322,14 +323,14 @@ function texteMailFacture(f) {
 }
 ACTIONS.facMail = (el) => {
   const k = el.dataset.key, f = DB.get(k); if (!f) return; closeSheet();
-  const c = f.client && f.client.id ? DB.get(f.client.id) : null, t = texteMailFacture(f);
-  openSheet(`${sheetHead('Envoyer par mail', nomVente(f))}<form class="sbody form" data-form="facMail"><input type="hidden" name="key" value="${esc(k)}">
+  const c = f.client && f.client.id ? DB.get(f.client.id) : null, rappel = !!el.dataset.rappel, t = texteMailFacture(f, rappel);
+  openSheet(`${sheetHead(rappel ? 'Envoyer un rappel' : 'Envoyer par mail', nomVente(f))}<form class="sbody form" data-form="facMail"><input type="hidden" name="key" value="${esc(k)}">
     ${inp('fm-a', 'À', (c && c.email) || '', { name: 'a', type: 'email', req: true, attrs: { placeholder: 'adresse du client' }, sub: c && !c.email ? `Pas d'adresse dans la fiche de ${esc(displayName(c))} : elle y sera ajoutée.` : '' })}
     ${inp('fm-o', 'Objet', t.objet, { name: 'objet', req: true })}
     ${txt('fm-t', 'Message', t.texte, { name: 'texte', rows: 9 })}
     <div class="field"><span class="flabel">Pièces jointes</span>
       ${f.numero ? `<label class="row" style="font-size:14px"><input type="checkbox" name="pjFacture" checked> ${esc(invoiceFileName(f))}</label>` : ''}
-      ${f.blNumero ? `<label class="row" style="font-size:14px"><input type="checkbox" name="pjBl" checked> ${esc(bulletinFileName(f))}</label>` : ''}</div>
+      ${f.blNumero ? `<label class="row" style="font-size:14px"><input type="checkbox" name="pjBl"${rappel ? '' : ' checked'}> ${esc(bulletinFileName(f))}</label>` : ''}</div>
     <label class="row" style="font-size:14px"><input type="checkbox" name="copie"> M'envoyer une copie (${esc(cfgMails().adresse || 'boîte commune')})</label>
     <p class="hint">Le mail part de votre adresse Infomaniak, et une copie est rangée dans « Envoyés ».</p>
     <div class="row-end"><button class="btn" type="button" data-act="facMailApp" data-key="${esc(k)}">Ouvrir dans ma messagerie</button><button class="btn primary" type="submit" id="fm-envoyer">Envoyer</button></div></form>`);
@@ -350,7 +351,7 @@ FORMS.facMail = async (v) => {
     const pieces = await Promise.all((await piecesFacture(f, v)).map(async (p) => ({ nom: p.nom, type: 'application/pdf', base64: await blobB64(p.blob) })));
     const { data, error } = await Sync.sb.functions.invoke('mails', { body: { envoyer: { a, objet: v.objet, texte: v.texte, pieces, cc: v.copie ? cfgMails().adresse || undefined : undefined, nomExp: cfg().nom } } });
     if (error) { let m = error.message; try { const x = await error.context.clone().json(); if (x && x.erreur) m = x.erreur; } catch (_) { /* */ } throw new Error(m); }
-    const o = DB.get(k); DB.put(k, Object.assign({}, o, { envois: (o.envois || []).concat([{ le: new Date().toISOString(), a, par: Sync.me || '' }]) }));
+    const o = DB.get(k), rap = /^Rappel/i.test(v.objet || ''); DB.put(k, Object.assign({}, o, { envois: (o.envois || []).concat([Object.assign({ le: new Date().toISOString(), a, par: Sync.me || '' }, rap ? { rappel: true } : {})]) }, rap ? { verifierApres: addDays(todayISO(), 7) } : {}));
     const c = f.client && f.client.id ? DB.get(f.client.id) : null; if (c && !c.email) DB.put(f.client.id, Object.assign({}, c, { email: a }));
     closeSheet(); toast(`Envoyé à ${a}${data && data.copie ? ' (copie dans « Envoyés »)' : ''}.`, 5000);
   } catch (e) { if (b) { b.disabled = false; b.textContent = 'Envoyer'; } toast('Envoi impossible : ' + e.message, 8000); }
@@ -442,6 +443,35 @@ FORMS.facPaid = (v) => {
   const f = DB.get(v.key); if (!f) return;
   DB.put(v.key, Object.assign({}, f, { statut: 'payee', payeeLe: v.date || todayISO(), payeePar: v.mode, encaissePar: v.par }));
   closeSheet(); toast(`${nomVente(f)} marquée comme payée.`);
+};
+/* ---------- Virements à vérifier ----------
+   Une facture arrivée à échéance sans paiement noté s'affiche sur le tableau de bord de la personne à qui appartient
+   le compte (Réglages → « Le compte appartient à ») : elle regarde son compte et dit « reçu » ou « pas encore ». */
+const titulaireCompte = () => cfg().compteDe || '';
+const aVerifier = (f, today) => f.paiement !== 'especes' && ['ouverte', 'retard'].includes(facStatut(f)) && f.echeance && f.echeance <= today && !(f.verifierApres && f.verifierApres > today);
+const virementsAVerifier = () => { const t = todayISO(); return factures().filter((f) => aVerifier(f, t)).sort((a, b) => String(a.echeance).localeCompare(String(b.echeance))); };
+ACTIONS.facVerif = (el) => {
+  const k = el.dataset.key, f = DB.get(k); if (!f) return; const s = cfg(), c = f.client && f.client.id ? DB.get(f.client.id) : null;
+  const rappels = (f.envois || []).filter((e) => e.rappel);
+  openSheet(`${sheetHead('Versement à vérifier', `${nomVente(f)} · ${f.client.nom}`)}<div class="sbody">
+    <p style="margin-top:0">Regarde sur ${s.compteDe ? 'ton compte' : 'le compte'}${s.iban ? ` (${esc(fmtIban(s.iban))})` : ''} si <b>${chf(f.total)}</b> de <b>${esc(f.client.nom)}</b> sont arrivés${f.numero ? `, référence ${esc(f.numero)}` : ''}. Échéance le ${fmtDate(f.echeance)}.</p>
+    ${rappels.length ? `<p class="hint">Rappel déjà envoyé le ${rappels.map((e) => fmtDateCourt(String(e.le).slice(0, 10))).join(', ')}.</p>` : ''}
+    <div class="menu-list">
+      <button type="button" class="menu-it" data-act="facVerifRecu" data-key="${esc(k)}">✓ Reçu : marquer comme payée</button>
+      ${f.numero ? `<button type="button" class="menu-it" data-act="facMail" data-rappel="1" data-key="${esc(k)}">✉️ Pas reçu : envoyer un rappel${c && c.email ? ' à ' + esc(c.email) : ''}</button>` : ''}
+      <button type="button" class="menu-it" data-act="facVerifPlusTard" data-key="${esc(k)}" data-j="3">⏳ Pas encore : revoir dans 3 jours</button>
+      <button type="button" class="menu-it" data-act="facVerifPlusTard" data-key="${esc(k)}" data-j="7">⏳ Revoir dans une semaine</button>
+      <button type="button" class="menu-it" data-act="go" data-href="#/factures/voir/${encodeURIComponent(k)}">Voir la vente</button>
+    </div></div>`);
+};
+ACTIONS.facVerifRecu = (el) => {
+  const k = el.dataset.key, f = DB.get(k); if (!f) return; closeSheet();
+  const o = Object.assign({}, f, { statut: 'payee', payeeLe: todayISO(), payeePar: 'virement', encaissePar: titulaireCompte() || Sync.me || '' }); delete o.verifierApres;
+  DB.put(k, o); toast(`${nomVente(f)} : paiement noté (virement, aujourd'hui).`);
+};
+ACTIONS.facVerifPlusTard = (el) => {
+  const k = el.dataset.key, f = DB.get(k), j = Number(el.dataset.j) || 3; if (!f) return; closeSheet();
+  DB.put(k, Object.assign({}, f, { verifierApres: addDays(todayISO(), j) })); toast(`Ça revient sur le tableau de bord le ${fmtDateCourt(addDays(todayISO(), j))}.`);
 };
 ACTIONS.facReopen = (el) => { const f = DB.get(el.dataset.key); if (!f) return; DB.put(el.dataset.key, Object.assign({}, f, { statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '' })); toast(`${f.numero} remise en ouverte.`); };
 ACTIONS.facCancel = (el) => { const f = DB.get(el.dataset.key); confirmSheet('Annuler ' + nomVente(f) + ' ?', (f.numero ? 'Le numéro reste utilisé et la facture reste dans la liste, barrée.' : 'La vente reste dans la liste, barrée.') + ' Le stock est rendu.', 'facCancelOk', 'Oui, annuler', { key: el.dataset.key }); };

@@ -46,7 +46,13 @@ function renderAccueil() {
     plus: { href: '#/messages', txt: 'Ouvrir la messagerie' } });
   const ml = typeof mailsATraiter === 'function' ? mailsATraiter().filter((m) => ACC.vue !== 'moi' || !m.par || m.par === Sync.me) : [];
   if (ml.length) groupes.push({ mod: 'mails', titre: 'Mails à traiter', n: ml.length, items: ml.slice(0, 4).map((m) => ({ href: '#/mails', txt: `${(m.de && (m.de.nom || m.de.adresse)) || '?'} : ${trunc(m.objet || '(sans objet)', 50)}`, val: m.par ? (m.par === Sync.me ? 'pour toi' : 'pour ' + nomDe(m.par)) : fmtDateCourt(String(m.date || '').slice(0, 10)), bad: !m.par, fort: m.par === Sync.me && m.confiePar && m.confiePar !== Sync.me })), plus: { href: '#/mails', txt: 'Voir les mails' } });
-  if (ouvertes.length) groupes.push({ mod: 'factures', titre: 'Ventes pas encore payées', n: ouvertes.length, items: ouvertes.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
+  /* Factures échues : la personne à qui appartient le compte vérifie si le virement est arrivé */
+  const tit = typeof titulaireCompte === 'function' ? titulaireCompte() : '';
+  const verif = typeof virementsAVerifier === 'function' && (ACC.vue !== 'moi' || !Sync.me || !tit || tit === Sync.me) ? virementsAVerifier() : [];
+  if (verif.length) groupes.push({ mod: 'factures', titre: tit && tit === Sync.me ? 'Virements à vérifier sur ton compte' : `Virements à vérifier${tit ? ' (compte de ' + nomDe(tit) + ')' : ''}`, n: verif.length,
+    items: verif.slice(0, 6).map((f) => ({ act: 'facVerif', data: { key: f.key }, txt: `${f.numero || 'Vente'} · ${f.client.nom}`, val: `${chf(f.total)} · ${f.echeance === today ? "échue aujourd'hui" : 'échue le ' + fmtDateCourt(f.echeance)}`, fort: true })) });
+  const pasEchues = ACC.vue === 'moi' ? ouvertes.filter((f) => !verif.includes(f) && !(f.echeance && f.echeance <= today && f.paiement !== 'especes')) : ouvertes.filter((f) => !verif.includes(f));
+  if (pasEchues.length) groupes.push({ mod: 'factures', titre: 'Ventes pas encore payées', n: pasEchues.length, items: pasEchues.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
     .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero || f.blNumero || 'Vente'} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });
   /* Tâches : d'abord urgentes et en retard, puis les prochaines échéances, puis les autres tâches ouvertes */
   const ouvT = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && pourMoi(t.responsable));
