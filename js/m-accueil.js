@@ -61,15 +61,6 @@ function renderAccueil() {
   const sansJ = depenses().filter((x) => sansJustificatif(x) && pourMoi(x.par)).sort((a, c) => String(c.date).localeCompare(String(a.date)));
   if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
     plus: sansJ.length > 4 ? { href: '#/finances/depenses', txt: `Voir les ${sansJ.length} dépenses sans justificatif` } : null, avant: () => { FIN.sansJ = true; } });
-  /* Prospection : relances prévues jusqu'à aujourd'hui, sinon les prospects prioritaires à contacter */
-  const pros = prospects();
-  if (pros.length) {
-    const dus = pros.filter(aRelancer).sort((a, c) => String(a.prospection.relanceLe).localeCompare(c.prospection.relanceLe));
-    const af = pros.filter((c) => groupeStatut(pStat(c)) === 'afaire').sort((a, c) => ((a.prospection || {}).priorite || 9) - ((c.prospection || {}).priorite || 9) || byName(a, c));
-    const items = dus.map((c) => ({ href: '#/factures/prospect/' + encodeURIComponent(c.key), txt: 'Relancer ' + displayName(c), val: (c.prospection.horaires || '').slice(0, 26) || fmtDateCourt(c.prospection.relanceLe), bad: c.prospection.relanceLe < today }))
-      .concat(af.slice(0, Math.max(0, 5 - dus.length)).map((c) => ({ href: '#/factures/prospect/' + encodeURIComponent(c.key), txt: `Appeler ${displayName(c)}`, val: `P${(c.prospection || {}).priorite || '–'} · ${((c.prospection || {}).lieu || '').slice(0, 18)}` })));
-    groupes.push({ mod: 'factures', titre: 'Prospection', n: dus.length || af.length, items, vide: 'Rien à appeler.', plus: { href: '#/factures/prospection', txt: `${af.length} à contacter · voir la prospection` } });
-  }
   /* Archive de l'année passée : le rappel reste tant que chaque associé ne l'a pas téléchargée une fois */
   const yb = String(Number(y) - 1);
   if (typeof archiveManquePour === 'function' && (depenses().some((x) => yearOf(x.date) === yb) || recettesToutes().some((x) => yearOf(x.date) === yb))) {

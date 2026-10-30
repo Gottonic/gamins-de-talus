@@ -107,10 +107,9 @@ MODULES.factures = {
   tuile() {
     const f = factures(); const open = f.filter((x) => ['ouverte', 'retard'].includes(facStatut(x)));
     const late = f.filter((x) => facStatut(x) === 'retard');
-    const rel = typeof prospects === 'function' ? prospects().filter(aRelancer).length : 0, relTxt = rel ? ` · ${rel} relance${rel > 1 ? 's' : ''}` : '';
-    if (late.length) return { line: `${late.length} facture${late.length > 1 ? 's' : ''} en retard · ${chf(late.reduce((a, x) => a + x.total, 0))}${relTxt}`, warn: true };
-    if (open.length) return { line: `À encaisser : ${chf(open.reduce((a, x) => a + x.total, 0))}${relTxt}`, warn: rel > 0 };
-    return { line: (f.length ? `${f.length} facture${f.length > 1 ? 's' : ''}, tout est payé` : 'Factures, produits, prospection') + relTxt, warn: rel > 0 };
+    if (late.length) return { line: `${late.length} facture${late.length > 1 ? 's' : ''} en retard · ${chf(late.reduce((a, x) => a + x.total, 0))}`, warn: true };
+    if (open.length) return { line: `À encaisser : ${chf(open.reduce((a, x) => a + x.total, 0))}` };
+    return { line: f.length ? `${f.length} vente${f.length > 1 ? 's' : ''}, tout est payé` : 'Ventes, stock et prix' };
   },
   render(sub, id) {
     const pr = ['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub);

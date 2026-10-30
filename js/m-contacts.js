@@ -47,7 +47,7 @@ function liveSearch(id, setter) {
 MODULES.contacts = {
   titre: 'Contacts',
   tuile() {
-    const n = contacts().length, ps = prospects(), rel = ps.filter(aRelancer).length, af = ps.filter((c) => groupeStatut(pStat(c)) === 'afaire').length;
+    const n = contacts().length;
     return { line: `${n} contact${n > 1 ? 's' : ''}` };
   },
   render(sub, id) {
