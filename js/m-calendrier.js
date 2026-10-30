@@ -166,7 +166,7 @@ function ouvrirJour(d) {
     ${fld('jr-rem', 'Remarque du jour', `<input id="jr-rem" data-jour="${d}" value="${esc(j.remarque || '')}" placeholder="Ex. Journée au champ ensemble">`)}
     <div class="between"><h3>Événements</h3><button class="btn small primary" type="button" data-act="evEdit" data-date="${d}">+ Événement</button></div>
     ${evHtml || '<p class="hint">Aucun événement ce jour.</p>'}
-    ${tch.length ? `<h3>Tâches à rendre</h3>${tch.map((t) => `<a class="item" href="#/taches" style="--c:var(--c-taches)"><span class="who"><strong>${esc(t.titre)}</strong><span class="meta">${t.qui ? esc(quiLabel(t.qui)) : ''}${t.urgent ? ' · urgent' : ''}</span></span></a>`).join('')}` : ''}
+    ${tch.length ? `<h3>Tâches à rendre</h3>${tch.map((t) => `<a class="item" href="#" data-act="taEdit" data-key="${esc(t.key)}" style="--c:var(--c-taches)"><span class="who"><strong>${esc(t.titre)}</strong><span class="meta">${t.qui ? esc(quiLabel(t.qui)) : ''}${t.urgent ? ' · urgent' : ''}</span></span></a>`).join('')}` : ''}
     ${rel.length ? `<h3>Relances prospection</h3>${rel.map((r) => `<a class="item" href="#/contacts/prospect/${encodeURIComponent(r.key)}"><span class="who"><strong>${esc(r.titre)}</strong></span></a>`).join('')}` : ''}
     ${fac.length ? `<h3>Factures à échéance</h3>${fac.map((f) => `<a class="item" href="#/factures/voir/${encodeURIComponent(f.key)}"><span class="who"><strong>${esc(f.titre)}</strong></span><span class="amt">${chf(f.montant)}</span></a>`).join('')}` : ''}
   </div>`);
@@ -234,13 +234,16 @@ FORMS.ev = (v) => {
 };
 
 /* ---------- Agenda (liste des 8 prochaines semaines) ---------- */
+/* Toucher un élément de l'agenda l'ouvre pour le modifier : événement, tâche, vente, relance */
+const agAction = (x) => x.kind === 'ev' ? ` data-act="evEdit" data-key="${esc(x.key)}" role="button" tabindex="0"` : x.kind === 'tache' ? ` data-act="taEdit" data-key="${esc(x.key)}" role="button" tabindex="0"`
+  : x.kind === 'facture' ? ` data-act="go" data-href="#/factures/voir/${encodeURIComponent(x.key)}" role="button" tabindex="0"` : x.kind === 'relance' ? ` data-act="go" data-href="#/contacts/prospect/${encodeURIComponent(x.key)}" role="button" tabindex="0"` : '';
 function renderAgenda() {
   const today = todayISO(), a = addDays(today, 55), items = itemsPeriode(today, a);
   const days = Object.keys(items).sort().filter((d) => items[d].some((x) => x.kind !== 'heures'));
   const ic = (x) => x.kind === 'ev' ? `var(--ev-${x.type})` : x.kind === 'tache' ? 'var(--c-taches)' : x.kind === 'facture' ? 'var(--c-factures)' : x.kind === 'relance' ? 'var(--c-contacts)' : 'var(--c-cultures)';
   return `<div class="panel"><div class="between"><h2>Les 8 prochaines semaines</h2><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
     ${days.length ? days.map((d) => `<div class="agday"><button type="button" class="agdate" data-act="calDay" data-d="${d}"><b>${d === today ? "Aujourd'hui" : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b><span>${fmtDateCourt(d)}</span></button>
-      <div class="agitems">${items[d].filter((x) => x.kind !== 'heures' && !(x.kind === 'ev' && x.multi && !x.debut && d !== today)).map((x) => `<div class="agit${x.fait ? ' fait' : ''}" style="--c:${ic(x)}">${x.heure ? `<span class="num">${esc(x.heure)}</span> ` : ''}${esc(x.kind === 'tache' ? '⚑ ' + x.titre : x.titre)}${x.qui ? ` <span class="hint">· ${esc(quiLabel(x.qui))}</span>` : ''}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}</div></div>`).join('')
+      <div class="agitems">${items[d].filter((x) => x.kind !== 'heures' && !(x.kind === 'ev' && x.multi && !x.debut && d !== today)).map((x) => `<div class="agit${x.fait ? ' fait' : ''}${agAction(x) ? ' clic' : ''}" style="--c:${ic(x)}"${agAction(x)}>${x.heure ? `<span class="num">${esc(x.heure)}</span> ` : ''}${esc(x.kind === 'tache' ? '⚑ ' + x.titre : x.titre)}${x.qui ? ` <span class="hint">· ${esc(quiLabel(x.qui))}</span>` : ''}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}</div></div>`).join('')
       : '<p class="empty">Rien de prévu. Ajoute des journées de travail, récoltes ou livraisons avec « + Événement ».</p>'}</div>`;
 }
 
@@ -325,11 +328,13 @@ ACTIONS.mesHeures = (el) => {
     ${inp('mh-h', 'Heures travaillées', '', { name: 'h', type: 'number', attrs: { placeholder: 'Ex. 7,5', autofocus: '' }, sub: '<span id="mh-deja"></span>7,5 = 7 h 30' })}
     <div class="row chips-h">${[2, 4, 6, 7, 8, 9].map((h) => `<button type="button" class="chip" data-act="mhSet" data-h="${h}">${h} h</button>`).join('')}</div>
     ${inp('mh-n', "Ce que j'ai fait (facultatif)", '', { name: 'n', attrs: { placeholder: 'Ex. récolte courges, livraison Épinettes' } })}
+    ${typeof choixPourHtml === 'function' ? choixPourHtml('mh-pour', (DB.get(hKey(d0, p0)) || {}).pour, d0.slice(0, 4)) : ''}
     <div class="row-end"><a class="btn link" href="#/calendrier/heures" data-act="go" data-href="#/calendrier/heures">Voir la semaine</a><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const maj = () => {
     const h = DB.get(hKey($('mh-d').value, $('mh-p').value)) || {};
     $('mh-h').value = h.heures ? fmtH(h.heures) : ''; $('mh-n').value = h.note || '';
     $('mh-deja').textContent = h.heures ? `Déjà noté ce jour-là : ${fmtH(h.heures)} h (tu peux corriger). ` : '';
+    const pb = $('mh-pour'); if (pb && typeof choixPourHtml === 'function') pb.outerHTML = choixPourHtml('mh-pour', h.pour, $('mh-d').value.slice(0, 4));
   };
   $('mh-p').addEventListener('change', maj); $('mh-d').addEventListener('change', maj); maj();
   setTimeout(() => { const i = $('mh-h'); if (i) i.focus(); }, 60);
@@ -341,6 +346,7 @@ FORMS.mesHeures = (v) => {
   const k = hKey(v.d, v.p), old = DB.get(k) || {};
   const o = Object.assign({}, old, { date: v.d, personne: v.p, heures: h || 0 });
   if (v.n) o.note = v.n; else delete o.note;
+  if (typeof lirePour === 'function') { const pr = lirePour(v.pour); if (pr) o.pour = pr; else delete o.pour; }
   if (h > 0) delete o.off;
   if (!o.heures && !o.off && !o.note) { if (DB.get(k)) DB.del(k); } else DB.put(k, o);
   closeSheet();

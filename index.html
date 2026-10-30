@@ -374,6 +374,9 @@ table.list tr.nojust td:first-child { box-shadow: inset 4px 0 0 var(--warn); }
 .sousnav .chip { font-size: 13.5px; padding: 6px 13px; }
 .sousnav .chip.on { background: var(--mod); border-color: var(--mod); color: #fff; }
 .chip { font-size: 13px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); border-radius: 999px; padding: 4px 11px; cursor: pointer; text-decoration: none; }
+.pour .row { gap: 6px; margin-bottom: 6px; }
+.pour .chip { font-size: 13.5px; padding: 6px 12px; }
+.pour-cu { padding-left: 10px; border-left: 3px solid var(--line); }
 .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; }
 .chip .n { font-family: var(--font-mono); font-size: 12px; margin-left: 4px; opacity: .8; }
 
@@ -558,6 +561,8 @@ table.matrix td.neg { color: var(--muted); }
 .agitems { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .agit { border-left: 4px solid var(--c); background: color-mix(in srgb, var(--c) 9%, white); border-radius: 6px; padding: 6px 10px; font-size: 14px; }
 .agit.fait { text-decoration: line-through; opacity: .65; }
+.agit.clic { cursor: pointer; }
+.agit.clic:hover { background: color-mix(in srgb, var(--c) 18%, white); }
 .daybtn { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; display: flex; flex-direction: column; }
 .daybtn b { text-transform: capitalize; }
 .daybtn span { color: var(--muted); font-size: 12.5px; }

@@ -128,6 +128,7 @@ ACTIONS.depEdit = (el) => {
       <label><input type="radio" name="type" value="investissement"${d.type === 'investissement' ? ' checked' : ''}> Investissement</label></div>
       <span class="sub">Investissement : un achat qui dure plusieurs années (machine, outil, irrigation). Il est amorti dans l'inventaire.</span></div>
     <div class="grid2">${sel('dp-cat', 'Catégorie', d.categorie, [['', '—']].concat(CATEGORIES.map((c) => [c, c])), { name: 'categorie', sub: CAT_AIDE })}${sel('dp-par', 'Payé par', d.par, persOptions(), { name: 'par' })}</div>
+    ${typeof choixPourHtml === 'function' ? choixPourHtml('dp-pour', d.pour, String(d.date || todayISO()).slice(0, 4)) : ''}
     <div class="field"><span class="flabel">Justificatif (important)</span>
       <div id="dp-fichiers">${fichiersDep()}</div>
       <label class="btn justif-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>Photo du ticket ou PDF de la facture<input id="dp-file" type="file" accept="image/*,application/pdf" hidden></label>
@@ -165,7 +166,7 @@ ACTIONS.depFichierOff = (el) => { DEP.fichiers.splice(Number(el.dataset.i), 1); 
 FORMS.dep = (v) => {
   const m = num(v.montant); if (!(m > 0) || !v.date || !v.objet) { toast('Date, montant et objet sont obligatoires.'); return; }
   const k = v.key || 'dep:' + uid('d'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '', n: 1 + Math.max(0, ...depenses().map((x) => x.n || 0)) };
-  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), objet: v.objet, type: v.type || 'charge', categorie: v.categorie, par: v.par, justificatif: v.justificatif, fichiers: DEP.fichiers.slice(), remarque: v.remarque }));
+  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), objet: v.objet, type: v.type || 'charge', categorie: v.categorie, par: v.par, justificatif: v.justificatif, fichiers: DEP.fichiers.slice(), remarque: v.remarque, pour: typeof lirePour === 'function' ? lirePour(v.pour) : old.pour || null }));
   if (v.versInventaire) ajouterInventaireDepuis(k);
   closeSheet(); toast((v.key ? 'Dépense mise à jour.' : 'Dépense ajoutée.') + (sansJustificatif({ justificatif: v.justificatif, fichiers: DEP.fichiers }) ? ' Attention : justificatif manquant.' : ''), 4500);
 };

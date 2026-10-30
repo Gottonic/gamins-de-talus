@@ -13,7 +13,8 @@ MODULES.cultures = {
   tuile() { const s = saisonCourante(), l = cultures(s); if (!l.length) return { line: 'Aucun plan' }; const t = totauxCultures(l, paramsCultures(s)); return { line: `${s} · ${l.length} cultures · ${f0(t.surface)} m²`, badge: typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => typeof pourMoi !== 'function' || pourMoi(r.qui)).length : 0 }; },
   render(sub, id) {
     creerFichesManquantes();
-    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['journal', 'Journal'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    if (sub === 'marges') return t + renderMarges();
     if (sub === 'fiches') return t + renderFiches(id);
     if (sub === 'planches') return t + renderPlanches();
     if (sub === 'journal') return t + renderJournal();
@@ -389,3 +390,97 @@ ACTIONS.plantonsTache = (el) => {
   DB.put('t:' + uid('t'), { titre: `Commander les plantons chez ${g.fournisseur}`, statut: 'afaire', echeance: g.avant || '', responsable: '', tag: 'agri', remarques: textePlantons(g), cree: new Date().toISOString(), creePar: Sync.me || '' });
   toast(`Tâche créée${g.avant ? ' pour le ' + fmtDate(g.avant) : ''}.`);
 };
+
+/* ---------- « Pour quoi ? » sur les heures et les dépenses : admin, ventes, une ou plusieurs cultures, ou toutes ----------
+   pour = { admin?, ventes?, cultures?: 'toutes' | [clés cul:] }. Plusieurs choix : parts égales ; « toutes » : selon la surface. */
+function choixPourHtml(id, val, saison) {
+  val = val || {}; const s = String(saison || saisonCourante()), cs = cultures(s), on = (b) => (b ? ' on' : '');
+  const cu = val.cultures === 'toutes' ? 'toutes' : Array.isArray(val.cultures) ? val.cultures : null;
+  return `<div class="field pour" id="${id}" data-saison="${esc(s)}"><span class="flabel">Pour quoi ? <span class="hint">(facultatif : sert aux marges par culture)</span></span>
+    <input type="hidden" name="pour" value="${esc(JSON.stringify(val))}">
+    <div class="row"><button type="button" class="chip${on(val.admin)}" data-pour="admin">Admin</button><button type="button" class="chip${on(val.ventes)}" data-pour="ventes">Ventes & livraisons</button><button type="button" class="chip${on(cu)}" data-pour="cultures">Cultures</button></div>
+    ${cu ? `<div class="row pour-cu"><button type="button" class="chip${on(cu === 'toutes')}" data-pour-cu="toutes">Toutes (selon la surface)</button>${cs.map((c) => `<button type="button" class="chip${on(Array.isArray(cu) && cu.includes(c.key))}" data-pour-cu="${esc(c.key)}">${esc(c.nom)}</button>`).join('')}</div>` : ''}
+    <span class="sub">Plusieurs choix : partagé à parts égales.</span></div>`;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pour], [data-pour-cu]'); if (!b) return; const box = b.closest('.pour'); if (!box) return;
+  e.preventDefault(); let v = {}; try { v = JSON.parse(box.querySelector('input[name="pour"]').value || '{}'); } catch (_) { v = {}; }
+  if (b.dataset.pour === 'cultures') v.cultures = v.cultures ? null : [];
+  else if (b.dataset.pour) v[b.dataset.pour] = !v[b.dataset.pour];
+  else if (b.dataset.pourCu === 'toutes') v.cultures = v.cultures === 'toutes' ? [] : 'toutes';
+  else { const l = Array.isArray(v.cultures) ? v.cultures.slice() : []; const i = l.indexOf(b.dataset.pourCu); if (i >= 0) l.splice(i, 1); else l.push(b.dataset.pourCu); v.cultures = l; }
+  box.outerHTML = choixPourHtml(box.id, v, box.dataset.saison);
+});
+/* Valeur à enregistrer (rien si rien n'est choisi) */
+function lirePour(txt) {
+  let v = {}; try { v = JSON.parse(txt || '{}') || {}; } catch (_) { return null; }
+  const o = {}; if (v.admin) o.admin = true; if (v.ventes) o.ventes = true;
+  if (v.cultures === 'toutes' || (Array.isArray(v.cultures) && v.cultures.length)) o.cultures = v.cultures;
+  return Object.keys(o).length ? o : null;
+}
+function repartir(x, pour, surf) {
+  const out = { admin: 0, ventes: 0, cultures: {}, commun: 0 }, parts = [];
+  if (pour && pour.admin) parts.push('admin'); if (pour && pour.ventes) parts.push('ventes');
+  const cu = pour && (pour.cultures === 'toutes' ? 'toutes' : Array.isArray(pour.cultures) && pour.cultures.length ? pour.cultures : null); if (cu) parts.push('cultures');
+  if (!parts.length) { out.commun = x; return out; }
+  const q = x / parts.length;
+  for (const p of parts) {
+    if (p !== 'cultures') { out[p] += q; continue; }
+    const keys = cu === 'toutes' ? Object.keys(surf) : cu.filter((k) => k in surf), tot = cu === 'toutes' ? keys.reduce((a, k) => a + surf[k], 0) : keys.length;
+    if (!keys.length || !tot) { out.commun += q; continue; }
+    for (const k of keys) out.cultures[k] = (out.cultures[k] || 0) + q * (cu === 'toutes' ? surf[k] / tot : 1 / keys.length);
+  }
+  return out;
+}
+
+/* ---------- Marges par culture (une saison) ----------
+   Ventes : lignes des ventes liées à un produit, lui-même lié à la culture ; vente directe : l'argent encaissé, réparti selon ce qui était en vente.
+   Coûts directs : dépenses marquées pour cette culture. Frais communs (admin, ventes, non marqué, amortissements) : répartis selon la surface.
+   Heures : pareil. Marge = ventes − coûts directs − part des frais communs (avant de payer vos heures). */
+function margesSaison(s) {
+  const cs = cultures(s), P = paramsCultures(s), surf = {}; for (const c of cs) surf[c.key] = culture(c, P).surface;
+  const totSurf = Object.values(surf).reduce((a, x) => a + x, 0) || 1;
+  const prodCul = {}; for (const p of produits()) { const c = cs.find((x) => { const pr = produitDeCulture(x); return pr && pr.key === p.key; }); if (c) prodCul[p.key] = c.key; }
+  const R = {}; for (const c of cs) R[c.key] = { c, surface: surf[c.key], ventes: 0, direct: 0, hDirect: 0 };
+  let nonAttr = 0, commun = 0, hCommun = 0, hAdmin = 0, hVentes = 0, hNon = 0, hTot = 0, depTot = 0, depDir = 0;
+  for (const f of factures()) {
+    if (yearOf(f.date) !== s) continue; const st = facStatut(f); if (st === 'annulee' || st === 'groupee') continue;
+    for (const l of f.lignes || []) { const v = num(l.quantite) * num(l.prix), k = prodCul[l.produitId]; if (k) R[k].ventes += v; else nonAttr += v; }
+  }
+  for (const m of misesEnVente()) {
+    if (yearOf(m.date) !== s) continue; const b = bilanSelf(m), ret = m.retours || {}, close = m.statut === 'close';
+    const vals = (m.lignes || []).map((l, i) => (close ? Math.max(0, num(l.qte) - num(ret[i])) : num(l.qte)) * num(l.prix)), tot = vals.reduce((a, x) => a + x, 0);
+    (m.lignes || []).forEach((l, i) => { const v = tot ? b.enc * vals[i] / tot : 0, k = prodCul[l.prod]; if (k) R[k].ventes += v; else nonAttr += v; });
+  }
+  for (const d of depenses()) {
+    if (yearOf(d.date) !== s || d.type === 'investissement') continue; const r = repartir(num(d.montant), d.pour, surf); depTot += num(d.montant);
+    for (const [k, x] of Object.entries(r.cultures)) { R[k].direct += x; depDir += x; }
+    commun += r.admin + r.ventes + r.commun;
+  }
+  const amort = DB.all('inv:').reduce((a, i) => a + amortissementAnnee(i, Number(s), !!cfg().amortirDesAchat), 0); commun += amort;
+  for (const h of heuresToutes()) {
+    if (yearOf(h.date) !== s || !(num(h.heures) > 0)) continue; const r = repartir(num(h.heures), h.pour, surf); hTot += num(h.heures);
+    for (const [k, x] of Object.entries(r.cultures)) R[k].hDirect += x;
+    hAdmin += r.admin; hVentes += r.ventes; hNon += r.commun; hCommun += r.admin + r.ventes + r.commun;
+  }
+  const lignes = cs.map((c) => { const x = R[c.key], part = x.surface / totSurf; x.partFrais = commun * part; x.partH = hCommun * part; x.marge = x.ventes - x.direct - x.partFrais; x.heures = x.hDirect + x.partH; x.chfH = x.heures ? x.marge / x.heures : null; x.chfM2 = x.surface ? x.marge / x.surface : null; return x; });
+  const autres = recettesDirectes().filter((r) => !r.self && yearOf(r.date) === s).reduce((a, r) => a + num(r.montant), 0);
+  return { s, lignes, nonAttr, autres, commun, amort, hCommun, hAdmin, hVentes, hNon, hTot, depTot, depDir, hDir: hTot - hCommun };
+}
+function renderMarges() {
+  const s = saisonCourante(), ss = saisons(), M = margesSaison(s);
+  const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
+  if (!M.lignes.length) return `<div class="row">${chips}</div><div class="panel"><p class="empty">Aucune culture dans le plan ${esc(s)}.</p></div>`;
+  const tri = M.lignes.slice().sort((a, b) => b.marge - a.marge), T = (f) => M.lignes.reduce((a, x) => a + f(x), 0);
+  const pc = (a, b) => (b ? Math.round(a / b * 100) + ' %' : '—');
+  return `<div class="row">${chips}</div>
+    <div class="stats">
+      <div class="stat good"><span class="k">Ventes ${esc(s)} attribuées</span><span class="v">${chf(T((x) => x.ventes))}</span><span class="s">${M.nonAttr > 0.5 ? `${chf(M.nonAttr)} de ventes sans culture (lignes sans produit lié)` : 'toutes les ventes ont leur culture'}${M.autres > 0.5 ? ` · ${chf(M.autres)} de recettes saisies à la main (sans culture)` : ''}</span></div>
+      <div class="stat"><span class="k">Heures marquées pour une culture</span><span class="v">${pc(M.hDir, M.hTot)}</span><span class="s">${fmtH(M.hTot)} h en ${esc(s)} · admin ${fmtH(M.hAdmin)} h · ventes ${fmtH(M.hVentes)} h · sans précision ${fmtH(M.hNon)} h</span></div>
+      <div class="stat"><span class="k">Dépenses marquées pour une culture</span><span class="v">${pc(M.depDir, M.depTot)}</span><span class="s">frais communs ${chf(M.commun)}${M.amort ? ` dont amortissements ${chf(M.amort)}` : ''}</span></div></div>
+    <div class="panel"><h2>Marges ${esc(s)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Surface</th><th class="r">Ventes</th><th class="r">Coûts directs</th><th class="r">Frais communs</th><th class="r">Marge</th><th class="r">Heures</th><th class="r">CHF / heure</th><th class="r">CHF / m²</th></tr></thead><tbody>
+      ${tri.map((x) => `<tr><td><span class="sw" style="background:${couleurCulture(x.c, (x.c.ordre || 1) - 1)}"></span>${esc(x.c.nom)}</td><td class="r num">${f0(x.surface)} m²</td><td class="r num">${money(x.ventes)}</td><td class="r num">${money(x.direct)}</td><td class="r num">${money(x.partFrais)}</td><td class="r num ${x.marge < 0 ? 'bad' : ''}"><b>${money(x.marge)}</b></td><td class="r num">${fmtH(x.heures)} h<br><span class="hint">${fmtH(x.hDirect)} h marquées</span></td><td class="r num">${x.chfH == null ? '—' : money(x.chfH)}</td><td class="r num">${x.chfM2 == null ? '—' : money(x.chfM2)}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(T((x) => x.surface))} m²</td><td class="r num">${money(T((x) => x.ventes))}</td><td class="r num">${money(T((x) => x.direct))}</td><td class="r num">${money(T((x) => x.partFrais))}</td><td class="r num"><b>${money(T((x) => x.marge))}</b></td><td class="r num">${fmtH(T((x) => x.heures))} h</td><td></td><td></td></tr></tfoot></table></div>
+      <p class="hint">Ventes : factures et ventes de l'année dont la ligne a un produit lié à la culture, plus la vente directe (argent encaissé, réparti selon ce qui était en vente). Coûts directs : dépenses marquées pour cette culture. Frais communs : admin, ventes et dépenses sans précision, plus les amortissements, répartis selon la surface. Heures : celles marquées pour la culture, plus une part des heures communes selon la surface. Marge = ventes − coûts directs − frais communs, avant de payer vos heures : « CHF / heure » dit ce que chaque heure a rapporté.</p>
+      <p class="hint">Plus vous marquez « Pour quoi ? » en notant vos heures et vos dépenses, plus c'est précis.</p></div>`;
+}
