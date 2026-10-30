@@ -269,7 +269,14 @@ table.irr input.cell-in { width: 84px; }
 #drv-zone.drag { outline: 3px dashed var(--c-reglages); }
 .drv-it[draggable="true"] { cursor: grab; }
 .drv-it.glisse { opacity: .4; }
-.drv-it.drop, .fil a.drop { background: var(--mod-soft); outline: 2px dashed var(--mod); outline-offset: -2px; border-radius: 6px; }
+.drv-cols { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+.drv-cols > .panel { margin: 0; }
+.panel.drv-arbre { display: flex; flex-direction: column; gap: 2px; padding: 10px 8px; position: sticky; top: 12px; max-height: calc(100dvh - 120px); overflow-y: auto; }
+.drv-br { display: block; padding: 6px 8px; border-radius: 6px; color: var(--ink); text-decoration: none; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drv-br:hover { background: var(--bg); }
+.drv-br.on { font-weight: 700; background: var(--mod-soft); }
+@media (max-width: 800px), (pointer: coarse) { .drv-cols { display: block; } .panel.drv-arbre { display: none; } }
+.drv-it.drop, .fil a.drop, .drv-br.drop { background: var(--mod-soft); outline: 2px dashed var(--mod); outline-offset: -2px; border-radius: 6px; }
 @media (pointer: coarse) { .drv-aide { display: none; } }
 .usage .ulig { display: grid; grid-template-columns: 210px minmax(0, 1fr) 120px; gap: 10px; align-items: center; margin: 6px 0; font-size: 14px; }
 @media (max-width: 640px) { .usage .ulig { grid-template-columns: 1fr; gap: 3px; } }

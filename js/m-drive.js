@@ -17,7 +17,7 @@ MODULES.drive = {
   render(sub, id) { DRV.dossier = sub === 'd' && id && DB.get(id) ? id : ''; return renderDrive(); },
   after() {
     const f = $('drv-file'); if (f) f.addEventListener('change', () => envoyerDrive([...f.files]));
-    glisserDeposer($('drv-zone'));
+    glisserDeposer($('drv-wrap'), $('drv-zone'));
     chargerUsage();
   },
 };
@@ -29,32 +29,35 @@ function renderDrive() {
     : `<div class="drv-it" draggable="true" data-drag="${esc(x.key)}">${/^image\/|pdf/.test(x.mime) ? `<button type="button" class="drv-nom" data-act="voirFichier" data-fichier="${esc(x.chemin)}" data-titre="${esc(x.nom)}">${ICO(x)} ${esc(x.nom)}</button>` : `<a class="drv-nom" data-fichier="${esc(x.chemin)}" download="${esc(x.nom)}" target="_blank" rel="noopener" draggable="false">${ICO(x)} ${esc(x.nom)}</a>`}
         <span class="hint">${tailleTxt(x.taille)} · ${fmtDate(String(x.le || '').slice(0, 10))}${x.par ? ' · ' + esc(nomDe(x.par)) : ''}</span><button class="btn small" type="button" data-act="drvMenu" data-key="${esc(x.key)}" aria-label="Options">⋯</button></div>`;
   const ancien = cfg().drive ? `<p class="hint">Ancien lien : <a href="${esc(cfg().drive)}" target="_blank" rel="noopener noreferrer">Proton Drive</a></p>` : '';
+  /* Arborescence de tous les dossiers (ordinateur) : on y navigue, et on y dépose des éléments pour les déplacer */
+  const arbre = (p, niv) => enfants(p).filter((x) => x.type === 'dossier').map((x) => `<a class="drv-br${x.key === d ? ' on' : ''}" href="#/drive/d/${encodeURIComponent(x.key)}" data-drop="${esc(x.key)}" draggable="false" style="padding-left:${8 + niv * 16}px">📁 ${esc(x.nom)}</a>${arbre(x.key, niv + 1)}`).join('');
   return `<div id="usage-box"></div>
+    <div class="drv-cols" id="drv-wrap"><nav class="panel drv-arbre" aria-label="Dossiers"><a class="drv-br${d ? '' : ' on'}" href="#/drive" data-drop="" draggable="false">🗂️ Drive</a>${arbre('', 1)}</nav>
     <div class="panel" id="drv-zone"><div class="between">${bc}<div class="row"><button class="btn small" type="button" data-act="drvDossier">+ Dossier</button><label class="btn primary small">Ajouter des fichiers<input id="drv-file" type="file" multiple hidden></label></div></div>
       ${DRV.envoi ? `<p class="banner">${esc(DRV.envoi)}</p>` : ''}
       ${l.length ? `<div class="drv-liste">${l.map(ligne).join('')}</div>` : `<p class="empty">${d ? 'Dossier vide.' : 'Le Drive est vide.'} Glisse des fichiers ou des dossiers ici, ou utilise « Ajouter des fichiers » (25 Mo au plus par fichier).</p>`}
-      ${l.length ? '<p class="hint drv-aide">Sur ordinateur : glisse des fichiers ou des dossiers depuis ton ordinateur pour les ajouter (sur un dossier pour les mettre dedans), et glisse un élément sur un dossier ou sur le chemin en haut pour le déplacer.</p>' : ''}
-      ${ancien}</div>`;
+      ${l.length ? '<p class="hint drv-aide">Pour déplacer un fichier ou un dossier : glisse-le sur un dossier de la liste à gauche, sur un dossier d\'ici ou sur le chemin en haut. Depuis ton ordinateur, glisse des fichiers ou des dossiers entiers pour les ajouter.</p>' : ''}
+      ${ancien}</div></div>`;
 }
 /* Glisser-déposer (ordinateur) : des fichiers ou dossiers de l'ordinateur → ajoutés (dans le dossier visé s'il y en a un) ;
    un élément du Drive → déplacé dans le dossier visé (ligne de dossier ou chemin en haut). */
 const TYPE_DRV = 'application/x-gdt-drv';
-function glisserDeposer(z) {
-  if (!z) return;
+function glisserDeposer(w, z) {
+  if (!w || !z) return;
   const interne = (e) => [...(e.dataTransfer && e.dataTransfer.types || [])].includes(TYPE_DRV);
   const cible = (e) => e.target.closest && e.target.closest('[data-drop]');
-  const nettoyer = () => { z.classList.remove('drag'); z.querySelectorAll('.drop, .glisse').forEach((x) => x.classList.remove('drop', 'glisse')); };
-  z.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-drag]'); if (!it) return; e.dataTransfer.setData(TYPE_DRV, it.dataset.drag); e.dataTransfer.effectAllowed = 'move'; it.classList.add('glisse'); });
-  z.addEventListener('dragend', nettoyer);
-  z.addEventListener('dragover', (e) => {
+  const nettoyer = () => { z.classList.remove('drag'); w.querySelectorAll('.drop, .glisse').forEach((x) => x.classList.remove('drop', 'glisse')); };
+  w.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-drag]'); if (!it) return; e.dataTransfer.setData(TYPE_DRV, it.dataset.drag); e.dataTransfer.effectAllowed = 'move'; it.classList.add('glisse'); });
+  w.addEventListener('dragend', nettoyer);
+  w.addEventListener('dragover', (e) => {
     const c = cible(e), i = interne(e);
-    z.querySelectorAll('.drop').forEach((x) => { if (x !== c) x.classList.remove('drop'); });
+    w.querySelectorAll('.drop').forEach((x) => { if (x !== c) x.classList.remove('drop'); });
     if (i && !c) { e.dataTransfer.dropEffect = 'none'; return; }
     e.preventDefault(); e.dataTransfer.dropEffect = i ? 'move' : 'copy';
-    if (c) c.classList.add('drop'); z.classList.toggle('drag', !i && !c);
+    if (c) c.classList.add('drop'); z.classList.toggle('drag', !i && !c && z.contains(e.target));
   });
-  z.addEventListener('dragleave', (e) => { if (!z.contains(e.relatedTarget)) nettoyer(); });
-  z.addEventListener('drop', (e) => {
+  w.addEventListener('dragleave', (e) => { if (!w.contains(e.relatedTarget)) nettoyer(); });
+  w.addEventListener('drop', (e) => {
     e.preventDefault(); const c = cible(e), dest = c ? c.dataset.drop || '' : DRV.dossier, i = interne(e), k = i ? e.dataTransfer.getData(TYPE_DRV) : '';
     /* Les dossiers de l'ordinateur se lisent tout de suite, avant que le navigateur ne vide le dépôt */
     const entrees = i ? [] : [...(e.dataTransfer.items || [])].map((x) => x.webkitGetAsEntry && x.webkitGetAsEntry()).filter(Boolean);
