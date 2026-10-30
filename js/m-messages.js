@@ -376,7 +376,7 @@ FORMS.mailCfg = (v) => { DB.put('cfg:mails', Object.assign({}, DB.get('cfg:mails
 setTimeout(() => releverMails(), 15000);
 
 /* Sur téléphone, la discussion s'ouvre en plein écran (comme une app de messagerie) ; « ← » la ferme et mène aux mails */
-function majChatPlein() { document.body.classList.toggle('chat-plein', /^#\/messages\/?$/.test(location.hash) && matchMedia('(max-width: 700px)').matches); }
+function majChatPlein() { document.body.classList.toggle('chat-plein', /^#\/messages\/?$/.test(location.hash)); }
 window.addEventListener('hashchange', majChatPlein); window.addEventListener('resize', majChatPlein); majChatPlein();
 
 /* Fermer la discussion plein écran : retour à la page d'avant (sinon l'accueil) */
