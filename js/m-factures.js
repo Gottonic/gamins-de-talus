@@ -153,6 +153,7 @@ function renderNouvelleFacture(contactKey) {
         <label><input type="checkbox" id="d-opt-stock"${draftF.stock ? ' checked' : ''}> Déduire du stock</label></div>
         <span class="sub">${draftF.facture ? 'Facture numérotée (QR ou payée comptant).' : 'Sans facture : vente au marché, au stand, ou facturée plus tard.'}${draftF.bl ? ' Bulletin numéroté automatiquement, à faire signer à la livraison.' : ''}${draftF.stock ? ' Le stock des produits suivis baisse.' : ''}</span></div>
       ${draftF.bl ? `<label class="row" style="font-size:14px;margin-top:-6px"><input type="checkbox" id="d-opt-blprix"${draftF.blPrix ? ' checked' : ''}> Prix sur le bulletin</label>` : ''}
+      ${aideLivraison()}
       ${fld('d-client', 'Client', `<select id="d-client"><option value="">${cl.length ? 'Choisir un client…' : 'Aucun contact : ajoute-en un'}</option>${groups.map(([t, l]) => `<optgroup label="${esc(t.label)}">${l.map((x) => `<option value="${esc(x.key)}"${x.key === draftF.clientId ? ' selected' : ''}>${esc(billName(x) + (attnName(x) ? ' (' + attnName(x) + ')' : ''))}</option>`).join('')}</optgroup>`).join('')}</select>`,
         c ? esc(addr || "Pas d'adresse : nécessaire pour un virement QR, pas pour un paiement comptant.") : `<a href="#/contacts/nouveau">Ajouter un contact</a>`)}
       <div class="grid2">
@@ -273,10 +274,23 @@ FORMS.facPaid = (v) => {
 ACTIONS.facReopen = (el) => { const f = DB.get(el.dataset.key); if (!f) return; DB.put(el.dataset.key, Object.assign({}, f, { statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '' })); toast(`${f.numero} remise en ouverte.`); };
 ACTIONS.facCancel = (el) => { const f = DB.get(el.dataset.key); confirmSheet('Annuler ' + nomVente(f) + ' ?', (f.numero ? 'Le numéro reste utilisé et la facture reste dans la liste, barrée.' : 'La vente reste dans la liste, barrée.') + ' Le stock est rendu.', 'facCancelOk', 'Oui, annuler', { key: el.dataset.key }); };
 ACTIONS.facCancelOk = (el) => { const f = DB.get(el.dataset.key); if (!f) return; const o = Object.assign({}, f, { statut: 'annulee' }); DB.put(el.dataset.key, o); stockPourVente(el.dataset.key, o); closeSheet(); toast(`${nomVente(f)} annulée${mouvements().some((m) => m.ref === el.dataset.key) ? '' : ' (le stock est rendu)'}.`); };
+/* Aide-mémoire : quel papier laisser au client, qui signe quoi */
+function aideLivraison() {
+  return `<details class="fold aide-liv"><summary>Que laisser au client, et qui signe quoi ?</summary>
+    <p><b>Bulletin de livraison</b> : signé par <b>le client</b> (« Marchandise reçue en bon état ») = votre preuve de livraison.<br>
+    <b>Facture acquittée</b> : signée par <b>vous</b> (« Reçu par ») = sa preuve de paiement, seulement pour les espèces.</p>
+    <ul>
+      <li><b>Payé en espèces à la livraison</b> : laisser la facture acquittée, signée par vous. Rien à garder sur papier, l'app a tout. Pour un particulier, pas besoin de bulletin.</li>
+      <li><b>Payé plus tard (facture QR)</b> : laisser le bulletin + la facture QR (ou l'envoyer par mail). Garder la photo du bulletin signé par le client.</li>
+      <li><b>Client régulier facturé au mois</b> : laisser le bulletin. Garder la photo du bulletin signé ; la facture du mois suit.</li>
+    </ul>
+    <p class="hint">Pas besoin de double : imprimer un seul bulletin, le faire signer, le photographier avec « 📷 Photo du bulletin signé » (dans la vente), puis le laisser au client.</p></details>`;
+}
 /* Bulletin de livraison d'une vente (numéroté au premier téléchargement) */
 ACTIONS.blPdf = (el) => {
   const k = el.dataset.key, f = DB.get(k); if (!f) return;
   openSheet(`${sheetHead('Bulletin de livraison', nomVente(f))}<div class="sbody"><p class="hint">${f.blNumero ? 'Bulletin ' + esc(f.blNumero) + '.' : 'Un numéro de bulletin est donné maintenant.'}</p>
+    ${aideLivraison()}
     <div class="row-end"><button class="btn" type="button" data-act="blPdfOk" data-key="${esc(k)}" data-prix="0">Sans les prix</button><button class="btn primary" type="button" data-act="blPdfOk" data-key="${esc(k)}" data-prix="1">Avec les prix</button></div></div>`);
 };
 ACTIONS.blPdfOk = (el) => {
