@@ -44,17 +44,49 @@ const DB = {
   put(k, obj) {
     const clean = JSON.parse(JSON.stringify(obj)); delete clean.key;
     const s = canon(clean); if (this.sig[k] === s) return false;
+    noterAvant(k);
     this.data[k] = clean; this.sig[k] = s; delete this.trash[k];
     this.dirty.add(k); Sync.changed(); return true;
   },
   del(k) {
     if (!(k in this.data)) return false;
+    noterAvant(k);
     this.trash[k] = Object.assign({ _supprimeLe: new Date().toISOString(), _supprimePar: Sync.me || '' }, this.data[k]);
     delete this.data[k]; delete this.sig[k];
     this.dirty.add(k); Sync.changed(); return true;
   },
   restore(k) { const d = this.trash[k]; if (!d) return false; const c = Object.assign({}, d); delete c._supprimeLe; delete c._supprimePar; delete this.trash[k]; this.put(k, c); return true; },
 };
+/* ---------- Annuler (↶ en haut, ou Ctrl+Z / Cmd+Z hors d'un champ de texte) ----------
+   On garde l'état d'avant de chaque élément touché. Les changements faits ensemble (moins d'une seconde d'écart :
+   une vente, son stock, sa facture…) s'annulent d'un coup. 30 étapes au plus, sur cet appareil, jusqu'au rechargement. */
+const ANNULER = { pile: [], groupe: null, t: 0, actif: true };
+const SANS_ANNULER = /^(lu:|irr:|cfg:mails:etat|cfg:sauvegarde|cfg:archive:|push:|tw:)/;
+function noterAvant(k) {
+  if (!ANNULER.actif || SANS_ANNULER.test(k)) return;
+  const now = Date.now();
+  if (!ANNULER.groupe || now - ANNULER.t > 900) { ANNULER.groupe = { avant: {}, le: now }; ANNULER.pile.push(ANNULER.groupe); if (ANNULER.pile.length > 30) ANNULER.pile.shift(); }
+  ANNULER.t = now;
+  if (!(k in ANNULER.groupe.avant)) ANNULER.groupe.avant[k] = k in DB.data ? JSON.parse(JSON.stringify(DB.data[k])) : null;
+  setTimeout(majBoutonAnnuler, 0);
+}
+/* Écritures automatiques (rangement, fiches créées toutes seules…) : pas dans « Annuler » */
+function sansAnnuler(fn) { const a = ANNULER.actif; ANNULER.actif = false; try { return fn(); } finally { ANNULER.actif = a; } }
+function majBoutonAnnuler() { const b = document.getElementById('undo'); if (b) b.hidden = !ANNULER.pile.length; }
+function annuler() {
+  const g = ANNULER.pile.pop(); ANNULER.groupe = null; if (!g) { toast('Rien à annuler.'); return; }
+  ANNULER.actif = false;
+  try { for (const [k, v] of Object.entries(g.avant)) { if (v == null) DB.del(k); else DB.put(k, v); } }
+  finally { ANNULER.actif = true; }
+  closeSheet(); majBoutonAnnuler();
+  const n = Object.keys(g.avant).length; toast(`Annulé${n > 1 ? ` (${n} éléments)` : ''}.${ANNULER.pile.length ? ' ↶ pour revenir encore en arrière.' : ''}`, 3500);
+  render();
+}
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || String(e.key).toLowerCase() !== 'z') return;
+  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return; // dans un champ : le navigateur annule la frappe
+  e.preventDefault(); annuler();
+});
 function canon(v) {
   if (Array.isArray(v)) return '[' + v.map((x) => canon(x === undefined ? null : x)).join(',') + ']';
   if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}';
@@ -249,6 +281,7 @@ document.addEventListener('submit', (e) => {
   e.preventDefault(); const f = FORMS[form.dataset.form]; if (f) f(formValues(form), form);
 });
 ACTIONS.close = () => closeSheet();
+ACTIONS.annuler = () => annuler();
 ACTIONS.go = (el) => go(el.dataset.href);
 ACTIONS.closeGo = (el) => { closeSheet(); go(el.dataset.href); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('scrim').hidden) closeSheet(); });

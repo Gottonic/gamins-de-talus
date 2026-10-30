@@ -5,7 +5,7 @@
 //   (facultatifs : IMAP_HOST = mail.infomaniak.com, IMAP_PORT = 993, CRON_SECRET).
 // Seuls l'expéditeur, l'objet, la date et le début du texte (1500 caractères) sont copiés. Rien n'est modifié dans la boîte
 // (lecture seule : les mails restent « non lus » chez Infomaniak).
-// Envoi : { envoyer: { a, objet, texte, pieces: [{ nom, type, base64 }] } } par un membre connecté → envoyé par le SMTP
+// Envoi : { envoyer: { a, cc?, objet, texte, inReplyTo?, pieces: [{ nom, type, base64 }] } } par un membre connecté → envoyé par le SMTP
 // d'Infomaniak (port 465, mêmes identifiants), et une copie est rangée dans le dossier « Envoyés » de la boîte.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { ImapFlow } from 'npm:imapflow@1';
@@ -78,12 +78,14 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
 export async function envoyerMail(env: (k: string) => string | undefined, m: any, nomExp = 'Gamins de Talus') {
   const user = env('IMAP_USER')!, pass = env('IMAP_PASSWORD')!;
   if (!m || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(m.a || '').trim())) throw new Error('adresse du destinataire invalide');
-  const mail = { from: { name: nomExp, address: user }, to: String(m.a).trim(), cc: m.cc || undefined, subject: String(m.objet || '').slice(0, 200), text: String(m.texte || ''),
-    attachments: (m.pieces || []).slice(0, 5).map((x: any) => ({ filename: String(x.nom || 'document.pdf'), contentType: x.type || 'application/pdf', content: x.base64, encoding: 'base64' })) };
+  const mail: any = { from: { name: nomExp, address: user }, to: String(m.a).trim(), cc: m.cc || undefined, subject: String(m.objet || '').slice(0, 200), text: String(m.texte || ''),
+    inReplyTo: m.inReplyTo || undefined, references: m.inReplyTo ? [m.inReplyTo] : undefined,
+    attachments: (m.pieces || []).slice(0, 8).map((x: any) => ({ filename: String(x.nom || 'document.pdf'), contentType: x.type || 'application/pdf', content: x.base64, encoding: 'base64' })) };
   const brut: Uint8Array = await new MailComposer(mail).compile().build();
   const port = Number(env('SMTP_PORT') || 465);
   const t = nodemailer.createTransport({ host: env('SMTP_HOST') || 'mail.infomaniak.com', port, secure: (env('SMTP_SECURE') || (port === 465 ? 'true' : 'false')) === 'true', auth: { user, pass }, tls: { rejectUnauthorized: (env('IMAP_TLS_STRICT') || 'true') !== 'false' } });
-  await t.sendMail({ envelope: { from: user, to: [mail.to].concat(m.cc ? [m.cc] : []) }, raw: brut });
+  const cc = String(m.cc || '').split(/[,;\s]+/).filter(Boolean);
+  await t.sendMail({ envelope: { from: user, to: [mail.to].concat(cc) }, raw: brut });
   /* Copie dans le dossier « Envoyés » (si ça échoue, le mail est quand même parti) */
   let copie = false;
   try {

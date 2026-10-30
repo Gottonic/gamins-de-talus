@@ -248,7 +248,8 @@ function majFiche(c) {
   if (c.key && c.fiche !== k) { const cc = DB.get(c.key); if (cc && cc.fiche !== k) DB.put(c.key, Object.assign({}, cc, { fiche: k })); }
 }
 /* Au premier passage : une fiche pour chaque culture déjà dans les plans (en partant des plus anciens, le plus récent gagne) */
-function creerFichesManquantes() {
+function creerFichesManquantes() { sansAnnuler(creerFichesManquantes0); }
+function creerFichesManquantes0() {
   const dernier = {};
   for (const c of DB.all('cul:')) { const k = ficheDe(c); if (!dernier[k] || String(c.saison) > String(dernier[k].saison)) dernier[k] = c; }
   for (const [k, c] of Object.entries(dernier)) if (!DB.get(k) && !(k in DB.trash)) majFiche(c);

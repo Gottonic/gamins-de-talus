@@ -208,7 +208,7 @@ function rangerVieuxMessages() {
   const d = new Date(); d.setMonth(d.getMonth() - 3); const lim = d.toISOString();
   for (const m of messages()) if (!m.epingle && String(m.cree) < lim) DB.del(m.key);
 }
-setTimeout(rangerVieuxMessages, 10000);
+setTimeout(() => sansAnnuler(rangerVieuxMessages), 10000);
 
 /* ---------- Discord ----------
    Chaque personne colle l'adresse d'un webhook de son propre salon Discord. Quand quelqu'un écrit,
@@ -315,7 +315,7 @@ function renderMails() {
   const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', 'Je m\'en occupe'], ['traites', 'Traités'], ['tous', 'Tous']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
   if (!all.length && !etat.derniere) return `<div class="panel"><h2>Mails</h2><p>Les mails reçus sur votre adresse commune (${esc(c.adresse || 'Infomaniak')}) apparaîtront ici : qui s'en occupe, ce qui est traité, en lien avec vos contacts.</p>
     <p class="hint">Il reste à installer la fonction « mails » dans Supabase (voir le README, partie « Mails »). Ensuite, la boîte est relevée chaque fois que quelqu'un ouvre cette page, et toutes les 10 minutes par Supabase.</p>
-    <div class="row"><a class="btn primary" href="${esc(c.webmail)}" target="_blank" rel="noopener">✉️ Nouveau mail</a><button class="btn" type="button" data-act="mailRelever">Essayer de relever maintenant</button><button class="btn" type="button" data-act="mailCfg">Réglages</button></div></div>`;
+    <div class="row"><button class="btn primary" type="button" data-act="mailEcrire">✉️ Nouveau mail</button><button class="btn" type="button" data-act="mailRelever">Essayer de relever maintenant</button><button class="btn" type="button" data-act="mailCfg">Réglages</button></div></div>`;
   const carte = (m) => {
     const ct = contactDuMail(m.de && m.de.adresse), vus = Object.keys(m.vus || {}).filter((p) => p !== m.par);
     const etatTxt = m.statut === 'traite' ? `✓ traité${m.par ? ' par ' + nomDe(m.par) : ''}` : m.statut === 'ignore' ? 'ignoré' : m.statut === 'encours' ? `${m.par === Sync.me ? 'Tu t\'en occupes' : nomDe(m.par) + ' s\'en occupe'}` : 'personne ne s\'en occupe encore';
@@ -324,15 +324,16 @@ function renderMails() {
       <div class="mail-objet">${esc(m.objet || '(sans objet)')}</div>
       ${ct ? `<a class="hint" href="#/${ct.prospect ? 'contacts/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc((m.de && m.de.adresse) || '')}</span>`}
       <p class="mail-extrait${MAIL.ouvert === m.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(m.key)}">${esc(m.extrait || '')}</p>
-      <div class="mail-etat"><span class="tpill">${esc(etatTxt)}</span>${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
+      <div class="mail-etat"><span class="tpill">${esc(etatTxt)}</span>${(m.reponses || []).length ? `<span class="hint">↩ répondu par ${esc(m.reponses.map((r) => nomDe(r.par) + ' le ' + fmtDateCourt(String(r.le).slice(0, 10))).join(', '))}</span>` : ''}${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
       <div class="row mail-actions">
-        ${!['traite', 'ignore'].includes(m.statut || '') && m.par !== Sync.me ? `<button class="btn primary small" type="button" data-act="mailMoi" data-key="${esc(m.key)}">Je m'en occupe</button>` : ''}
+        <button class="btn primary small" type="button" data-act="mailRepondre" data-key="${esc(m.key)}">↩ Répondre</button>
+        ${!['traite', 'ignore'].includes(m.statut || '') && m.par !== Sync.me ? `<button class="btn small" type="button" data-act="mailMoi" data-key="${esc(m.key)}">Je m'en occupe</button>` : ''}
         <button class="btn small" type="button" data-act="mailVerifier" data-key="${esc(m.key)}">Je vais juste vérifier</button>
         ${!['traite', 'ignore'].includes(m.statut || '') ? `<button class="btn small" type="button" data-act="mailStatut" data-s="traite" data-key="${esc(m.key)}">✓ Traité</button>` : `<button class="btn small" type="button" data-act="mailStatut" data-s="" data-key="${esc(m.key)}">Remettre à traiter</button>`}
         <button class="btn small" type="button" data-act="mailPlus" data-key="${esc(m.key)}" aria-label="Plus d'options">⋯</button></div></div>`;
   };
-  return `<div class="panel"><div class="between"><h2>Mails${c.adresse ? ' · ' + esc(c.adresse) : ''}</h2><div class="row"><a class="btn primary small" href="${esc(c.webmail)}" target="_blank" rel="noopener">✉️ Nouveau mail</a><button class="btn small" type="button" data-act="mailRelever">Relever</button><button class="btn small" type="button" data-act="mailCfg">Réglages</button></div></div>
-    <p class="hint">« Nouveau mail » ouvre la boîte Infomaniak (bouton « Nouveau message » en haut à gauche). <a href="mailto:">Ou avec l'app mail de cet appareil</a>. Dernière relève ${esc(depuis(etat.derniere))}${etat.erreur ? ` · <span class="bad">problème : ${esc(etat.erreur)}</span>` : ''}. « Je m'en occupe » et « Je vais juste vérifier » ouvrent la boîte Infomaniak dans un nouvel onglet.</p>
+  return `<div class="panel"><div class="between"><h2>Mails${c.adresse ? ' · ' + esc(c.adresse) : ''}</h2><div class="row"><button class="btn primary small" type="button" data-act="mailEcrire">✉️ Nouveau mail</button><button class="btn small" type="button" data-act="mailRelever">Relever</button><button class="btn small" type="button" data-act="mailCfg">Réglages</button></div></div>
+    <p class="hint">Les mails partent de ${esc(c.adresse || 'votre adresse')} ; une copie va dans « Envoyés ». <a href="${esc(c.webmail)}" target="_blank" rel="noopener">Ouvrir la boîte Infomaniak</a>. Dernière relève ${esc(depuis(etat.derniere))}${etat.erreur ? ` · <span class="bad">problème : ${esc(etat.erreur)}</span>` : ''}. « Je m'en occupe » et « Je vais juste vérifier » ouvrent la boîte Infomaniak dans un nouvel onglet.</p>
     <div class="chips">${chips}</div>
     ${list.length ? list.slice(0, 80).map(carte).join('') : '<p class="empty">Rien ici.</p>'}</div>`;
 }
@@ -392,4 +393,53 @@ MODULES.mails = {
   },
   render() { return renderMails(); },
   after() { if (typeof releverMails === 'function') releverMails(); },
+};
+
+/* ---------- Écrire et répondre depuis l'app (envoi par la fonction « mails », SMTP Infomaniak) ---------- */
+const signatureMail = () => { const s = cfg(); return `\n\n${Sync.me ? nomDe(Sync.me) + '\n' : ''}${s.nom}${s.telephone ? '\n' + s.telephone : ''}`; };
+const ECR = { pieces: [] };
+function ouvrirComposeur(o) {
+  ECR.pieces = []; const emails = [...new Set(tousContacts().map((c) => String(c.email || '').trim()).filter(Boolean))];
+  openSheet(`${sheetHead(o.repond ? 'Répondre' : 'Nouveau mail', 'De ' + (cfgMails().adresse || 'votre adresse Infomaniak'))}<form class="sbody form" data-form="mailEnvoyer">
+    <input type="hidden" name="repond" value="${esc(o.repond || '')}">
+    ${inp('me-a', 'À', o.a || '', { name: 'a', req: true, attrs: { list: 'me-contacts', autocomplete: 'off', placeholder: 'adresse@exemple.ch' } })}
+    <datalist id="me-contacts">${tousContacts().filter((c) => c.email).map((c) => `<option value="${esc(c.email)}">${esc(displayName(c))}</option>`).join('')}</datalist>
+    ${inp('me-cc', 'Copie (facultatif)', '', { name: 'cc', attrs: { list: 'me-contacts', autocomplete: 'off', placeholder: 'une ou plusieurs adresses, séparées par une virgule' } })}
+    ${inp('me-o', 'Objet', o.objet || '', { name: 'objet', req: true })}
+    ${txt('me-t', 'Message', o.texte || signatureMail(), { name: 'texte', rows: 11 })}
+    <div class="field"><span class="flabel">Pièces jointes</span><div id="me-pj"></div>
+      <label class="btn small"><input type="file" id="me-file" multiple hidden>+ Joindre un fichier</label><span class="sub">8 Mo au total.</span></div>
+    ${o.repond ? '<label class="row" style="font-size:14px"><input type="checkbox" name="traite" checked> Marquer le mail comme traité</label>' : ''}
+    <div class="row-end"><button class="btn primary" type="submit" id="me-envoyer">Envoyer</button></div></form>`);
+  const t = $('me-t'); if (t && o.repond) { t.focus(); t.setSelectionRange(0, 0); } else { const a = $('me-a'); if (a && !o.a) a.focus(); }
+  $('me-file').addEventListener('change', (e) => {
+    for (const f of e.target.files) ECR.pieces.push(f); e.target.value = '';
+    const tot = ECR.pieces.reduce((a, f) => a + f.size, 0); if (tot > 8 * 1024 * 1024) { ECR.pieces.pop(); toast('Trop lourd : 8 Mo au total.'); }
+    majPieces();
+  });
+  if (emails.length === 0) { /* pas de contact avec adresse : rien à proposer */ }
+}
+function majPieces() { const b = $('me-pj'); if (b) b.innerHTML = ECR.pieces.map((f, i) => `<span class="tpill">${esc(trunc(f.name, 30))} · ${tailleTxt(f.size)} <button type="button" class="btn link" data-act="mePjOff" data-i="${i}">×</button></span>`).join(' '); }
+ACTIONS.mePjOff = (el) => { ECR.pieces.splice(Number(el.dataset.i), 1); majPieces(); };
+ACTIONS.mailEcrire = () => ouvrirComposeur({});
+ACTIONS.mailRepondre = (el) => {
+  const m = DB.get(el.dataset.key); if (!m) return; closeSheet();
+  const de = (m.de && (m.de.nom || m.de.adresse)) || '', cite = String(m.extrait || '').split('\n').map((l) => '> ' + l).join('\n');
+  ouvrirComposeur({ repond: el.dataset.key, a: (m.de && m.de.adresse) || '', objet: /^re ?:/i.test(m.objet || '') ? m.objet : 'Re: ' + (m.objet || ''), texte: `Bonjour,\n\n${signatureMail().trim()}\n\nLe ${fmtDate(String(m.date || '').slice(0, 10))}, ${de} a écrit :\n${cite}` });
+  const t = $('me-t'); if (t) t.setSelectionRange(10, 10);
+};
+FORMS.mailEnvoyer = async (v) => {
+  const a = String(v.a || '').trim(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)) { toast('Adresse invalide.'); return; }
+  if (LOCAL_MODE || !Sync.sb) { toast("En mode essai, rien n'est envoyé."); return; }
+  if (!navigator.onLine) { toast('Il faut du réseau pour envoyer.'); return; }
+  const b = $('me-envoyer'); if (b) { b.disabled = true; b.textContent = 'Envoi…'; }
+  try {
+    const lire = (f) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = ko; r.readAsDataURL(f); });
+    const pieces = await Promise.all(ECR.pieces.map(async (f) => ({ nom: f.name, type: f.type || 'application/octet-stream', base64: await lire(f) })));
+    const m = v.repond ? DB.get(v.repond) : null;
+    const { data, error } = await Sync.sb.functions.invoke('mails', { body: { envoyer: { a, cc: String(v.cc || '').trim() || undefined, objet: v.objet, texte: v.texte, pieces, inReplyTo: (m && m.messageId) || undefined, nomExp: cfg().nom } } });
+    if (error) { let msg = error.message; try { const x = await error.context.clone().json(); if (x && x.erreur) msg = x.erreur; } catch (_) { /* */ } throw new Error(msg); }
+    if (m) majMail(v.repond, Object.assign({ reponses: (m.reponses || []).concat([{ le: new Date().toISOString(), par: Sync.me || '', a }]) }, v.traite ? { statut: 'traite', par: m.par || Sync.me } : {}));
+    ECR.pieces = []; closeSheet(); toast(`Envoyé à ${a}${data && data.copie ? ' (copie dans « Envoyés »)' : ''}.`, 5000);
+  } catch (e) { if (b) { b.disabled = false; b.textContent = 'Envoyer'; } toast('Envoi impossible : ' + e.message, 8000); }
 };

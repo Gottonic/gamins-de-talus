@@ -24,7 +24,7 @@ async function enter(user) {
     return;
   }
   render(); Sync.push(); ecouterEnDirect();
-  setTimeout(nettoyerFichiers, 8000);
+  setTimeout(async () => { ANNULER.actif = false; try { await nettoyerFichiers(); } finally { ANNULER.actif = true; } }, 8000);
 }
 /* Mises à jour en direct (messages, etc.) : actif si la table est publiée pour Realtime dans Supabase.
    Sinon rien ne casse : l'app regarde quand même toutes les minutes (toutes les 8 s dans la messagerie). */
