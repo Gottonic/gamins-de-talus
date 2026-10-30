@@ -8,6 +8,8 @@
 
 const MSG = { draft: '', timer: null, photo: null, envoi: false, repondA: '', edition: '' };
 const MAX_EPINGLES = 3;
+/* Réserve la place de la photo avant qu'elle se charge (sinon les messages « redescendent ») */
+const taillePhoto = (ph) => { const w = Number(ph.w) || 4, h = Number(ph.h) || 3, r = Math.min(280 / w, 340 / h); return ` width="${w}" height="${h}" style="width:${Math.round(w * r)}px;aspect-ratio:${w}/${h}"`; };
 const apercuMsg = (m) => (m.texte ? m.texte.replace(/\s+/g, ' ') : '') || (m.photo ? '📷 Photo' : '');
 const messages = () => DB.all('msg:').sort((a, b) => String(a.cree).localeCompare(String(b.cree)));
 const luJusqua = (p) => ((DB.get('lu:' + p) || {}).jusqua || '');
@@ -37,9 +39,11 @@ MODULES.messages = {
     /* Toujours ouvrir sur le dernier message, même quand les photos se chargent après coup */
     const box = $('msg-list');
     if (box) {
-      let colle = true; const enBas = () => { box.scrollTop = box.scrollHeight; };
+      /* « collé en bas » tant que la personne ne fait pas défiler elle-même (molette, doigt, clavier) */
+      let colle = true; MSG.geste = 0; const enBas = () => { box.scrollTop = box.scrollHeight; };
       enBas(); requestAnimationFrame(enBas);
-      box.addEventListener('scroll', () => { colle = box.scrollHeight - box.scrollTop - box.clientHeight < 80; }, { passive: true });
+      ['wheel', 'touchmove', 'keydown', 'pointerdown'].forEach((ev) => box.addEventListener(ev, () => { MSG.geste = Date.now(); }, { passive: true }));
+      box.addEventListener('scroll', () => { if (Date.now() - MSG.geste < 1500) colle = box.scrollHeight - box.scrollTop - box.clientHeight < 80; }, { passive: true });
       box.addEventListener('load', () => { if (colle) enBas(); }, true);
       if (window.ResizeObserver) { const ro = new ResizeObserver(() => { if (colle) enBas(); }); [...box.children].forEach((c) => ro.observe(c)); }
     }
@@ -89,7 +93,7 @@ function renderMessages() {
     html += `<div class="msg${mien ? ' mine' : ''}${suite && !m.repond ? ' suite' : ''}${m.epingle ? ' pinned' : ''}" id="m-${esc(m.key.slice(4))}">
       ${!mien && (!suite || m.repond) ? `<span class="msg-who">${esc(nomDe(m.de))}</span>` : ''}
       ${m.repond ? `<button type="button" class="msg-cite" data-act="msgVoir" data-key="${esc(m.repond)}">↪ ${cite ? `<b>${esc(nomDe(cite.de))}</b> ${esc(trunc(apercuMsg(cite), 70))}` : 'message supprimé'}</button>` : ''}
-      <div class="bubble${m.photo && !m.photo.expire ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${m.photo.w ? ` width="${m.photo.w}" height="${m.photo.h}"` : ''} loading="lazy"></button>` : ''}${texteMsg(m.texte || '')}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div></div>`;
+      <div class="bubble${m.photo && !m.photo.expire ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${taillePhoto(m.photo)}></button>` : ''}${texteMsg(m.texte || '')}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div></div>`;
   });
   /* « Vu par » sous le dernier message */
   const der = ms[ms.length - 1];
@@ -199,7 +203,7 @@ ACTIONS.msgTache = (el) => {
 };
 ACTIONS.msgVoir = (el) => {
   const n = $('m-' + el.dataset.key.slice(4)); if (!n) { toast('Ce message n\'est plus là.'); return; }
-  n.scrollIntoView({ block: 'center', behavior: 'smooth' }); n.classList.add('flash'); setTimeout(() => n.classList.remove('flash'), 1600);
+  MSG.geste = Date.now(); n.scrollIntoView({ block: 'center', behavior: 'smooth' }); n.classList.add('flash'); setTimeout(() => n.classList.remove('flash'), 1600);
 };
 /* Ménage quotidien : messages de plus de 3 mois à la corbeille (sauf épinglés) */
 function rangerVieuxMessages() {

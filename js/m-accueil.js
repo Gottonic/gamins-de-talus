@@ -14,7 +14,7 @@ const ICONS = {
   contacts: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.5.2 4.3 1.9 4.9 4.9"/></svg>',
   reglages: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
 };
-const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'irrigation', 'contacts', 'drive'];
+const ORDRE = ['messages', 'factures', 'finances', 'calendrier', 'taches', 'cultures', 'irrigation', 'contacts']; // le Drive s'ouvre par le bouton en haut de l'écran
 
 /* Ce que l'accueil montre : « moi » (ce qui me concerne, par défaut) ou « tous » ; mémorisé sur l'appareil */
 const ACC = { vue: ls.get('gdt-accueil-vue') || 'moi' };
