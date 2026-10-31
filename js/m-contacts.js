@@ -12,6 +12,11 @@ const typeLabel = (k) => (TYPES.find((t) => t.k === k) || { label: 'Autre' }).la
 const billName = (c) => (c.organisation || c.nom || '').trim();
 const attnName = (c) => (c.organisation && c.nom ? c.nom.trim() : '');
 const displayName = (c) => c.organisation || c.nom || 'Sans nom';
+/* Personne de contact : prénom et nom rangés à part (prenom, nomFamille) ; c.nom garde « Prénom Nom » pour l'affichage,
+   les factures (« à l'att. de ») et la recherche. Une ancienne fiche n'a que c.nom : on propose une séparation à vérifier. */
+const nomComplet = (prenom, nom) => [prenom, nom].map((x) => String(x || '').trim()).filter(Boolean).join(' ');
+function devinerPrenomNom(s) { const t = String(s || '').trim().split(/\s+/).filter(Boolean); return t.length < 2 ? { prenom: '', nom: t[0] || '', devine: false } : { prenom: t[0], nom: t.slice(1).join(' '), devine: true }; }
+const partiesNom = (c) => (c && (c.prenom || c.nomFamille) ? { prenom: c.prenom || '', nom: c.nomFamille || '', devine: false } : devinerPrenomNom(c && c.nom));
 const byName = (a, b) => displayName(a).localeCompare(displayName(b), 'fr', { sensitivity: 'base' });
 const tousContacts = () => DB.all('ct:');
 const contacts = () => tousContacts().filter((c) => !c.prospect);
@@ -140,12 +145,17 @@ function contactForm(c, prospect) {
   c = c || { type: CT.type || 'pro', prospect: !!prospect, prospection: prospect ? { statut: 'À contacter', priorite: 2, categorie: 'Restaurant' } : undefined };
   const p = c.prospection || {}, isP = !!c.prospect;
   const back = k ? (isP ? '#/contacts/prospect/' : '#/contacts/voir/') + encodeURIComponent(k) : isP ? '#/contacts/prospection' : '#/contacts';
+  const pn = partiesNom(c);
   return `<form class="panel form" data-form="contact"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="prospect" value="${isP ? '1' : ''}">
     <h2>${k ? 'Modifier ' + esc(displayName(c)) : isP ? 'Nouveau prospect' : 'Nouveau contact'}</h2>
     <div class="grid2">
       ${inp('ct-organisation', 'Établissement / organisation', c.organisation, { name: 'organisation', attrs: { maxlength: 90 } })}
-      ${inp('ct-nom', 'Personne de contact', c.nom, { name: 'nom', attrs: { maxlength: 70, placeholder: 'facultatif' } })}
       ${inp('ct-fonction', 'Fonction', c.fonction, { name: 'fonction', attrs: { maxlength: 70, placeholder: 'ex. resp. achats, chef' } })}
+      ${inp('ct-prenom', 'Prénom', pn.prenom, { name: 'prenom', attrs: { maxlength: 40, autocomplete: 'off' } })}
+      ${inp('ct-nomf', 'Nom', pn.nom, { name: 'nomFamille', attrs: { maxlength: 50, autocomplete: 'off' } })}
+    </div>
+    ${pn.devine ? `<p class="hint">⚠️ Fiche d'avant : « ${esc(c.nom)} » a été séparé automatiquement. Vérifie le prénom et le nom (inverse-les si besoin).</p>` : ''}
+    <div class="grid2">
       ${isP ? sel('ct-pcat', 'Catégorie', p.categorie || 'Autre', CATEGORIES_P.map((x) => [x, x]), { name: 'categorie' }) : sel('ct-type', 'Type', c.type || 'autre', TYPES.map((t) => [t.k, t.label]), { name: 'type', sub: TARIF_AIDE })}
       ${inp('ct-telephone', 'Téléphone', c.telephone, { name: 'telephone', type: 'tel', attrs: { maxlength: 90 } })}
       ${inp('ct-email', 'E-mail', c.email, { name: 'email', attrs: { maxlength: 160 } })}
@@ -163,9 +173,10 @@ function contactForm(c, prospect) {
   </form>`;
 }
 FORMS.contact = (v) => {
+  v.nom = nomComplet(v.prenom, v.nomFamille);
   if (!v.nom && !v.organisation) { toast('Donne au moins un nom ou un établissement.'); return; }
   const k = v.key || 'ct:' + uid('c'), old = DB.get(k) || { cree: new Date().toISOString() };
-  const o = Object.assign({}, old); for (const f of ['nom', 'organisation', 'fonction', 'telephone', 'email', 'site', 'rue', 'numero', 'npa', 'localite', 'notes']) o[f] = v[f] || '';
+  const o = Object.assign({}, old); for (const f of ['prenom', 'nomFamille', 'nom', 'organisation', 'fonction', 'telephone', 'email', 'site', 'rue', 'numero', 'npa', 'localite', 'notes']) o[f] = v[f] || '';
   if (v.prospect) {
     o.prospect = true;
     o.prospection = Object.assign({ statut: 'À contacter' }, old.prospection || {}, { categorie: v.categorie, priorite: Number(v.priorite) || 2, lieu: v.lieu, horaires: v.horaires, pourquoi: v.pourquoi });
@@ -287,7 +298,8 @@ function formConversion(c) {
     <p class="hint">Sa fiche passe dans « Clients et contacts », avec tout son journal d'appels. Vérifie le type (il fixe les prix sur les factures) et l'adresse (nécessaire pour une facture QR).</p>
     ${sel('cv-type', 'Type de client', c.type || TYPE_DE_CATEGORIE[p.categorie] || 'pro', TYPES.map((t) => [t.k, t.label]), { name: 'type', sub: TARIF_AIDE })}
     <div class="grid2">
-      ${inp('cv-org', 'Nom sur la facture', c.organisation || c.nom, { name: 'organisation' })}${inp('cv-nom', "À l'attention de", c.organisation ? c.nom : '', { name: 'nom' })}
+      ${inp('cv-org', 'Nom sur la facture', c.organisation || c.nom, { name: 'organisation' })}<span></span>
+      ${inp('cv-prenom', "À l'attention de : prénom", c.organisation ? partiesNom(c).prenom : '', { name: 'prenom' })}${inp('cv-nomf', 'Nom', c.organisation ? partiesNom(c).nom : '', { name: 'nomFamille' })}
       ${inp('cv-rue', 'Rue', c.rue, { name: 'rue' })}${inp('cv-num', 'N°', c.numero, { name: 'numero' })}
       ${inp('cv-npa', 'NPA', c.npa, { name: 'npa' })}${inp('cv-loc', 'Localité', c.localite || p.lieu, { name: 'localite' })}
     </div>
@@ -300,8 +312,8 @@ FORMS.convertir = (v, form) => {
   const c = DB.get(v.key); if (!c) return;
   const ensuite = (form.querySelector('button[type=submit]:focus') || {}).value || form._ensuite || 'fiche';
   const j = (c.journal || []).concat([{ date: todayISO(), par: Sync.me || '', statut: 'Validé', note: 'Devenu client.' + (v.note ? ' ' + v.note : '') }]);
-  DB.put(v.key, Object.assign({}, c, { prospect: false, type: v.type, organisation: v.organisation, nom: v.nom, rue: v.rue, numero: v.numero, npa: v.npa, localite: v.localite, devenuClientLe: todayISO(), journal: j, prospection: Object.assign({}, c.prospection || {}, { statut: 'Validé', relanceLe: '' }) }));
-  toast(`${v.organisation || v.nom} est maintenant client.`);
+  DB.put(v.key, Object.assign({}, c, { prospect: false, type: v.type, organisation: v.organisation, prenom: v.prenom || '', nomFamille: v.nomFamille || '', nom: nomComplet(v.prenom, v.nomFamille), rue: v.rue, numero: v.numero, npa: v.npa, localite: v.localite, devenuClientLe: todayISO(), journal: j, prospection: Object.assign({}, c.prospection || {}, { statut: 'Validé', relanceLe: '' }) }));
+  toast(`${v.organisation || nomComplet(v.prenom, v.nomFamille)} est maintenant client.`);
   go(ensuite === 'facture' ? '#/factures/nouvelle/' + encodeURIComponent(v.key) : '#/contacts/voir/' + encodeURIComponent(v.key));
 };
 document.addEventListener('click', (e) => { const b = e.target.closest('form[data-form="convertir"] button[type=submit]'); if (b) b.form._ensuite = b.value; }, true);

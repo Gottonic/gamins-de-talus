@@ -392,7 +392,7 @@ ACTIONS.mailTache = (el) => {
 };
 ACTIONS.mailContact = (el) => {
   const m = DB.get(el.dataset.key); if (!m || !m.de) return; const k = 'ct:' + uid('c');
-  DB.put(k, { nom: m.de.nom || '', email: m.de.adresse, type: 'autre', cree: new Date().toISOString() });
+  const pn = devinerPrenomNom(m.de.nom); DB.put(k, { prenom: pn.prenom, nomFamille: pn.nom, nom: nomComplet(pn.prenom, pn.nom), email: m.de.adresse, type: 'autre', cree: new Date().toISOString() });
   closeSheet(); go('#/contacts/modifier/' + encodeURIComponent(k));
 };
 ACTIONS.mailCfg = () => {

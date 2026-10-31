@@ -13,7 +13,9 @@ MODULES.cultures = {
   tuile() { const s = saisonCourante(), l = cultures(s); if (!l.length) return { line: 'Aucun plan' }; const t = totauxCultures(l, paramsCultures(s)); return { line: `${s} · ${l.length} cultures · ${f0(t.surface)} m²`, badge: typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => typeof pourMoi !== 'function' || pourMoi(r.qui)).length : 0 }; },
   render(sub, id) {
     creerFichesManquantes();
-    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const nR = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().length : 0;
+    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    if (sub === 'recoltes') return t + renderRecoltes();
     if (sub === 'marges') return t + renderMarges();
     if (sub === 'fiches') return t + renderFiches(id);
     if (sub === 'planches') return t + renderPlanches();
@@ -22,6 +24,38 @@ MODULES.cultures = {
   },
   after(sub) { if (sub === 'planches') brancherPlanches(); else if (!sub) brancherPlan(); },
 };
+/* ---------- Récoltes : celles à noter (prévues au calendrier) et toutes celles faites, par saison ----------
+   Une récolte = un mouvement mvt: de type « recolte » (avec ou sans entrée en stock). Le stock, lui, se voit dans Ventes. */
+const RC = { annee: '', culture: '' };
+function recoltesFaites(y) {
+  const l = mouvements().filter((m) => m.type === 'recolte' && yearOf(m.date) === y).map((m) => ({ key: m.key, date: m.date, culture: m.culture || '', prod: m.prod || '', qte: num(m.qte), par: m.par || '', note: m.note || '', horsStock: !!m.horsStock, ref: m.ref || '' }));
+  /* Anciennes saisies : kg tapés dans le calendrier, sans mouvement lié */
+  const vus = new Set(l.map((x) => x.ref).filter(Boolean));
+  if (typeof evenements === 'function') for (const e of evenements()) if (e.type === 'recolte') for (const [d, o] of Object.entries(e.occ || {})) if (yearOf(d) === y && num(o.kg) > 0 && !vus.has('ev:' + e.key + ':' + d)) l.push({ key: '', date: d, culture: e.cultureId || '', prod: '', qte: num(o.kg), par: e.qui || '', note: 'noté au calendrier', ancien: true });
+  return l.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+function renderRecoltes() {
+  const ys = [...new Set(mouvements().filter((m) => m.type === 'recolte').map((m) => yearOf(m.date)).concat([todayISO().slice(0, 4)]))].sort().reverse();
+  const y = RC.annee && ys.includes(RC.annee) ? RC.annee : ys[0];
+  const aNoter = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer() : [];
+  const nomCul = (x) => { const c = x.culture && DB.get(x.culture); const p = x.prod && DB.get(x.prod); return (c && c.nom) || (p && p.nom) || '—'; };
+  const unite = (x) => { const p = x.prod && DB.get(x.prod); return (p && p.unite) || 'kg'; };
+  const toutes = recoltesFaites(y), l = RC.culture ? toutes.filter((x) => nomCul(x) === RC.culture) : toutes;
+  const tot = {}; for (const x of toutes) { const k = nomCul(x) + '|' + unite(x); tot[k] = (tot[k] || 0) + x.qte; }
+  const totL = Object.entries(tot).sort((a, b) => b[1] - a[1]), max = Math.max(1, ...totL.filter(([k]) => k.endsWith('|kg')).map(([, v]) => v));
+  return `${aNoter.length ? `<div class="panel"><h2>À noter · ${aNoter.length}</h2><p class="hint">Récoltes prévues au calendrier ces deux dernières semaines, pas encore enregistrées.</p><div class="items">
+      ${aNoter.map((r) => `<div class="item" style="cursor:default"><span class="who"><strong>${esc(r.titre)}</strong><span class="meta">${esc(dateLongue(r.occ))}${r.qui ? ' · ' + esc(quiLabel(r.qui)) : ''}</span></span>
+        <span class="row"><button class="btn small" type="button" data-act="recolteSans" data-ref="${esc('ev:' + r.key + ':' + r.occ)}">Pas récolté</button><button class="btn primary small" type="button" data-act="recolteEv" data-key="${esc(r.key)}" data-occ="${esc(r.occ)}">Enregistrer</button></span></div>`).join('')}</div></div>` : ''}
+    <div class="panel"><div class="between"><h2>Récoltes ${esc(y)}</h2><div class="row">${ys.length > 1 ? ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="rcAnnee" data-y="${x}">${x}</button>`).join('') : ''}<button class="btn primary small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button></div></div>
+      ${totL.length ? `<div class="bars">${totL.map(([k, v]) => { const [n, u] = k.split('|'); return `<div class="bar-row" role="button" tabindex="0" data-act="rcCulture" data-n="${esc(n)}" style="cursor:pointer${RC.culture && RC.culture !== n ? ';opacity:.45' : ''}"><span>${esc(n)}</span><span class="bar-track">${u === 'kg' ? `<span class="bar-fill" style="width:${(v / max * 100).toFixed(1)}%;background:var(--c-cultures)"></span>` : ''}</span><span class="num">${esc(fmtQ(v, u))}</span></div>`; }).join('')}</div>
+        <p class="hint">Total de la saison par culture. Touche une culture pour ne voir que ses récoltes${RC.culture ? ` · <a href="#" data-act="rcCulture" data-n="">tout revoir</a>` : ''}.</p>` : ''}
+      ${l.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Culture</th><th class="r">Quantité</th><th>Par</th><th>Note</th><th></th></tr></thead><tbody>
+        ${l.map((x) => `<tr><td class="num">${fmtDate(x.date)}</td><td>${esc(nomCul(x))}${x.horsStock ? '' : ' <span class="tpill" title="Ajoutée au stock">stock</span>'}</td><td class="r num">${esc(fmtQ(x.qte, unite(x)))}</td><td>${esc(x.par ? quiLabel(x.par) : '')}</td><td class="hint">${esc(x.note)}</td><td>${x.key ? `<button class="btn small" type="button" data-act="delItem" data-key="${esc(x.key)}" data-what="cette récolte" aria-label="Supprimer">×</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+        : `<p class="empty">Aucune récolte notée en ${esc(y)}. « + Récolte » pour la première ; elle compte dans la récolte réelle de la culture et, si tu veux, dans le stock (Ventes → Stock et prix).</p>`}
+    </div>`;
+}
+ACTIONS.rcAnnee = (el) => { RC.annee = el.dataset.y; RC.culture = ''; render(); };
+ACTIONS.rcCulture = (el) => { RC.culture = RC.culture === el.dataset.n ? '' : el.dataset.n; render(); };
 function renderPlan() {
   {
     const s = saisonCourante(), ss = saisons(), list = cultures(s), P = paramsCultures(s);

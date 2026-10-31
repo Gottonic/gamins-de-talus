@@ -42,7 +42,7 @@ for (const largeur of [1200, 390]) {
   });
   const routes = ['accueil', 'messages', 'mails', 'contacts', 'contacts/prospection', 'taches', 'taches/semaine', 'calendrier', 'calendrier/mois', 'calendrier/heures',
     'factures', 'factures/nouvelle', 'factures/selfservice', 'factures/stock', 'factures/voir/fac:a', 'finances', 'finances/recettes', 'finances/associes', 'finances/annee', 'finances/bilan', 'finances/inventaire', 'finances/achats',
-    'cultures', 'cultures/planches', 'cultures/journal', 'cultures/marges', 'cultures/fiches', 'irrigation', 'irrigation/saison', 'irrigation/meteo', 'irrigation/reglages', 'drive', 'reglages', 'reglages/associes', 'reglages/donnees', 'reglages/entreprise'];
+    'cultures', 'cultures/planches', 'cultures/recoltes', 'cultures/journal', 'cultures/marges', 'cultures/fiches', 'irrigation', 'irrigation/saison', 'irrigation/meteo', 'irrigation/reglages', 'drive', 'reglages', 'reglages/associes', 'reglages/donnees', 'reglages/entreprise'];
   for (const r of routes) {
     await p.goto(U + '#/' + r); await p.waitForTimeout(150);
     const plante = await p.evaluate(() => /n'a pas pu s'afficher/.test(document.body.innerText));
