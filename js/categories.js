@@ -33,7 +33,7 @@ const catsTaches = () => categories().filter((c) => !c.evSeul);
 /* Les événements : du travail (journée, récolte, livraison, marché), un congé, ou autre chose. Les catégories, elles, sont
    pour les tâches ; un événement en prend une seulement pour pré-cocher les heures (récolte → cultures, livraison → ventes). */
 const EV_GENRES = {
-  travail: { nom: 'Journée de travail', court: 'Journée', icone: '🌱', genre: 'travail', cat: '' },
+  travail: { nom: 'Journée de travail', court: 'Journée', icone: '🧰', genre: 'travail', cat: '' },
   recolte: { nom: 'Récolte', court: 'Récolte', icone: '🧺', genre: 'travail', cat: 'champ', sous: 'recolte' },
   livraison: { nom: 'Livraison', court: 'Livraison', icone: '🚚', genre: 'travail', cat: 'ventes', sous: 'livraison' },
   vente: { nom: 'Marché / vente', court: 'Marché', icone: '🛒', genre: 'travail', cat: 'ventes', sous: 'marche' },
