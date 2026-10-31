@@ -29,9 +29,7 @@ function titreEv(e) {
   if (e.type === 'livraison') return 'Livraison' + (c ? ' ' + displayName(c) : '');
   if (e.type === 'recolte') return 'Récolte' + (cu ? ' ' + cu.nom : '');
   if (e.type === 'vacances') return 'Congé' + (e.qui && e.qui !== 'ensemble' ? ' ' + nomDe(e.qui) : '');
-  const ce = catEv(e), so = ce.sous && sousInfo(ce.cat, ce.sous);
-  if (so) return so.nom + (cu ? ' ' + cu.nom : '');
-  return ce.cat === 'champ' ? 'Journée au champ' + (cu ? ' · ' + cu.nom : '') : catInfo(ce.cat).nom;
+  return evGenre(e).nom;
 }
 /* Récoltes notées au calendrier pour une culture (kg) */
 function recolteNotee(cultureKey) {
@@ -47,7 +45,7 @@ function itemsPeriode(de, a) {
   for (const e of evenements()) for (const o of occurrences(e, de, a)) {
     for (let d = o.date > de ? o.date : de; d <= o.fin && d <= a; d = addDays(d, 1)) {
       const st = (e.occ || {})[o.date] || {};
-      add(d, { kind: 'ev', type: e.type, cat: catEv(e).cat, couleur: couleurCat(catEv(e).cat), key: e.key, occ: o.date, titre: titreEv(e), heure: d === o.date ? e.heureDebut || '' : '', qui: e.qui, fait: !!st.fait, multi: o.fin > o.date, debut: d === o.date });
+      add(d, { kind: 'ev', type: e.type, cat: catEv(e).cat, couleur: couleurEv(e, o.date), key: e.key, occ: o.date, titre: titreEv(e), heure: d === o.date ? e.heureDebut || '' : '', qui: e.qui, fait: !!st.fait, multi: o.fin > o.date, debut: d === o.date });
     }
   }
   for (const t of taches()) {
@@ -166,7 +164,7 @@ function ouvrirJour(d) {
     const c = e.contactId && DB.get(e.contactId), cu = e.cultureId && DB.get(e.cultureId);
     const det = [e.heureDebut ? e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : '', quiLabel(e.qui), c ? displayName(c) : '', cu ? cu.nom : '', rec ? (RECS.find((r) => r[0] === rec) || [, ''])[1].toLowerCase() : '', x.multi ? `du ${fmtDateCourt(x.occ)} au ${fmtDateCourt(addDays(x.occ, Math.round((new Date((e.fin || e.date) + 'T12:00') - new Date(e.date + 'T12:00')) / 864e5)))}` : ''].filter(Boolean).join(' · ');
     const ce = catEv(e), tj = taches().filter((t) => t.journee === x.key + '|' + x.occ);
-    return `<div class="evline" style="--c:${couleurCat(ce.cat)}"><div class="between"><div><strong>${esc(x.titre)}</strong><br><span class="hint">${catPill(ce.cat, ce.sous)}${det ? ' · ' + esc(det) : ''}</span></div>
+    return `<div class="evline" style="--c:${couleurEv(e, x.occ, x.key)}"><div class="between"><div><strong>${esc(x.titre)}</strong><br><span class="hint">${esc(iconeEv(e) + ' ' + evGenre(e).nom)}${det ? ' · ' + esc(det) : ''}</span></div>
       <label class="row" style="font-size:14px"><input type="checkbox" data-fait="${esc(x.key)}|${x.occ}"${st.fait ? ' checked' : ''}> Fait</label></div>
       ${e.type === 'recolte' ? (() => { const kg = typeof recolteDeLEvenement === 'function' ? recolteDeLEvenement(x.key, x.occ) : 0; return kg ? `<p class="hint">✓ Récolte enregistrée : ${esc(fmtNum(kg, 1))} kg.</p>` : st.sansRecolte ? '<p class="hint">Pas de récolte ce jour-là.</p>' : `<div class="row"><button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button></div>`; })() : ''}
       ${e.remarque ? `<p class="hint" style="white-space:pre-wrap">${esc(e.remarque)}</p>` : ''}
@@ -181,7 +179,7 @@ function ouvrirJour(d) {
     ${fld('jr-rem', 'Remarque du jour', `<input id="jr-rem" data-jour="${d}" value="${esc(j.remarque || '')}" placeholder="Ex. Journée au champ ensemble">`)}
     <div class="between"><h3>Événements</h3><button class="btn small primary" type="button" data-act="evEdit" data-date="${d}">+ Événement</button></div>
     ${evHtml || '<p class="hint">Aucun événement ce jour.</p>'}
-    ${tch.filter((x) => !x.journee).length ? `<h3>Tâches de ce jour</h3>${tch.filter((x) => !x.journee).map((x) => tacheHtml(DB.get(x.key) || {}, { sansDate: true, court: true })).join('')}` : ''}
+    ${tch.filter((x) => !x.journee).length ? `<h3>Tâches de ce jour</h3>${tch.filter((x) => !x.journee).map((x) => tacheHtml(tacheParCle(x.key) || {}, { sansDate: true, court: true })).join('')}` : ''}
     <div class="row"><button class="btn small" type="button" data-act="taNouvelle" data-date="${d}">+ Tâche pour ce jour</button></div>
     ${rel.length ? `<h3>Relances prospection</h3>${rel.map((r) => `<a class="item" href="#/contacts/prospect/${encodeURIComponent(r.key)}"><span class="who"><strong>${esc(r.titre)}</strong></span></a>`).join('')}` : ''}
     ${fac.length ? `<h3>Factures à échéance</h3>${fac.map((f) => `<a class="item" href="#/factures/voir/${encodeURIComponent(f.key)}"><span class="who"><strong>${esc(f.titre)}</strong></span><span class="amt">${chf(f.montant)}</span></a>`).join('')}` : ''}
@@ -212,45 +210,60 @@ const _hOff = (el) => {
 };
 ACTIONS.hOff = _hOff;
 
-/* ---------- Formulaire d'événement ---------- */
-ACTIONS.evEdit = (el) => {
-  const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', cat: 'champ', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
-  const ce = catEv(e);
-  const cl = tousContacts().sort(byName), cu = DB.all('cul:').sort((a, b) => String(b.saison).localeCompare(String(a.saison)) || (a.ordre || 0) - (b.ordre || 0));
-  openSheet(`${sheetHead(k ? 'Modifier l\'événement' : 'Nouvel événement', k && e.rec && e.rec.freq ? 'Modifie toute la série' : '')}<form class="sbody form" data-form="ev" id="ev-form"><input type="hidden" name="key" value="${esc(k)}">
-    ${catChoixHtml('ev-cat', ce.cat, ce.sous, { ev: true })}
-    ${inp('ev-titre', 'Titre', e.titre, { name: 'titre', attrs: { placeholder: 'Facultatif : sinon « Livraison Epinettes », « Récolte Courge », « Journée au champ »…' } })}
-    <div class="grid2">${inp('ev-date', 'Date', e.date, { name: 'date', type: 'date', req: true })}${inp('ev-fin', "Jusqu'au (plusieurs jours)", e.fin, { name: 'fin', type: 'date', sub: 'Pour des vacances, une semaine de récolte…' })}
-      ${inp('ev-hd', 'Heure de début', e.heureDebut, { name: 'heureDebut', type: 'time' })}${inp('ev-hf', 'Heure de fin', e.heureFin, { name: 'heureFin', type: 'time' })}
-      ${sel('ev-qui', 'Qui', e.qui || '', [['', '—']].concat(persOptions(true)), { name: 'qui' })}
-      ${sel('ev-contact', 'Client / contact', e.contactId || '', [['', '—']].concat(cl.map((c) => [c.key, displayName(c) + (c.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour une livraison : permet de créer la facture depuis la Planification.' })}
-      ${sel('ev-cul', 'Culture', e.cultureId || '', [['', '—']].concat(cu.map((c) => [c.key, `${c.nom} (${c.saison})`])), { name: 'cultureId', sub: 'Pour une récolte : rappel pour l\'enregistrer. Pour le champ : pré-coche la culture quand tu notes tes heures.' })}
-    </div>
-    <h3>Répétition</h3>
-    <div class="grid2">${sel('ev-rec', 'Se répète', (e.rec && e.rec.freq) || '', RECS, { name: 'freq' })}${inp('ev-jq', "Jusqu'au", e.rec && e.rec.jusquau, { name: 'jusquau', type: 'date', sub: 'Vide : sans fin.' })}</div>
-    ${txt('ev-rem', 'Remarque', e.remarque, { name: 'remarque' })}
-    <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="${e.rec && e.rec.freq ? 'toute la série' : 'cet événement'}">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+/* ---------- Formulaire d'événement ----------
+   D'abord : du travail, un congé, ou autre chose. Le travail se précise (journée, récolte, livraison, marché) ;
+   seuls les champs utiles à ce choix s'affichent (client pour une livraison, culture pour une récolte…). */
+const EVF = { genre: 'travail', type: 'travail' };
+/* Quels champs pour quel type : clé = id du bloc, valeur = types où il s'affiche */
+const EV_CHAMPS = { titre: ['travail', 'recolte', 'livraison', 'vente', 'autre'], heures: ['travail', 'recolte', 'livraison', 'vente', 'autre'], contact: ['livraison'], culture: ['recolte'], rep: ['travail', 'recolte', 'livraison', 'vente', 'autre'] };
+function evFormHtml() {
+  const g = EVF.genre, t = EVF.type, sousTravail = ['travail', 'recolte', 'livraison', 'vente'];
+  return `<div class="seg ev-genre">${[['travail', '🌱 Travail'], ['conge', '🏖️ Congé'], ['autre', '📌 Autre']].map(([k, n]) => `<button type="button" class="${g === k ? 'on' : ''}" data-act="evGenre" data-g="${k}">${n}</button>`).join('')}</div>
+    ${g === 'travail' ? `<div class="chips ev-sous">${sousTravail.map((k) => `<button type="button" class="chip${t === k ? ' on' : ''}" data-act="evType" data-t="${k}">${EV_GENRES[k].icone} ${EV_GENRES[k].court}</button>`).join('')}</div>` : ''}`;
+}
+function majEvForm() {
+  const f = $('ev-form'); if (!f) return; const t = EVF.type;
+  $('ev-choix').innerHTML = evFormHtml(); f.querySelector('input[name=type]').value = t;
+  for (const [bloc, types] of Object.entries(EV_CHAMPS)) f.querySelectorAll(`[data-bloc="${bloc}"]`).forEach((x) => { x.hidden = !types.includes(t); });
+  const titre = $('ev-titre'); if (titre) { titre.required = t === 'autre'; titre.placeholder = t === 'autre' ? 'Ex. Formation, rendez-vous banque…' : `Facultatif : sinon « ${titreEv({ type: t })} »`; }
+  const lt = f.querySelector('label[for="ev-titre"]'); if (lt) lt.textContent = t === 'autre' ? 'Titre (obligatoire)' : 'Titre';
+  const ld = f.querySelector('label[for="ev-date"]'), lf = f.querySelector('label[for="ev-fin"]'); if (ld) ld.textContent = t === 'vacances' ? 'Du' : 'Date'; if (lf) lf.textContent = t === 'vacances' ? 'Au (facultatif)' : "Jusqu'au (plusieurs jours)";
   /* Congé : il faut choisir la personne (pas « Ensemble ») */
-  const f = $('ev-form'), qui = $('ev-qui'), lab = f.querySelector('label[for="ev-qui"]');
-  const majQui = () => {
-    const vac = (f.querySelector('input[name=cat]') || {}).value === 'conge', cur = qui.value;
-    const opts = vac ? [['', 'Choisir…']].concat(persOptions()) : [['', '—']].concat(persOptions(true));
-    qui.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
-    qui.value = opts.some(([v]) => v === cur) ? cur : '';
-    qui.required = vac; lab.textContent = vac ? 'Congé de (obligatoire)' : 'Qui';
-  };
-  EVF.majQui = majQui; majQui();
+  const qui = $('ev-qui'), lab = f.querySelector('label[for="ev-qui"]'), vac = t === 'vacances', cur = qui.value;
+  const opts = vac ? [['', 'Choisir…']].concat(persOptions()) : [['', '—']].concat(persOptions(true));
+  qui.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+  qui.value = opts.some(([v]) => v === cur) ? cur : vac ? '' : cur; qui.required = vac; lab.textContent = vac ? 'Congé de (obligatoire)' : 'Qui';
+}
+ACTIONS.evGenre = (el) => { EVF.genre = el.dataset.g; EVF.type = EVF.genre === 'conge' ? 'vacances' : EVF.genre === 'autre' ? 'autre' : 'travail'; majEvForm(); };
+ACTIONS.evType = (el) => { EVF.type = el.dataset.t; majEvForm(); };
+ACTIONS.evEdit = (el) => {
+  const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
+  EVF.type = EV_GENRES[e.type] ? e.type : 'autre'; EVF.genre = evGenre(e).genre;
+  const cl = tousContacts().sort(byName), cu = DB.all('cul:').sort((a, b) => String(b.saison).localeCompare(String(a.saison)) || (a.ordre || 0) - (b.ordre || 0));
+  openSheet(`${sheetHead(k ? 'Modifier l\'événement' : 'Nouvel événement', k && e.rec && e.rec.freq ? 'Modifie toute la série' : '')}<form class="sbody form" data-form="ev" id="ev-form"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="type" value="${esc(EVF.type)}">
+    <div id="ev-choix">${evFormHtml()}</div>
+    <div data-bloc="titre">${inp('ev-titre', 'Titre', e.titre, { name: 'titre' })}</div>
+    <div data-bloc="culture">${sel('ev-cul', 'Culture', e.cultureId || '', [['', '—']].concat(cu.map((c) => [c.key, `${c.nom} (${c.saison})`])), { name: 'cultureId', sub: 'Rappel pour enregistrer la récolte ; elle compte dans la récolte réelle de la culture.' })}</div>
+    <div data-bloc="contact">${sel('ev-contact', 'Client', e.contactId || '', [['', '—']].concat(cl.map((c) => [c.key, displayName(c) + (c.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour créer la facture depuis la journée.' })}</div>
+    <div class="grid2">${inp('ev-date', 'Date', e.date, { name: 'date', type: 'date', req: true })}${inp('ev-fin', "Jusqu'au (plusieurs jours)", e.fin, { name: 'fin', type: 'date' })}</div>
+    <div class="grid2" data-bloc="heures">${inp('ev-hd', 'Heure de début', e.heureDebut, { name: 'heureDebut', type: 'time' })}${inp('ev-hf', 'Heure de fin', e.heureFin, { name: 'heureFin', type: 'time' })}</div>
+    ${sel('ev-qui', 'Qui', e.qui || '', [['', '—']].concat(persOptions(true)), { name: 'qui' })}
+    <details data-bloc="rep"${e.rec && e.rec.freq ? ' open' : ''}><summary class="hint" style="cursor:pointer">↻ Répétition</summary><div class="grid2">${sel('ev-rec', 'Se répète', (e.rec && e.rec.freq) || '', RECS, { name: 'freq' })}${inp('ev-jq', "Jusqu'au", e.rec && e.rec.jusquau, { name: 'jusquau', type: 'date', sub: 'Vide : sans fin.' })}</div></details>
+    ${txt('ev-rem', 'Remarque', e.remarque, { name: 'remarque', rows: 2 })}
+    <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="${e.rec && e.rec.freq ? 'toute la série' : 'cet événement'}">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  majEvForm();
 };
-const EVF = { majQui: null };
-document.addEventListener('gdt-cat', (e) => { if (e.detail.id === 'ev-cat' && EVF.majQui && $('ev-form')) EVF.majQui(); });
 FORMS.ev = (v) => {
+  const t = EV_GENRES[v.type] ? v.type : 'autre', champ = (b) => EV_CHAMPS[b].includes(t);
   if (!v.date) { toast('La date est obligatoire.'); return; }
   if (v.fin && v.fin < v.date) { toast('La date de fin est avant le début.'); return; }
-  if (!v.cat) { toast('Choisis une catégorie.'); return; }
-  if (v.cat === 'conge' && !personnes().some((p) => p.k === v.qui)) { toast('Indique pour qui est le congé.'); $('ev-qui').focus(); return; }
+  if (t === 'autre' && !String(v.titre || '').trim()) { toast('Donne un titre à cet événement.'); $('ev-titre').focus(); return; }
+  if (t === 'vacances' && !personnes().some((p) => p.k === v.qui)) { toast('Indique pour qui est le congé.'); $('ev-qui').focus(); return; }
   const k = v.key || 'ev:' + uid('e'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '', occ: {}, exceptions: [] };
-  DB.put(k, Object.assign({}, old, { cat: v.cat, sous: v.sous || '', type: typeDepuisCat(v.cat, v.sous), titre: v.titre, date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: v.heureDebut, heureFin: v.heureFin, qui: v.qui, contactId: v.contactId, cultureId: v.cultureId, remarque: v.remarque, rec: { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } }));
-  closeSheet(); toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
+  const o = Object.assign({}, old, { type: t, titre: champ('titre') ? v.titre : '', date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: champ('heures') ? v.heureDebut : '', heureFin: champ('heures') ? v.heureFin : '', qui: v.qui,
+    contactId: champ('contact') ? v.contactId : '', cultureId: champ('culture') ? v.cultureId : '', remarque: v.remarque, rec: champ('rep') ? { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } : { freq: '' } });
+  delete o.cat; delete o.sous;
+  DB.put(k, o); closeSheet(); toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
 };
 
 /* ---------- Vue d'ensemble : les 14 prochains jours ----------
@@ -270,15 +283,15 @@ function renderVue() {
     const det = [x.heure ? x.heure + (e.heureFin ? '–' + e.heureFin : '') : '', x.qui ? quiLabel(x.qui) : '', c && !x.titre.includes(displayName(c)) ? displayName(c) : '', cu && !x.titre.includes(cu.nom) ? cu.nom : ''].filter(Boolean).join(' · ');
     const rec = e.type === 'recolte' && d <= today && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(x.key, x.occ) && !((e.occ || {})[x.occ] || {}).sansRecolte;
     return `<div class="pl-ev${fort ? ' fort' : ''}${x.fait ? ' fait' : ''}" style="--c:${esc(x.couleur)}" data-journee="${esc(j)}">
-      <div class="pl-ev-h" data-act="plJourneeVoir" data-j="${esc(j)}" role="button" tabindex="0" title="Ouvrir la journée"><span class="pl-ev-t">${esc(catInfo(ce.cat).icone || '')} <b>${esc(x.titre)}</b>${x.multi ? ' <span class="hint">(plusieurs jours)</span>' : ''}</span>${det ? `<span class="pl-ev-d">${esc(det)}</span>` : ''}</div>
-      ${tj.length ? `<div class="pl-ev-taches">${tj.map((t) => tacheHtml(t, { sansDate: true, court: true, sansCat: true })).join('')}</div>` : ''}
+      <div class="pl-ev-h" data-act="plJourneeVoir" data-j="${esc(j)}" role="button" tabindex="0" title="Ouvrir la journée"><span class="pl-ev-t">${esc(iconeEv(e))} <b>${esc(x.titre)}</b>${x.multi ? ' <span class="hint">(plusieurs jours)</span>' : ''}</span>${det ? `<span class="pl-ev-d">${esc(det)}</span>` : ''}</div>
+      ${tj.length ? `<div class="pl-ev-taches tri-taches">${tj.sort(triOrdre).map((t) => tacheHtml(t, { sansDate: true, court: true, tri: true })).join('')}</div>` : ''}
       ${rec ? `<div class="row pl-ev-act"><button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button></div>` : ''}</div>`;
   };
   let jours = '';
   for (let d = today; d <= fin; d = addDays(d, 1)) {
     const xs = (items[d] || []).filter((x) => x.kind !== 'heures' && (x.kind === 'tache' || x.kind === 'facture' || pour(x.qui)));
     const evs = xs.filter((x) => x.kind === 'ev' && (x.debut || d === today) && pour(x.qui)).sort((a, b) => String(a.heure || '99').localeCompare(String(b.heure || '99')));
-    const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => DB.get(x.key)).filter((t) => t && pour(t.responsable));
+    const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => tacheParCle(x.key)).filter((t) => t && pour(t.responsable)).sort(triOrdre);
     const autres = xs.filter((x) => x.kind === 'facture' || x.kind === 'relance');
     const vide = !evs.length && !ts.length && !autres.length;
     /* Jour vide : caché (il n'apparaît que pendant qu'on glisse une tâche, pour pouvoir l'y déposer) */
@@ -286,7 +299,7 @@ function renderVue() {
     jours += `<div class="pl-jour${d === today ? ' auj' : ''}" data-jour="${d}">
       <div class="between pl-jour-h"><button type="button" class="pl-date" data-act="plJourVoir" data-d="${d}" title="Ouvrir le jour"><b>${d === today ? "Aujourd'hui" : d === addDays(today, 1) ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b> ${fmtDateCourt(d)}</button></div>
       ${evs.map((x) => ev(x, d)).join('')}
-      ${ts.length ? `<div class="pl-taches">${ts.map((t) => tacheHtml(t, { sansDate: true, court: true })).join('')}</div>` : ''}
+      ${ts.length ? `<div class="pl-taches tri-taches">${ts.map((t) => tacheHtml(t, { sansDate: true, court: true, tri: ts.length > 1 })).join('')}</div>` : ''}
       ${autres.map((x) => `<div class="agit clic" style="--c:${x.kind === 'facture' ? 'var(--c-factures)' : 'var(--c-contacts)'}" data-act="go" data-href="${x.kind === 'facture' ? '#/factures/voir/' : '#/contacts/prospect/'}${encodeURIComponent(x.key)}" role="button" tabindex="0">${esc(x.titre)}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}
       ${vide ? '<p class="hint" style="margin:0">Rien de prévu.</p>' : ''}</div>`;
   }
@@ -320,17 +333,17 @@ FORMS.plAjout = (v) => {
 ACTIONS.plJourneeVoir = (el) => {
   const j = el.dataset.j, [ek, d] = j.split('|'), e = DB.get(ek); if (!e) return; const ce = catEv(e);
   PL.rafraichir = () => ACTIONS.plJourneeVoir({ dataset: { j } });
-  const tj = taches().filter((t) => t.journee === j).sort((a, b) => (a.statut === 'termine') - (b.statut === 'termine') || importanceDe(a) - importanceDe(b));
+  const tj = taches().filter((t) => t.journee === j).sort(triOrdre);
   const cu = e.cultureId && DB.get(e.cultureId), c = e.contactId && DB.get(e.contactId);
   const det = [e.heureDebut ? e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : '', e.qui ? quiLabel(e.qui) : '', c ? displayName(c) : '', cu ? cu.nom : ''].filter(Boolean).join(' · ');
   const rec = e.type === 'recolte' && d <= todayISO() && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(ek, d) && !((e.occ || {})[d] || {}).sansRecolte;
   const faites = tj.filter((t) => t.statut === 'termine').length;
-  openSheet(`<div class="shead pl-tete" style="--c:${esc(couleurCat(ce.cat))}"><h2>${esc(catInfo(ce.cat).icone || '')} ${esc(titreEv(e))}<small>${esc(dateLongue(d))}${det ? ' · ' + esc(det) : ''}</small></h2><button type="button" class="xbtn" data-act="close" aria-label="Fermer">Fermer</button></div>
+  openSheet(`<div class="shead pl-tete" style="--c:${esc(couleurEv(e, d, ek))}"><h2>${esc(iconeEv(e))} ${esc(titreEv(e))}<small>${esc(dateLongue(d))}${det ? ' · ' + esc(det) : ''}</small></h2><button type="button" class="xbtn" data-act="close" aria-label="Fermer">Fermer</button></div>
     <div class="sbody">
     ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
     ${rec ? `<div class="row"><button class="btn primary" type="button" data-act="recolteEv" data-key="${esc(ek)}" data-occ="${d}">Enregistrer la récolte</button></div>` : ''}
     <h3>Tâches${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</h3>
-    ${tj.length ? tj.map((t) => tacheHtml(t, { court: true, sansDate: true, sansCat: !!catTache(t).cat && catTache(t).cat === ce.cat })).join('') : '<p class="hint">Aucune tâche pour cette journée.</p>'}
+    ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Aucune tâche pour cette journée.</p>'}
     ${ajoutTacheHtml({ journee: j })}
     <button class="btn link small" type="button" data-act="plJournee" data-j="${esc(j)}">Choisir dans « À planifier »…</button>
     <div class="row-end"><button class="btn" type="button" data-act="calDay" data-d="${d}">Heures et détails du jour</button><button class="btn" type="button" data-act="evEdit" data-key="${esc(ek)}">Modifier la journée</button></div></div>`);
@@ -339,12 +352,12 @@ ACTIONS.plJourVoir = (el) => {
   const d = el.dataset.d, today = todayISO(); PL.rafraichir = () => ACTIONS.plJourVoir({ dataset: { d } });
   const xs = itemsPeriode(d, d)[d] || [];
   const evs = xs.filter((x) => x.kind === 'ev').sort((a, b) => String(a.heure || '99').localeCompare(String(b.heure || '99')));
-  const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => DB.get(x.key)).filter(Boolean)
-    .concat(taches().filter((t) => t.statut === 'termine' && !t.journee && t.jour === d)).sort((a, b) => (a.statut === 'termine') - (b.statut === 'termine') || importanceDe(a) - importanceDe(b));
+  const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => tacheParCle(x.key)).filter(Boolean)
+    .concat(taches().filter((t) => t.statut === 'termine' && !t.journee && t.jour === d)).sort(triOrdre);
   openSheet(`${sheetHead((d === today ? "Aujourd'hui · " : '') + dateLongue(d).replace(/^./, (c) => c.toUpperCase()))}<div class="sbody">
     ${evs.length ? evs.map((x) => { const nt = taches().filter((t) => t.journee === x.key + '|' + x.occ && t.statut !== 'termine').length; return `<button type="button" class="pl-ev pl-ev-btn" style="--c:${esc(x.couleur)}" data-act="plJourneeVoir" data-j="${esc(x.key + '|' + x.occ)}"><span><b>${esc(x.titre)}</b>${x.heure ? ' · ' + esc(x.heure) : ''}${x.qui ? ' · ' + esc(quiLabel(x.qui)) : ''}</span>${nt ? `<span class="hint">${nt} tâche${nt > 1 ? 's' : ''} ›</span>` : '<span class="hint">›</span>'}</button>`; }).join('') : ''}
     <h3>Tâches de ce jour</h3>
-    ${ts.length ? ts.map((t) => tacheHtml(t, { court: true, sansDate: true })).join('') : '<p class="hint">Aucune tâche prévue ce jour-là (hors journées).</p>'}
+    ${ts.length ? `<div class="tri-taches">${ts.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Aucune tâche prévue ce jour-là (hors journées).</p>'}
     ${ajoutTacheHtml({ jour: d })}
     <div class="row-end"><button class="btn" type="button" data-act="calDay" data-d="${d}">Heures et détails du jour</button><button class="btn primary" type="button" data-act="evEdit" data-date="${d}">+ Événement</button></div></div>`);
 };
@@ -496,7 +509,7 @@ ACTIONS.mesHeures = (el) => {
 function pourSuggere(d, p) {
   if (!d || !p) return null;
   const pourP = (q) => !q || q === 'ensemble' || q === p;
-  const evs = ((itemsPeriode(d, d)[d]) || []).filter((x) => x.kind === 'ev' && pourP(x.qui)).map((x) => DB.get(x.key)).filter(Boolean);
+  const evs = ((itemsPeriode(d, d)[d]) || []).filter((x) => x.kind === 'ev' && pourP(x.qui)).map((x) => DB.get(x.key) && Object.assign({ key: x.key }, DB.get(x.key))).filter(Boolean);
   if (evs.some((e) => catEv(e).cat === 'conge')) return null;
   const js = new Set(evs.map((e) => e.key));
   const ts = taches().filter((t) => t.statut !== 'suspendu' && pourP(t.responsable) && (dateTache(t) === d || (t.statut === 'termine' && t.termineLe === d && t.terminePar === p) || (t.journee && js.has(t.journee.split('|')[0]) && t.journee.endsWith('|' + d))));

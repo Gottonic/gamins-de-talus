@@ -2,6 +2,7 @@
 'use strict';
 
 const taches = () => DB.all('t:');
+const tacheParCle = (k) => { const t = DB.get(k); return t ? Object.assign({ key: k }, t) : null; };
 const TA = { qui: '', cat: '', vue: '' };
 const linkify = (s) => esc(s).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)}${u.length > 48 ? '…' : ''}</a>`);
 
@@ -46,6 +47,29 @@ function trierAPlanifier(l) {
   return l.sort((a, b) => (pasTerminee(b) - pasTerminee(a)) || (pasTerminee(a) && pasTerminee(b) ? jourPlanifie(b).localeCompare(jourPlanifie(a)) : 0) || (echeanceProche(b) - echeanceProche(a)) || (echeanceProche(a) && echeanceProche(b) ? String(a.echeance).localeCompare(String(b.echeance)) : 0)
     || importanceDe(a) - importanceDe(b) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')) || String(a.cree || '').localeCompare(String(b.cree || '')));
 }
+/* L'ordre des tâches dans une journée ou un jour (glisser par la poignée ⋮⋮) */
+const triOrdre = (a, b) => (a.statut === 'termine') - (b.statut === 'termine') || (a.ordre ?? 1e9) - (b.ordre ?? 1e9) || importanceDe(a) - importanceDe(b) || String(a.cree || '').localeCompare(String(b.cree || ''));
+document.addEventListener('pointerdown', (e) => {
+  const h = e.target.closest && e.target.closest('[data-poignee]'); if (!h) return;
+  const item = h.closest('[data-tache]'), box = item && item.closest('.tri-taches'); if (!box) return;
+  e.preventDefault();
+  item.classList.add('en-tri'); box.classList.add('tri-actif');
+  const freres = () => [...box.children].filter((x) => x.dataset && x.dataset.tache);
+  const bouge = (ev) => {
+    const y = ev.clientY, autres = freres().filter((x) => x !== item); let avant = null;
+    for (const x of autres) { const r = x.getBoundingClientRect(); if (y < r.top + r.height / 2) { avant = x; break; } }
+    if (avant) { if (item.nextElementSibling !== avant) box.insertBefore(item, avant); } else { const der = autres[autres.length - 1]; if (der && der.nextElementSibling !== item) der.after(item); }
+  };
+  const fin = () => {
+    document.removeEventListener('pointermove', bouge); document.removeEventListener('pointerup', fin); document.removeEventListener('pointercancel', fin);
+    item.classList.remove('en-tri'); box.classList.remove('tri-actif');
+    freres().forEach((x, i) => { const t = DB.get(x.dataset.tache); if (t && t.ordre !== i) DB.put(x.dataset.tache, Object.assign({}, t, { ordre: i })); });
+    if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
+  };
+  /* Sur le document (la ligne déplacée change de place dans la page pendant le geste) */
+  document.addEventListener('pointermove', bouge); document.addEventListener('pointerup', fin); document.addEventListener('pointercancel', fin);
+});
+document.addEventListener('mousedown', (e) => { if (e.target.closest && e.target.closest('[data-poignee]')) e.preventDefault(); });
 const pourQui = (t) => TA.qui === 'moi' ? (t.responsable === Sync.me || t.responsable === 'ensemble' || !t.responsable) : TA.qui ? t.responsable === TA.qui : true;
 const aPlanifier = () => trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t)));
 /* Ce qui presse vraiment : pas planifiée et échéance dans 2 jours ou dépassée (pour moi) */
@@ -100,7 +124,7 @@ function tacheHtml(t, o = {}) {
   if (t.planches) meta.push(`<span>▦ ${esc(t.planches)}</span>`);
   const li = t.liste || []; if (li.length) meta.push(`<span>☑ ${li.filter((x) => x.fait).length}/${li.length}</span>`);
   if (t.rep && !done) meta.push(`<span title="Tâche qui se répète">↻</span>`);
-  return `<div class="task${done ? ' done' : ''}" draggable="${done ? 'false' : 'true'}" data-tache="${esc(t.key)}" style="--c:${esc(couleurCat(c.cat))}"><button class="tick" type="button" data-act="taTick" data-key="${esc(t.key)}" aria-label="${done ? 'Rouvrir' : 'Marquer comme faite'} : ${esc(t.titre)}"></button>
+  return `<div class="task${done ? ' done' : ''}" draggable="${done ? 'false' : 'true'}" data-tache="${esc(t.key)}" style="--c:${esc(couleurCat(c.cat))}">${o.tri && !done ? '<span class="poignee" data-poignee draggable="false" title="Glisser pour changer l\'ordre" aria-hidden="true">⋮⋮</span>' : ''}<button class="tick" type="button" data-act="taTick" data-key="${esc(t.key)}" aria-label="${done ? 'Rouvrir' : 'Marquer comme faite'} : ${esc(t.titre)}"></button>
     <div class="body" data-act="taVoir" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp ? `<span class="imp imp${imp}" title="${esc(IMPORTANCES[imp - 1][1])}">${IMPORTANCES[imp - 1][2]}</span> ` : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div></div>`;
 }
 /* Planifier en deux touches (téléphone) : une journée prévue, ou un jour */

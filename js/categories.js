@@ -11,14 +11,13 @@ const CATS_DEFAUT = [
   { k: 'ventes', nom: 'Ventes & livraisons', icone: '🚚', couleur: '#2563A8', heures: 'ventes', fixe: true, sous: [
     { k: 'livraison', nom: 'Livraison', fixe: true }, { k: 'marche', nom: 'Marché & vente', fixe: true }, { k: 'prospection', nom: 'Prospection' }] },
   { k: 'admin', nom: 'Admin', icone: '🗂️', couleur: '#A35C00', heures: 'admin', fixe: true, sous: [] },
-  { k: 'conge', nom: 'Congé', icone: '🏖️', couleur: '#8E5BB5', heures: '', evSeul: true, fixe: true, sous: [] },
   { k: 'autre', nom: 'Autre', icone: '•', couleur: '#6B7480', heures: '', fixe: true, sous: [] },
 ];
 /* La liste réglée, en gardant toujours les catégories et sous-catégories fixes */
 function categories() {
   const c = (DB.get('cfg:categories') || {}).liste;
   if (!Array.isArray(c) || !c.length) return CATS_DEFAUT.map((x) => Object.assign({}, x, { sous: x.sous.slice() }));
-  const out = c.map((x) => Object.assign({ sous: [] }, x));
+  const out = c.filter((x) => x.k !== 'conge').map((x) => Object.assign({ sous: [] }, x));
   for (const d of CATS_DEFAUT) {
     let x = out.find((y) => y.k === d.k);
     if (!x) { x = Object.assign({}, d, { sous: d.sous.slice() }); out.push(x); }
@@ -31,10 +30,30 @@ const catInfo = (k) => categories().find((c) => c.k === k) || categories().find(
 const sousInfo = (cat, s) => (catInfo(cat).sous || []).find((x) => x.k === s) || null;
 const catsTaches = () => categories().filter((c) => !c.evSeul);
 
-/* Les anciennes fiches (avant les catégories) : type d'événement et domaine de tâche → catégorie */
-const EV_VERS_CAT = { travail: ['champ', ''], recolte: ['champ', 'recolte'], livraison: ['ventes', 'livraison'], vente: ['ventes', 'marche'], vacances: ['conge', ''], autre: ['autre', ''] };
+/* Les événements : du travail (journée, récolte, livraison, marché), un congé, ou autre chose. Les catégories, elles, sont
+   pour les tâches ; un événement en prend une seulement pour pré-cocher les heures (récolte → cultures, livraison → ventes). */
+const EV_GENRES = {
+  travail: { nom: 'Journée de travail', court: 'Journée', icone: '🌱', genre: 'travail', cat: '' },
+  recolte: { nom: 'Récolte', court: 'Récolte', icone: '🧺', genre: 'travail', cat: 'champ', sous: 'recolte' },
+  livraison: { nom: 'Livraison', court: 'Livraison', icone: '🚚', genre: 'travail', cat: 'ventes', sous: 'livraison' },
+  vente: { nom: 'Marché / vente', court: 'Marché', icone: '🛒', genre: 'travail', cat: 'ventes', sous: 'marche' },
+  vacances: { nom: 'Congé', court: 'Congé', icone: '🏖️', genre: 'conge', couleur: '#8E5BB5' },
+  autre: { nom: 'Autre', court: 'Autre', icone: '📌', genre: 'autre', couleur: '#6B7480' },
+};
+const evGenre = (e) => EV_GENRES[(e && e.type) || 'autre'] || EV_GENRES.autre;
+function catEv(e) { const g = evGenre(e); return { cat: g.genre === 'conge' ? 'conge' : g.cat || (g.genre === 'travail' ? '' : 'autre'), sous: g.sous || '' }; }
+/* Un événement a la couleur de la Planification ; une journée avec des tâches prend la couleur de sa première tâche (catégorie) */
+const COULEUR_PLANIF = 'var(--c-calendrier)';
+function couleurEv(e, occ, k) {
+  k = k || (e && e.key);
+  if (k && occ && typeof taches === 'function') {
+    const t = taches().filter((x) => x.journee === k + '|' + occ && x.statut !== 'termine').sort(triOrdre)[0];
+    if (t && catTache(t).cat) return catInfo(catTache(t).cat).couleur;
+  }
+  return COULEUR_PLANIF;
+}
+const iconeEv = (e) => evGenre(e).icone;
 const TAG_VERS_CAT = { agri: ['champ', ''], materiel: ['champ', 'entretien'], admin: ['admin', ''], vente: ['ventes', ''], autre: ['autre', ''] };
-function catEv(e) { if (e && e.cat) return { cat: e.cat, sous: e.sous || '' }; const m = EV_VERS_CAT[(e && e.type) || 'autre'] || EV_VERS_CAT.autre; return { cat: m[0], sous: m[1] }; }
 function catTache(t) { if (t && t.cat) return { cat: t.cat, sous: t.sous || '' }; const m = TAG_VERS_CAT[(t && t.tag) || ''] || ['', '']; return { cat: m[0], sous: m[1] }; }
 /* Le « type » d'un événement, que le reste de l'app utilise (rappel de récolte, facture de livraison, vacances, agenda en ligne) */
 function typeDepuisCat(cat, sous) {

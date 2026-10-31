@@ -598,6 +598,10 @@ table.matrix td.neg { color: var(--muted); }
 .cstrip .hint { font-size: 12px; }
 .evline { border-left: 4px solid var(--c); background: color-mix(in srgb, var(--c) 7%, white); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .seg label[style*="--c"] { border-left: 4px solid var(--c); }
+.ev-genre button { flex: 1; font: inherit; font-size: 15px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--bg); }
+.ev-genre button.on { border-color: var(--accent); background: var(--soft); font-weight: 700; }
+.ev-sous { margin-top: 8px; }
+[data-bloc][hidden] { display: none; }
 .agday { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .agdate { border: 0; background: none; text-align: left; cursor: pointer; padding: 0; font: inherit; color: inherit; display: flex; flex-direction: column; }
 .agdate b { text-transform: capitalize; }
@@ -623,6 +627,9 @@ table.matrix td.neg { color: var(--muted); }
 .pl-cols { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1000px) { .pl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } .pl-cols > .panel { margin: 0; } .panel.pl-aplan { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; } }
 .pl-jour.vide { display: none; }
+.task .poignee { flex: none; cursor: grab; color: var(--muted); font-size: 14px; letter-spacing: -2px; padding: 3px 4px 3px 0; touch-action: none; user-select: none; align-self: center; }
+.task.en-tri { background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.18); position: relative; z-index: 2; border-radius: 6px; }
+.tri-actif { user-select: none; }
 .pl-tete { border-top: 6px solid var(--c); }
 .pl-rem { white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 4px 0; font-size: 14px; }
 .pl-ev-btn { width: 100%; text-align: left; font: inherit; color: inherit; border-top: 0; border-right: 0; border-bottom: 0; cursor: pointer; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 6px; }
