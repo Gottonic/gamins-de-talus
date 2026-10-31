@@ -152,8 +152,9 @@ function bilanSelf(s) {
   const ls = s.lignes || [], ret = s.retours || {};
   const mis = ls.reduce((a, l) => a + num(l.qte) * num(l.prix), 0);
   const vendu = ls.reduce((a, l, i) => a + Math.max(0, num(l.qte) - num(ret[i])) * num(l.prix), 0);
-  const enc = recettesDirectes().filter((r) => r.self === s.key).reduce((a, r) => a + num(r.montant), 0);
-  return { mis, vendu, enc, ecart: vendu - enc, taux: vendu > 0 ? (vendu - enc) / vendu : 0 };
+  const msg = paiementsMessage().filter((x) => x.self === s.key).reduce((a, x) => a + num(x.montant), 0);
+  const enc = recettesDirectes().filter((r) => r.self === s.key).reduce((a, r) => a + num(r.montant), 0) + msg;
+  return { mis, vendu, enc, msg, ecart: vendu - enc, taux: vendu > 0 ? (vendu - enc) / vendu : 0 };
 }
 function renderSelfService() {
   const l = misesEnVente(), ouv = l.filter((s) => s.statut !== 'close'), clo = l.filter((s) => s.statut === 'close');
@@ -162,14 +163,14 @@ function renderSelfService() {
     const b = bilanSelf(s), recs = recettesDirectes().filter((r) => r.self === s.key).sort((a, c) => String(a.date).localeCompare(c.date));
     return `<div class="panel self${s.statut === 'close' ? ' close' : ''}"><div class="between"><h3 style="margin:0">${esc(s.lieu || 'Self-service')} · ${fmtDate(s.date)}</h3><span class="tpill">${s.statut === 'close' ? 'bouclée' : 'en cours'}</span></div>
       <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Mis</th><th class="r">Prix</th>${s.statut === 'close' ? '<th class="r">Invendus</th><th class="r">Vendus</th>' : ''}<th class="r">Valeur</th></tr></thead><tbody>
-      ${(s.lignes || []).map((x, i) => { const p = DB.get(x.prod) || {}, r = num((s.retours || {})[i]), v = Math.max(0, num(x.qte) - r); return `<tr><td>${esc(p.nom || '?')}${x.calibre ? ' ' + esc(String(x.calibre).toLowerCase()) : ''}</td><td class="r num">${fmtQ(num(x.qte), x.unite || p.unite)}</td><td class="r num">${money(x.prix)}</td>${s.statut === 'close' ? `<td class="r num">${fmtNum(r, 0)}</td><td class="r num">${fmtNum(v, 0)}</td>` : ''}<td class="r num">${money((s.statut === 'close' ? v : num(x.qte)) * num(x.prix))}</td></tr>`; }).join('')}
+      ${(s.lignes || []).map((x, i) => { const p = DB.get(x.prod) || {}, r = num((s.retours || {})[i]), v = Math.max(0, num(x.qte) - r); return `<tr><td>${esc(x.nom || p.nom || '?')}${x.calibre && !x.nom ? ' ' + esc(String(x.calibre).toLowerCase()) : ''}</td><td class="r num">${fmtQ(num(x.qte), x.unite || p.unite)}</td><td class="r num">${money(x.prix)}</td>${s.statut === 'close' ? `<td class="r num">${fmtNum(r, 0)}</td><td class="r num">${fmtNum(v, 0)}</td>` : ''}<td class="r num">${money((s.statut === 'close' ? v : num(x.qte)) * num(x.prix))}</td></tr>`; }).join('')}
       </tbody></table></div>
-      <p>Encaissé : <b>${chf(b.enc)}</b>${s.statut === 'close' ? ` sur ${chf(b.vendu)} vendus · <b class="${b.taux > 0.1 ? 'bad' : ''}">${b.ecart > 0 ? `${chf(b.ecart)} manquants (${Math.round(b.taux * 100)} %)` : 'rien ne manque'}</b>` : ` · au plus ${chf(b.mis)} si tout part`}</p>
+      <p>Encaissé : <b>${chf(b.enc)}</b>${b.msg ? ` <span class="hint">(dont ${chf(b.msg)} payés par message, à facturer)</span>` : ''}${s.statut === 'close' ? ` sur ${chf(b.vendu)} vendus · <b class="${b.taux > 0.1 ? 'bad' : ''}">${b.ecart > 0 ? `${chf(b.ecart)} manquants (${Math.round(b.taux * 100)} %)` : 'rien ne manque'}</b>` : ` · au plus ${chf(b.mis)} si tout part`}</p>
       ${recs.length ? `<p class="hint">${recs.map((r) => `${fmtDate(r.date)} ${esc(r.moyen || '')} ${money(r.montant)}`).join(' · ')}</p>` : ''}
       ${(() => { const t = twintPourSelf(s); return t.n ? `<div class="banner">TWINT importé pendant cette vente : <b>${chf(t.total)}</b> (${t.n} paiement${t.n > 1 ? 's' : ''}, du ${fmtDateCourt(t.de)} au ${fmtDateCourt(t.a)}). <button class="btn small primary" type="button" data-act="twEncaisser" data-key="${esc(s.key)}">Ajouter comme encaissement</button></div>` : ''; })()}
-      <div class="row">${s.statut !== 'close' ? `<button class="btn primary small" type="button" data-act="selfEnc" data-key="${esc(s.key)}">+ Encaissement</button><button class="btn small" type="button" data-act="selfClore" data-key="${esc(s.key)}">Boucler (invendus)</button>` : `<button class="btn small" type="button" data-act="selfRouvrir" data-key="${esc(s.key)}">Rouvrir</button>`}<button class="btn small" type="button" data-act="delItem" data-key="${esc(s.key)}" data-what="cette mise en vente">Supprimer</button></div></div>`;
+      <div class="row">${s.statut !== 'close' ? `<button class="btn primary small" type="button" data-act="selfEnc" data-key="${esc(s.key)}">+ Encaissement</button><button class="btn small" type="button" data-act="ardNouveau" data-self="${esc(s.key)}">+ Payé par message</button><button class="btn small" type="button" data-act="selfClore" data-key="${esc(s.key)}">Boucler (invendus)</button>` : `<button class="btn small" type="button" data-act="selfRouvrir" data-key="${esc(s.key)}">Rouvrir</button>`}<button class="btn small" type="button" data-act="delItem" data-key="${esc(s.key)}" data-what="cette mise en vente">Supprimer</button></div></div>`;
   };
-  return `<div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Mise en vente directe</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button>${DB.all('tw:').length ? `<button class="btn" type="button" data-act="twListe">Paiements TWINT (${DB.all('tw:').length})</button>` : ''}</div>
+  return `${articlesHtml()}${paiementsMessageHtml()}<div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Mise en vente directe</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button>${DB.all('tw:').length ? `<button class="btn" type="button" data-act="twListe">Paiements TWINT (${DB.all('tw:').length})</button>` : ''}</div>
     <div class="stats"><div class="stat"><span class="k">Ventes directes bouclées</span><span class="v">${clo.length}</span></div>
       <div class="stat good"><span class="k">Vendu (selon les invendus)</span><span class="v">${chf(tot.v)}</span></div>
       <div class="stat blue"><span class="k">Encaissé (TWINT, espèces)</span><span class="v">${chf(tot.e)}</span></div>
@@ -179,22 +180,26 @@ function renderSelfService() {
 }
 ACTIONS.selfNouveau = () => {
   /* Prix de vente directe = prix « Particuliers & vente directe » du produit (haut de la fourchette, ou fixé à la main) */
-  const ps = produits().filter((p) => num(prixNiveau(p, 'part')) > 0);
-  if (!ps.length) { toast('Mets d\'abord une fourchette de prix sur un produit (Stock et prix → produit).', 5000); return; }
+  const ps = produits().filter((p) => num(prixNiveau(p, 'part')) > 0), arts = articles().filter((a) => a.actif !== false);
+  if (!ps.length && !arts.length) { toast('Crée d\'abord un article de vente directe, ou mets une fourchette de prix sur un produit.', 5000); return; }
+  const lgnArt = arts.map((a) => { const p = DB.get(a.prod) || {}, q = stockDe(a.prod); return `<tr><td><b>${esc(a.nom)}</b> <span class="hint">${esc(descArticle(a))}</span></td><td><input class="cell-in" name="qa_${esc(a.key)}" inputmode="numeric" placeholder="0" style="width:70px"> <span class="hint">${a.mode === 'lot' ? 'lots' : 'pièces'}</span></td><td><input class="cell-in" name="pa_${esc(a.key)}" inputmode="decimal" value="${esc(String(prixArticle(a)).replace('.', ','))}" style="width:70px"></td><td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('');
   openSheet(`${sheetHead('Mise en vente directe')}<form class="sbody form" data-form="self">
     <div class="grid2">${inp('sf-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('sf-lieu', 'Où', 'Self-service', { name: 'lieu' })}</div>
+    ${arts.length ? `<h3>Articles</h3><div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>${lgnArt}</tbody></table></div>` : ''}
+    ${ps.length ? `<details${arts.length ? '' : ' open'}><summary class="hint" style="cursor:pointer">${arts.length ? 'Autres produits (au kg ou par calibre)' : 'Produits'}</summary>` : ''}
     <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>
     ${ps.map((p) => { const q = stockDe(p.key), st = `<td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td>`, cs = calibresDe(p);
       const ligne = (id, nom, unite, prix, stock) => `<tr><td>${nom}</td><td><input class="cell-in" name="q_${esc(id)}" inputmode="decimal" placeholder="0" style="width:70px"> <span class="hint">${esc(unite)}</span></td><td><input class="cell-in" name="p_${esc(id)}" inputmode="decimal" value="${esc(String(prix).replace('.', ','))}" style="width:70px"></td>${stock}</tr>`;
       return cs.map((c, j) => ligne(p.key + '|' + j, `${esc(p.nom)} <b>${esc(c.nom)}</b> <span class="hint">≈ ${fmtNum(c.poids, 2)} kg</span>`, 'pièces', prixPiece(p, c, 'part'), j === 0 ? st : '<td></td>')).join('')
         + ligne(p.key, esc(p.nom) + (cs.length ? ' <span class="hint">au ' + esc(p.unite) + '</span>' : ''), p.unite, prixNiveau(p, 'part'), cs.length ? '<td></td>' : st); }).join('')}
-    </tbody></table></div>
+    </tbody></table></div>${ps.length ? '</details>' : ''}
     ${inp('sf-note', 'Note', '', { name: 'note' })}
     <p class="hint">Prix proposé : le prix « Particuliers & vente directe » du produit, modifiable ici pour cette fois. Le stock baisse de ces quantités.</p>
     <div class="row-end"><button class="btn primary" type="submit">Mettre en vente</button></div></form>`);
 };
 FORMS.self = (v) => {
   const lignes = [];
+  for (const a of articles()) { const q = num(v['qa_' + a.key]); if (q > 0) lignes.push({ prod: a.prod, art: a.key, nom: a.nom, qte: q, prix: r2(num(v['pa_' + a.key])), unite: a.mode === 'lot' ? 'lot' : 'pièce', poids: poidsArticle(a) }); }
   for (const p of produits()) {
     calibresDe(p).forEach((c, j) => { const id = p.key + '|' + j; if (num(v['q_' + id]) > 0) lignes.push({ prod: p.key, qte: num(v['q_' + id]), prix: r2(num(v['p_' + id])), unite: 'pièce', calibre: c.nom, poids: num(c.poids) }); });
     if (num(v['q_' + p.key]) > 0) lignes.push({ prod: p.key, qte: num(v['q_' + p.key]), prix: r2(num(v['p_' + p.key])), unite: p.unite });
@@ -230,7 +235,7 @@ FORMS.selfEnc = (v) => {
 ACTIONS.selfClore = (el) => {
   const k = el.dataset.key, s = DB.get(k); if (!s) return;
   openSheet(`${sheetHead('Boucler la vente directe', 'Compte ce qui reste au stand')}<form class="sbody form" data-form="selfClore"><input type="hidden" name="key" value="${esc(k)}">
-    ${(s.lignes || []).map((l, i) => { const p = DB.get(l.prod) || {}; return inp('sc-' + i, `${p.nom || '?'}${l.calibre ? ' ' + String(l.calibre).toLowerCase() : ''} : invendus (sur ${fmtQ(num(l.qte), l.unite)})`, (s.retours || {})[i] ?? '', { name: 'r_' + i, type: 'number' }); }).join('')}
+    ${(s.lignes || []).map((l, i) => { const p = DB.get(l.prod) || {}; return inp('sc-' + i, `${l.nom || p.nom || '?'}${l.calibre && !l.nom ? ' ' + String(l.calibre).toLowerCase() : ''} : invendus (sur ${fmtQ(num(l.qte), l.unite)})`, (s.retours || {})[i] ?? '', { name: 'r_' + i, type: 'number' }); }).join('')}
     <p class="hint">Les invendus en bon état reviennent au stock. Ajoute d'abord les derniers encaissements.</p>
     <div class="row-end"><button class="btn primary" type="submit">Boucler</button></div></form>`);
 };
@@ -240,6 +245,128 @@ FORMS.selfClore = (v) => {
   const o = Object.assign({}, s, { retours, statut: 'close', closeLe: todayISO() }); DB.put(v.key, o); stockPourSelf(v.key, o);
   const b = bilanSelf(Object.assign({ key: v.key }, o)); closeSheet();
   toast(b.ecart > 0.05 ? `Bouclé : ${chf(b.ecart)} manquants sur ${chf(b.vendu)} (${Math.round(b.taux * 100)} %).` : 'Bouclé : rien ne manque.', 6000);
+};
+/* ---------- Articles de vente directe ----------
+   art:<id> = { nom, prod (produit lié : le stock baisse de la quantité × poids moyen), mode: 'piece' | 'lot',
+                min, max (kg, à la pièce) ou poids (kg, sachet / lot), prix ('' = automatique), actif }
+   Prix automatique : poids moyen × prix « Particuliers & vente directe » du produit, arrondi à 50 ct. */
+const articles = () => DB.all('art:').sort((a, b) => String(a.nom).localeCompare(String(b.nom), 'fr'));
+const poidsArticle = (a) => a.mode === 'lot' ? num(a.poids) : r2((num(a.min) + num(a.max)) / 2);
+function prixAutoArticle(a) {
+  const p = DB.get(a.prod); if (!p) return ''; const pk = num(prixNiveau(p, 'part')); if (!(pk > 0)) return '';
+  const base = (p.unite || 'kg') === 'kg' ? pk * poidsArticle(a) : pk; return base > 0 ? Math.max(0.5, Math.round(base * 2) / 2) : '';
+}
+const prixArticle = (a) => (a.prix !== '' && a.prix != null && num(a.prix) > 0 ? r2(num(a.prix)) : prixAutoArticle(a) || 0);
+const kgTxt = (x) => (num(x) < 1 ? fmtNum(num(x) * 1000, 0) + ' g' : fmtNum(num(x), 2).replace(/0$/, '').replace(/[.,]$/, '') + ' kg');
+const descArticle = (a) => a.mode === 'lot' ? `lot de ${kgTxt(a.poids)}` : `pièce de ${kgTxt(a.min)} à ${kgTxt(a.max)}`;
+function articlesHtml() {
+  const l = articles();
+  return `<div class="panel"><div class="between"><h2>Articles de vente directe</h2><button class="btn small" type="button" data-act="artEdit">+ Article</button></div>
+    ${l.length ? `<div class="items">${l.map((a) => { const p = DB.get(a.prod) || {}, q = stockDe(a.prod), auto = !(num(a.prix) > 0);
+      return `<button type="button" class="item${a.actif === false ? ' off' : ''}" data-act="artEdit" data-key="${esc(a.key)}"><span class="who"><strong>${esc(a.nom)}</strong><span class="meta">${esc(descArticle(a))} · ${esc(p.nom || 'produit ?')}${q != null ? ' · stock ' + esc(fmtQ(q, p.unite)) : ''}${a.actif === false ? ' · pas en vente' : ''}</span></span><span class="amt">${chf(prixArticle(a))}${auto ? '<br><span class="hint">auto</span>' : ''}</span></button>`; }).join('')}</div>`
+      : '<p class="hint">Par exemple « Butternut moyenne » (pièce de 900 g à 1,4 kg, prix calculé tout seul) ou « Sachet de patates douces » (1,3 kg à 10 CHF). Mettre un article en vente retire son poids du stock du produit.</p>'}</div>`;
+}
+ACTIONS.artEdit = (el) => {
+  const k = el.dataset.key || '', a = k ? DB.get(k) : { mode: 'piece', actif: true, prix: '' };
+  const ps = produits().sort((x, y) => String(x.nom).localeCompare(String(y.nom), 'fr'));
+  if (!ps.length) { toast('Crée d\'abord le produit (Stock et prix).'); return; }
+  openSheet(`${sheetHead(k ? 'Article de vente directe' : 'Nouvel article de vente directe')}<form class="sbody form" data-form="art" id="art-form"><input type="hidden" name="key" value="${esc(k)}">
+    ${inp('ar-nom', 'Nom', a.nom || '', { name: 'nom', req: true, attrs: { placeholder: 'Ex. Butternut moyenne, Sachet de patates douces', autofocus: '' } })}
+    ${sel('ar-prod', 'Produit (pour le stock et le prix)', a.prod || ps[0].key, ps.map((p) => [p.key, `${p.nom} (${p.unite || 'kg'})`]), { name: 'prod' })}
+    <div class="field"><span class="flabel">Vendu</span><div class="seg"><label><input type="radio" name="mode" value="piece"${a.mode !== 'lot' ? ' checked' : ''}> À la pièce (calibre)</label><label><input type="radio" name="mode" value="lot"${a.mode === 'lot' ? ' checked' : ''}> En sachet / lot (poids fixe)</label></div></div>
+    <div class="grid2" id="ar-piece"${a.mode === 'lot' ? ' hidden' : ''}>${inp('ar-min', 'Poids min. (kg)', a.min ?? '', { name: 'min', type: 'number', attrs: { step: '0.01', min: '0', placeholder: '0,9' } })}${inp('ar-max', 'Poids max. (kg)', a.max ?? '', { name: 'max', type: 'number', attrs: { step: '0.01', min: '0', placeholder: '1,4' } })}</div>
+    <div id="ar-lot"${a.mode === 'lot' ? '' : ' hidden'}>${inp('ar-poids', 'Poids du lot (kg)', a.poids ?? '', { name: 'poids', type: 'number', attrs: { step: '0.01', min: '0', placeholder: '1,3' } })}</div>
+    ${inp('ar-prix', 'Prix CHF', num(a.prix) > 0 ? a.prix : '', { name: 'prix', type: 'number', attrs: { step: '0.05', min: '0' }, sub: '<span id="ar-auto"></span>' })}
+    <label class="row" style="font-size:14px"><input type="checkbox" name="actif"${a.actif !== false ? ' checked' : ''}> En vente (proposé dans les mises en vente)</label>
+    <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cet article">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  const f = $('art-form'), maj = () => {
+    const mode = (f.querySelector('input[name=mode]:checked') || {}).value || 'piece';
+    $('ar-piece').hidden = mode === 'lot'; $('ar-lot').hidden = mode !== 'lot';
+    const auto = prixAutoArticle({ prod: $('ar-prod').value, mode, min: $('ar-min').value, max: $('ar-max').value, poids: $('ar-poids').value }), p = DB.get($('ar-prod').value) || {};
+    $('ar-auto').textContent = auto ? `Vide = prix automatique : ${chf(auto)} (${mode === 'lot' ? 'poids du lot' : 'poids moyen'} × ${money(prixNiveau(p, 'part'))} CHF/${p.unite || 'kg'}, arrondi à 50 ct).` : 'Mets une fourchette de prix au produit pour avoir un prix automatique.';
+    $('ar-prix').placeholder = auto ? String(auto) : '';
+  };
+  f.addEventListener('input', maj); f.addEventListener('change', maj); maj();
+};
+FORMS.art = (v) => {
+  if (!v.nom) return; const mode = v.mode === 'lot' ? 'lot' : 'piece';
+  if (mode === 'piece' && !(num(v.min) > 0 && num(v.max) >= num(v.min))) { toast('Indique le poids min. et max. d\'une pièce (en kg).'); return; }
+  if (mode === 'lot' && !(num(v.poids) > 0)) { toast('Indique le poids du lot (en kg).'); return; }
+  const k = v.key || 'art:' + uid('a');
+  DB.put(k, Object.assign({}, DB.get(k) || {}, { nom: v.nom.trim(), prod: v.prod, mode, min: mode === 'piece' ? r2(num(v.min)) : '', max: mode === 'piece' ? r2(num(v.max)) : '', poids: mode === 'lot' ? r2(num(v.poids)) : '', prix: num(v.prix) > 0 ? r2(num(v.prix)) : '', actif: !!v.actif }));
+  closeSheet(); toast('Article enregistré.');
+};
+
+/* ---------- Payé par message (SMS / WhatsApp) : à facturer en fin de saison ----------
+   ard:<id> = { date, contactId, montant, note, self (mise en vente, facultatif), par, facture (clé de la facture une fois faite) }
+   Ce n'est pas encore une recette : la recette, c'est la facture (payée). */
+const paiementsMessage = () => DB.all('ard:').sort((a, b) => String(b.date).localeCompare(String(a.date)));
+const chiffresTel = (s) => String(s || '').replace(/\D/g, '').replace(/^(0041|41)/, '0').slice(-9);
+const contactParTel = (t) => { const c = chiffresTel(t); return c.length >= 9 ? tousContacts().find((x) => chiffresTel(x.telephone) === c) : null; };
+function paiementsMessageHtml() {
+  const l = paiementsMessage(), af = l.filter((x) => !x.facture);
+  if (!l.length) return `<div class="panel"><div class="between"><h2>Payé par message</h2><button class="btn small" type="button" data-act="ardNouveau">+ Paiement par message</button></div><p class="hint">Quelqu'un prend des légumes et t'envoie un SMS ou un WhatsApp avec le montant : note-le ici avec son numéro. En fin de saison, « Facturer » fait une facture par personne.</p></div>`;
+  const parC = {}; for (const x of af) { (parC[x.contactId] = parC[x.contactId] || []).push(x); }
+  return `<div class="panel"><div class="between"><h2>Payé par message · à facturer ${chf(af.reduce((a, x) => a + num(x.montant), 0))}</h2><span class="row"><button class="btn small" type="button" data-act="ardNouveau">+ Paiement par message</button>${af.length ? '<button class="btn small primary" type="button" data-act="ardFacturer">Facturer…</button>' : ''}</span></div>
+    ${Object.entries(parC).map(([ck, xs]) => { const c = DB.get(ck) || {}; return `<details class="ard"><summary><b>${esc(displayName(c))}</b> <span class="hint">${esc(c.telephone || '')}</span> · ${xs.length} achat${xs.length > 1 ? 's' : ''} · <b>${chf(xs.reduce((a, x) => a + num(x.montant), 0))}</b></summary>
+      ${xs.map((x) => `<div class="row ard-l"><span>${fmtDate(x.date)}</span><span style="flex:1">${esc(x.note || '')}</span><b>${chf(x.montant)}</b><button class="btn link small" type="button" data-act="ardEdit" data-key="${esc(x.key)}">modifier</button></div>`).join('')}</details>`; }).join('') || '<p class="hint">Tout est facturé.</p>'}
+    ${l.length > af.length ? `<p class="hint">${l.length - af.length} paiement(s) déjà facturé(s).</p>` : ''}</div>`;
+}
+ACTIONS.ardNouveau = (el) => ACTIONS.ardEdit({ dataset: { key: '', self: el.dataset.self || '' } });
+ACTIONS.ardEdit = (el) => {
+  const k = el.dataset.key || '', x = k ? DB.get(k) : { date: todayISO(), self: el.dataset.self || (misesEnVente().find((s) => s.statut !== 'close') || {}).key || '' };
+  const c = x.contactId ? DB.get(x.contactId) : null, ouvertes = misesEnVente().filter((s) => s.statut !== 'close' || s.key === x.self);
+  const avecTel = tousContacts().filter((t) => t.telephone).sort(byName);
+  openSheet(`${sheetHead(k ? 'Paiement par message' : 'Nouveau paiement par message')}<form class="sbody form" data-form="ard" id="ard-form"><input type="hidden" name="key" value="${esc(k)}">
+    ${inp('ad-tel', 'Numéro de téléphone', c ? c.telephone : '', { name: 'tel', type: 'tel', req: true, attrs: { list: 'ad-tels', autocomplete: 'off', placeholder: '079 123 45 67', autofocus: k ? undefined : '' } })}
+    <datalist id="ad-tels">${avecTel.map((t) => `<option value="${esc(t.telephone)}">${esc(displayName(t))}</option>`).join('')}</datalist>
+    <p class="hint" id="ad-qui">${c ? '👤 ' + esc(displayName(c)) : ''}</p>
+    <div class="grid2" id="ad-nouveau" hidden>${inp('ad-pre', 'Prénom (nouveau contact)', '', { name: 'prenom' })}${inp('ad-nom', 'Nom', '', { name: 'nomFamille' })}</div>
+    <div class="grid2">${inp('ad-m', 'Montant CHF', x.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}${inp('ad-d', 'Date', x.date, { name: 'date', type: 'date' })}</div>
+    ${inp('ad-note', 'Ce qu\'il / elle a pris (facultatif)', x.note || '', { name: 'note', attrs: { placeholder: 'Ex. 2 butternuts, 1 sachet de patates douces' } })}
+    ${ouvertes.length ? sel('ad-self', 'Mise en vente', x.self || '', [['', '—']].concat(ouvertes.map((s) => [s.key, `${s.lieu || 'Self-service'} · ${fmtDate(s.date)}`])), { name: 'self', sub: 'Compte comme payé dans le bilan de cette vente directe.' }) : ''}
+    ${x.facture ? `<p class="hint">Déjà facturé (${esc((DB.get(x.facture) || {}).numero || '')}).</p>` : ''}
+    <div class="row-end">${k && !x.facture ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="ce paiement">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  const t = $('ad-tel'), maj = () => { const cc = contactParTel(t.value); $('ad-qui').textContent = cc ? '👤 ' + displayName(cc) : chiffresTel(t.value).length >= 9 ? 'Nouveau numéro : un contact sera créé.' : ''; $('ad-nouveau').hidden = !!cc || chiffresTel(t.value).length < 9; };
+  t.addEventListener('input', maj); maj();
+};
+FORMS.ard = (v) => {
+  const m = num(v.montant); if (!(m > 0)) { toast('Indique le montant.'); return; }
+  if (chiffresTel(v.tel).length < 9) { toast('Indique un numéro de téléphone complet.'); return; }
+  let c = contactParTel(v.tel), ck = c ? c.key : '';
+  if (!c) { ck = 'ct:' + uid('c'); const nom = nomComplet(v.prenom, v.nomFamille) || String(v.tel).trim(); DB.put(ck, { prenom: v.prenom || '', nomFamille: v.nomFamille || '', nom, telephone: String(v.tel).trim(), type: 'particulier', notes: 'Créé depuis un paiement par message (vente directe).', cree: new Date().toISOString() }); }
+  const k = v.key || 'ard:' + uid('d');
+  DB.put(k, Object.assign({}, DB.get(k) || { cree: new Date().toISOString(), par: Sync.me || '' }, { date: v.date || todayISO(), contactId: ck, montant: r2(m), note: v.note || '', self: v.self || '' }));
+  closeSheet(); toast(`${chf(m)} noté pour ${displayName(DB.get(ck))}.`);
+};
+/* Fin de saison : une facture par personne (une ligne par mois), avec le QR pour payer */
+ACTIONS.ardFacturer = () => {
+  const af = paiementsMessage().filter((x) => !x.facture), parC = {};
+  for (const x of af) (parC[x.contactId] = parC[x.contactId] || []).push(x);
+  openSheet(`${sheetHead('Facturer les paiements par message')}<form class="sbody form" data-form="ardFacturer">
+    ${inp('af-d', 'Date des factures', todayISO(), { name: 'date', type: 'date' })}
+    ${Object.entries(parC).map(([ck, xs]) => { const c = DB.get(ck) || {}, ok = c.npa && c.localite; return `<label class="row" style="font-size:15px;align-items:flex-start"><input type="checkbox" name="c_${esc(ck)}"${ok ? ' checked' : ' disabled'}> <span><b>${esc(displayName(c))}</b> · ${xs.length} achat${xs.length > 1 ? 's' : ''} · ${chf(xs.reduce((a, x) => a + num(x.montant), 0))}${ok ? '' : `<br><span class="bad">Adresse manquante (NPA, localité) : <a href="#/contacts/modifier/${encodeURIComponent(ck)}" data-act="close">compléter la fiche</a></span>`}</span></label>`; }).join('')}
+    <p class="hint">Une facture par personne avec une ligne par mois (ex. « Ventes directes septembre 2026 · 4 achats »), à envoyer ensuite par mail ou à imprimer depuis Ventes.</p>
+    <div class="row-end"><button class="btn primary" type="submit">Créer les factures</button></div></form>`);
+};
+FORMS.ardFacturer = (v) => {
+  const pb = problemesReglages(false); if (pb.length) { toast('Réglages : il manque ' + pb.join(', ')); return; }
+  const date = v.date || todayISO(), s = cfg(), delai = num(s.delai) >= 0 ? num(s.delai) : 30, faites = [];
+  const af = paiementsMessage().filter((x) => !x.facture);
+  for (const ck of Object.keys(v).filter((x) => x.startsWith('c_')).map((x) => x.slice(2))) {
+    const c = DB.get(ck), xs = af.filter((x) => x.contactId === ck).sort((a, b) => String(a.date).localeCompare(b.date)); if (!c || !xs.length || !c.npa || !c.localite) continue;
+    const mois = new Map(); for (const x of xs) { const m = x.date.slice(0, 7), o = mois.get(m) || { n: 0, t: 0 }; o.n++; o.t = r2(o.t + num(x.montant)); mois.set(m, o); }
+    const lignes = [...mois.entries()].map(([m, o]) => ({ designation: `Ventes directes ${MOIS[Number(m.slice(5)) - 1]} ${m.slice(0, 4)} · ${o.n} achat${o.n > 1 ? 's' : ''}`, quantite: 1, unite: 'forfait', prix: o.t }));
+    const n = prochainNumero(date), emetteur = { nom: s.nom, titulaire: s.titulaire, rue: s.rue, numero: s.numero, npa: s.npa, localite: s.localite, telephone: s.telephone, email: s.email, iban: cleanIban(s.iban), mention: s.mention };
+    const inv = Object.assign({}, n, { date, livraison: '', bulletin: '', delai, echeance: addDays(date, delai), emetteur,
+      client: { id: ck, nom: billName(c), attn: attnName(c), rue: c.rue || '', numero: c.numero || '', npa: c.npa || '', localite: c.localite || '' }, lignes,
+      remarque: trunc(`Achats en vente directe payés par message, du ${fmtDateCourt(xs[0].date)} au ${fmtDate(xs[xs.length - 1].date)}`, 110),
+      paiement: 'virement', statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '', facture: true, stock: false, cree: new Date().toISOString(), creePar: Sync.me || '' });
+    inv.total = factureTotal(inv); const fk = 'fac:' + uid('f'); DB.put(fk, inv); faites.push(n.numero);
+    for (const x of xs) DB.put(x.key, Object.assign({}, DB.get(x.key), { facture: fk }));
+  }
+  closeSheet(); toast(faites.length ? `${faites.length} facture${faites.length > 1 ? 's' : ''} créée${faites.length > 1 ? 's' : ''} : ${faites.join(', ')}. Elles sont dans Ventes.` : 'Aucune facture créée.', 6000);
+  if (faites.length) go('#/factures');
 };
 ACTIONS.selfRouvrir = (el) => { const s = DB.get(el.dataset.key); if (!s) return; const o = Object.assign({}, s, { statut: 'ouverte' }); DB.put(el.dataset.key, o); stockPourSelf(el.dataset.key, o); };
 /* Supprimer une mise en vente retire aussi ses mouvements de stock (les encaissements restent : c'est de l'argent reçu) */

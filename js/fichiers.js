@@ -118,6 +118,12 @@ async function nettoyerFichiers() {
     if (tr.length) await effacer(tr);
     const ok = await effacer(msgs.map((m) => m.photo.chemin));
     for (const m of msgs) if (ok.has(m.photo.chemin)) { const o = DB.get(m.key); if (o) DB.put(m.key, Object.assign({}, o, { photo: Object.assign({}, o.photo, { expire: todayISO() }) })); }
+    /* Fichiers joints aux messages : même règle (6 mois) */
+    const mf = DB.all('msg:').filter((m) => m.fichier && !m.fichier.expire && String(m.cree) < m6);
+    const trf = Object.values(DB.trash).filter((m) => m && m.fichier && m.fichier.chemin && !m.fichier.expire && String(m.cree || '') < m6).map((m) => m.fichier.chemin);
+    if (trf.length) await effacer(trf);
+    const okf = await effacer(mf.map((m) => m.fichier.chemin));
+    for (const m of mf) if (okf.has(m.fichier.chemin)) { const o = DB.get(m.key); if (o) DB.put(m.key, Object.assign({}, o, { fichier: Object.assign({}, o.fichier, { expire: todayISO() }) })); }
     const a2 = avant(24);
     /* Sauf une dépense encore sous garantie : son ticket est la preuve d'achat */
     const deps = DB.all('dep:').filter((d) => typeof archiveDe === 'function' && archiveDe(yearOf(d.date)) && !(d.garantie && d.garantie >= todayISO()) && (d.fichiers || []).some((f) => !f.expire && f.ajoute && f.ajoute < a2));

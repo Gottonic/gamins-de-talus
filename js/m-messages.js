@@ -10,7 +10,7 @@ const MSG = { draft: '', timer: null, photo: null, envoi: false, repondA: '', ed
 const MAX_EPINGLES = 3;
 /* Réserve la place de la photo avant qu'elle se charge (sinon les messages « redescendent ») */
 const taillePhoto = (ph) => { const w = Number(ph.w) || 4, h = Number(ph.h) || 3, r = Math.min(280 / w, 340 / h); return ` width="${w}" height="${h}" style="width:${Math.round(w * r)}px;aspect-ratio:${w}/${h}"`; };
-const apercuMsg = (m) => (m.texte ? m.texte.replace(/\s+/g, ' ') : '') || (m.photo ? '📷 Photo' : '');
+const apercuMsg = (m) => (m.sondage ? (m.sondage.type === 'dates' ? '📅 ' : '📊 ') + (m.sondage.question || 'Sondage') : '') || (m.texte ? m.texte.replace(/\s+/g, ' ') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + m.fichier.nom : '');
 const messages = () => DB.all('msg:').sort((a, b) => String(a.cree).localeCompare(String(b.cree)));
 const luJusqua = (p) => ((DB.get('lu:' + p) || {}).jusqua || '');
 function nonLus(p) { p = p || Sync.me; const l = luJusqua(p); return messages().filter((m) => m.de !== p && String(m.cree) > l); }
@@ -50,7 +50,9 @@ MODULES.messages = {
     if (t) {
       const grow = () => { t.style.height = 'auto'; t.style.height = Math.min(220, t.scrollHeight + 2) + 'px'; };
       t.addEventListener('input', () => { MSG.draft = t.value; grow(); }); grow();
-      const f = $('msg-file'); if (f) f.addEventListener('change', () => choisirPhoto(f.files[0]));
+      const f = $('msg-file'); if (f) f.addEventListener('change', () => { closeSheet(); choisirPhoto(f.files[0]); });
+      const cam = $('msg-cam'); if (cam) cam.addEventListener('change', () => { closeSheet(); choisirPhoto(cam.files[0]); });
+      const doc = $('msg-doc'); if (doc) doc.addEventListener('change', () => { closeSheet(); choisirFichierMsg(doc.files[0]); doc.value = ''; });
       t.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey && matchMedia('(pointer: fine)').matches) { e.preventDefault(); envoyerMessage(); }
       });
@@ -92,7 +94,7 @@ function renderMessages() {
     html += `<div class="msg${mien ? ' mine' : ''}${suite && !m.repond ? ' suite' : ''}${m.epingle ? ' pinned' : ''}" id="m-${esc(m.key.slice(4))}">
       ${!mien && (!suite || m.repond) ? `<span class="msg-who">${esc(nomDe(m.de))}</span>` : ''}
       ${m.repond ? `<button type="button" class="msg-cite" data-act="msgVoir" data-key="${esc(m.repond)}">↪ ${cite ? `<b>${esc(nomDe(cite.de))}</b> ${esc(trunc(apercuMsg(cite), 70))}` : 'message supprimé'}</button>` : ''}
-      <div class="bubble${m.photo && !m.photo.expire ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${taillePhoto(m.photo)}></button>` : ''}${texteMsg(m.texte || '')}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div></div>`;
+      <div class="bubble${m.photo && !m.photo.expire ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${taillePhoto(m.photo)}></button>` : ''}${m.sondage ? sondageHtml(m) : ''}${m.fichier ? fichierMsgHtml(m.fichier) : ''}${m.sondage ? '' : texteMsg(m.texte || '')}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div></div>`;
   });
   /* « Vu par » sous le dernier message */
   const der = ms[ms.length - 1];
@@ -109,12 +111,15 @@ function renderMessages() {
     <div class="between chat-head"><a class="btn small chat-fermer" href="#/" data-act="chatFermer" aria-label="Fermer la discussion">←</a><h2>Entre nous</h2>
       <a class="btn small" href="#/reglages/notifications">🔔 Notifications</a></div>
     <p class="hint chat-who">${esc(personnes().map((p) => p.nom).join(', '))}${prevenus.length ? ' · prévenus sur Discord : ' + esc(prevenus.join(', ')) : ''}</p>
-    ${pinsHtml}
+    ${pinsHtml}${(() => { const h = hautSondages(); return h ? `<div class="pins">${h}</div>` : ''; })()}
     <div class="msg-list" id="msg-list" aria-live="polite">${html || '<p class="empty">Aucun message pour l\'instant. Écris le premier !</p>'}</div>
     ${bandeau}
     ${MSG.photo ? `<div class="msg-prev"><img src="${MSG.photo.apercu}" alt="Photo à envoyer"><span>Photo prête à envoyer${MSG.envoi ? ' : envoi…' : ' · ajoute une légende si tu veux'}</span><button type="button" class="btn small" data-act="msgPhotoOff"${MSG.envoi ? ' disabled' : ''}>Retirer</button></div>` : ''}
+    ${MSG.fichier ? `<div class="msg-prev"><span>📎 <b>${esc(trunc(MSG.fichier.name, 40))}</b> · ${tailleTxt(MSG.fichier.size)}${MSG.envoi ? ' : envoi…' : ' · prêt à envoyer'}</span><button type="button" class="btn small" data-act="msgFichierOff"${MSG.envoi ? ' disabled' : ''}>Retirer</button></div>` : ''}
     <form class="composer" data-form="msg">
-      <label class="btn photo-btn" title="Ajouter une photo" aria-label="Ajouter une photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg><input id="msg-file" type="file" accept="image/*" hidden></label>
+      <button type="button" class="btn photo-btn" data-act="msgPlus" title="Fichier, sondage…" aria-label="Ajouter un fichier ou un sondage">＋</button>
+      <button type="button" class="btn photo-btn" data-act="msgPhoto" title="Photo" aria-label="Ajouter une photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg></button>
+      <input id="msg-file" type="file" accept="image/*" hidden><input id="msg-cam" type="file" accept="image/*" capture="environment" hidden><input id="msg-doc" type="file" hidden>
       <textarea id="msg-txt" name="texte" rows="1" placeholder="Écrire un message…" aria-label="Message">${esc(MSG.draft)}</textarea>
       <button class="btn primary" type="submit"${MSG.envoi ? ' disabled' : ''}>${MSG.envoi ? 'Envoi…' : 'Envoyer'}</button>
     </form>
@@ -138,7 +143,7 @@ ACTIONS.msgPhotoOff = () => { if (MSG.photo) URL.revokeObjectURL(MSG.photo.aperc
 async function envoyerMessage() {
   if (MSG.envoi) return;
   const t = $('msg-txt'); const texte = String((t && t.value) || '').trim();
-  if (!texte && !MSG.photo) return;
+  if (!texte && !MSG.photo && !MSG.fichier) return;
   if (!Sync.me) { toast('Connecte-toi pour envoyer un message.'); return; }
   if (MSG.edition) {
     const k = MSG.edition, o = DB.get(k); MSG.edition = ''; MSG.draft = ''; if (t) t.value = '';
@@ -154,18 +159,129 @@ async function envoyerMessage() {
     } catch (e) { MSG.envoi = false; render(); toast("La photo n'est pas partie : " + e.message, 6000); return; }
     MSG.envoi = false;
   }
+  let fichier = null; const fi = MSG.fichier;
+  if (fi) {
+    MSG.envoi = true; MSG.draft = texte; render();
+    try {
+      const ext = (fi.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin';
+      const chemin = await Fichiers.envoyer(fi, cheminFichier('messages', ext));
+      fichier = { chemin, nom: fi.name, type: fi.type || '', taille: fi.size };
+    } catch (e) { MSG.envoi = false; render(); toast("Le fichier n'est pas parti : " + e.message, 6000); return; }
+    MSG.envoi = false;
+  }
   const cree = new Date().toISOString();
-  MSG.draft = ''; MSG.photo = null; const tt = $('msg-txt'); if (tt) tt.value = '';
-  const msg = { de: Sync.me, texte, cree }; if (photo) msg.photo = photo;
+  MSG.draft = ''; MSG.photo = null; MSG.fichier = null; const tt = $('msg-txt'); if (tt) tt.value = '';
+  const msg = { de: Sync.me, texte, cree }; if (photo) msg.photo = photo; if (fichier) msg.fichier = fichier;
   const cite = MSG.repondA && DB.get(MSG.repondA); if (cite) msg.repond = MSG.repondA; MSG.repondA = '';
   DB.put('msg:' + uid('m'), msg);
   DB.put('lu:' + Sync.me, { jusqua: cree });
   Sync.schedule(0);
-  notifierDiscord(Sync.me, cite ? `↪ (réponse à ${nomDe(cite.de)} : « ${trunc(apercuMsg(cite), 50)} ») ${texte}` : texte, ph && ph.blob);
+  notifierDiscord(Sync.me, (cite ? `↪ (réponse à ${nomDe(cite.de)} : « ${trunc(apercuMsg(cite), 50)} ») ` : '') + (texte || (fichier ? '📎 ' + fichier.nom : '')), ph && ph.blob);
   if (ph) Fichiers.local[photo.chemin] = Fichiers.local[photo.chemin] || ph.apercu;
   if (ph && !LOCAL_MODE) Fichiers.liens[photo.chemin] = { url: ph.apercu, exp: Date.now() + 50 * 60000 };
   render(); const n = $('msg-txt'); if (n && matchMedia('(pointer: fine)').matches) n.focus();
 }
+/* ---------- Photo, fichier, sondage : les boutons du bas ---------- */
+ACTIONS.msgPhoto = () => {
+  /* Sur ordinateur : directement le choix du fichier ; sur téléphone : prendre une photo ou en choisir une */
+  if (matchMedia('(pointer: fine)').matches) { $('msg-file').click(); return; }
+  openSheet(`${sheetHead('Photo')}<div class="sbody"><div class="menu-list">
+    <label class="menu-it" for="msg-cam">📸 Prendre une photo</label><label class="menu-it" for="msg-file">🖼️ Choisir une photo</label></div></div>`);
+};
+ACTIONS.msgPlus = () => openSheet(`${sheetHead('Ajouter')}<div class="sbody"><div class="menu-list">
+  <label class="menu-it" for="msg-doc">📎 Un fichier <span class="hint">(5 Mo au plus)</span></label>
+  <button type="button" class="menu-it" data-act="sondageNouveau" data-type="simple">📊 Un sondage</button>
+  <button type="button" class="menu-it" data-act="sondageNouveau" data-type="dates">📅 Un sondage de dates</button></div></div>`);
+const FICHIER_MSG_MAX = 5 * 1024 * 1024;
+function choisirFichierMsg(f) {
+  if (!f) return; if (f.size > FICHIER_MSG_MAX) { toast(`Trop lourd : ${tailleTxt(f.size)} (5 Mo au plus). Mets-le plutôt dans le Drive.`, 6000); return; }
+  const t = $('msg-txt'); if (t) MSG.draft = t.value; MSG.fichier = f; render();
+}
+ACTIONS.msgFichierOff = () => { MSG.fichier = null; render(); };
+function fichierMsgHtml(f) {
+  if (f.expire) return '<span class="photo-expiree">📎 Fichier retiré après 6 mois</span>';
+  const vue = /^image\/|pdf/.test(f.type || '') || /\.pdf$/i.test(f.nom);
+  return vue ? `<button type="button" class="msg-fichier" data-act="voirFichier" data-fichier="${esc(f.chemin)}" data-titre="${esc(f.nom)}">📎 <b>${esc(trunc(f.nom, 40))}</b> <small>${tailleTxt(f.taille)}</small></button>`
+    : `<a class="msg-fichier" data-fichier="${esc(f.chemin)}" download="${esc(f.nom)}" target="_blank" rel="noopener">📎 <b>${esc(trunc(f.nom, 40))}</b> <small>${tailleTxt(f.taille)}</small></a>`;
+}
+
+/* ---------- Sondages ----------
+   msg.sondage = { type: 'simple' | 'dates', question, options: [{ k, t }] (pour les dates, t = AAAA-MM-JJ), plusieurs }
+   Les réponses sont des lignes à part : vote:<id du message>:<personne> = { choix: [k…], le } (pas de conflit si deux répondent en même temps).
+   Rempli quand tout le monde a répondu. Sondage de dates rempli : la date commune la plus proche → « Créer l'événement ». */
+const votesDe = (k) => { const id = k.slice(4), o = {}; for (const p of personnes()) { const v = DB.get(`vote:${id}:${p.k}`); if (v) o[p.k] = v.choix || []; } return o; };
+const sondageRempli = (k) => { const v = votesDe(k); return personnes().every((p) => v[p.k]); };
+function datesCommunes(k, m) {
+  const v = votesDe(k), today = todayISO();
+  return (m.sondage.options || []).filter((o) => personnes().every((p) => (v[p.k] || []).includes(o.k))).map((o) => o.t).filter((d) => d >= today).sort();
+}
+const jourCourt = (d) => `${JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3)} ${fmtDateCourt(d)}`;
+function sondageHtml(m) {
+  const s = m.sondage, k = m.key, v = votesDe(k), rempli = personnes().every((p) => v[p.k]), moi = v[Sync.me] || null;
+  const communs = s.type === 'dates' ? datesCommunes(k, m) : [];
+  const attend = personnes().filter((p) => !v[p.k]).map((p) => p.nom);
+  return `<div class="sondage"><div class="sd-tete">${rempli ? '<span class="sd-ok">✓ Sondage rempli</span>' : `<span class="hint">${attend.length} réponse${attend.length > 1 ? 's' : ''} attendue${attend.length > 1 ? 's' : ''} : ${esc(attend.join(', '))}</span>`}</div>
+    <b class="sd-q">${s.type === 'dates' ? '📅' : '📊'} ${esc(s.question || 'Sondage')}</b>
+    <div class="sd-opts">${(s.options || []).map((o) => { const qui = personnes().filter((p) => (v[p.k] || []).includes(o.k)), on = moi && moi.includes(o.k), commun = s.type === 'dates' && communs.includes(o.t);
+      return `<button type="button" class="sd-opt${on ? ' on' : ''}${commun ? ' commun' : ''}" data-act="sondageVote" data-key="${esc(k)}" data-o="${esc(o.k)}"><span class="sd-case">${on ? '✓' : ''}</span><span class="sd-t">${esc(s.type === 'dates' ? jourCourt(o.t) : o.t)}</span><span class="sd-qui">${qui.length ? esc(qui.map((p) => p.nom).join(', ')) : ''}</span></button>`; }).join('')}</div>
+    ${s.type === 'dates' && !(moi && moi.length) ? `<button type="button" class="btn link small sd-aucune" data-act="sondageAucune" data-key="${esc(k)}">${moi ? '✓ Aucune date ne me va' : 'Aucune date ne me va'}</button>` : ''}
+    ${s.type === 'dates' && rempli ? `<p class="sd-res">${communs.length ? `Date${communs.length > 1 ? 's' : ''} commune${communs.length > 1 ? 's' : ''} : ${esc(communs.map(jourCourt).join(', '))}` : 'Aucune date commune.'}${m.evenement && DB.get(m.evenement) ? ' · événement créé ✓' : ''}</p>` : ''}
+    <span class="hint sd-aide">${s.plusieurs || s.type === 'dates' ? 'Plusieurs choix possibles.' : 'Un seul choix.'}</span></div>`;
+}
+/* En haut de la discussion : les sondages qui attendent ma réponse, et les dates trouvées */
+function hautSondages() {
+  const out = [];
+  for (const m of messages().filter((x) => x.sondage)) {
+    const v = votesDe(m.key);
+    if (Sync.me && !v[Sync.me]) out.push(`<button type="button" class="pin sd-pin" data-act="msgVoir" data-key="${esc(m.key)}">${m.sondage.type === 'dates' ? '📅' : '📊'} <b>Sondage</b> ${esc(trunc(m.sondage.question || '', 60))} · <u>répondre</u></button>`);
+    else if (m.sondage.type === 'dates' && personnes().every((p) => v[p.k]) && !(m.evenement && DB.get(m.evenement))) {
+      const c = datesCommunes(m.key, m);
+      if (c.length) out.push(`<div class="pin sd-trouve"><span>📅 <b>Date trouvée</b> : ${esc(trunc(m.sondage.question || '', 40))} · ${esc(jourCourt(c[0]))}${c.length > 1 ? ` <span class="hint">(+${c.length - 1} autre${c.length > 2 ? 's' : ''})</span>` : ''}</span><button type="button" class="btn small primary" data-act="sondageEvenement" data-key="${esc(m.key)}">Créer l'événement</button></div>`);
+    }
+  }
+  return out.join('');
+}
+ACTIONS.sondageVote = (el) => {
+  const k = el.dataset.key, m = DB.get(k); if (!m || !m.sondage || !Sync.me) return;
+  const vk = `vote:${k.slice(4)}:${Sync.me}`, cur = (DB.get(vk) || {}).choix || [], o = el.dataset.o;
+  const multi = m.sondage.type === 'dates' || m.sondage.plusieurs;
+  const choix = cur.includes(o) ? cur.filter((x) => x !== o) : multi ? cur.concat([o]) : [o];
+  if (!choix.length && m.sondage.type !== 'dates') DB.del(vk); else DB.put(vk, { choix, le: new Date().toISOString() });
+};
+ACTIONS.sondageAucune = (el) => { if (!Sync.me) return; DB.put(`vote:${el.dataset.key.slice(4)}:${Sync.me}`, { choix: [], le: new Date().toISOString() }); };
+ACTIONS.sondageNouveau = (el) => {
+  const dates = el.dataset.type === 'dates';
+  SONDAGE.options = dates ? [addDays(todayISO(), 1), addDays(todayISO(), 2)] : ['', ''];
+  openSheet(`${sheetHead(dates ? 'Sondage de dates' : 'Sondage')}<form class="sbody form" data-form="sondage"><input type="hidden" name="type" value="${dates ? 'dates' : 'simple'}">
+    ${inp('sd-q', dates ? 'Pour quoi ? (devient le titre de l\'événement)' : 'Question', '', { name: 'question', req: true, attrs: { placeholder: dates ? 'Ex. Journée plantation de l\'ail' : 'Ex. On commande les plantons où ?', autofocus: '' } })}
+    <div class="field"><span class="flabel">${dates ? 'Dates proposées' : 'Choix'}</span><div id="sd-opts">${optionsSondageHtml(dates)}</div>
+      <button type="button" class="btn small" data-act="sondageOpt" data-dates="${dates ? '1' : ''}">+ ${dates ? 'une date' : 'un choix'}</button></div>
+    ${dates ? '' : '<label class="row" style="font-size:14px"><input type="checkbox" name="plusieurs"> Plusieurs réponses possibles</label>'}
+    <div class="row-end"><button class="btn primary" type="submit">Envoyer le sondage</button></div></form>`);
+};
+const SONDAGE = { options: [] };
+function optionsSondageHtml(dates) { return SONDAGE.options.map((v, i) => `<div class="row" style="margin-bottom:6px"><input name="o_${i}" ${dates ? `type="date" min="${todayISO()}"` : 'placeholder="Choix ' + (i + 1) + '"'} value="${esc(v)}" style="flex:1" data-sdo="${i}">${SONDAGE.options.length > 2 ? `<button type="button" class="btn link small" data-act="sondageOptOff" data-i="${i}" data-dates="${dates ? '1' : ''}">×</button>` : ''}</div>`).join(''); }
+const lireOptionsSondage = () => document.querySelectorAll('[data-sdo]').forEach((x) => { SONDAGE.options[Number(x.dataset.sdo)] = x.value; });
+ACTIONS.sondageOpt = (el) => { lireOptionsSondage(); const d = !!el.dataset.dates, last = SONDAGE.options[SONDAGE.options.length - 1]; SONDAGE.options.push(d ? addDays(last || todayISO(), 1) : ''); $('sd-opts').innerHTML = optionsSondageHtml(d); };
+ACTIONS.sondageOptOff = (el) => { lireOptionsSondage(); SONDAGE.options.splice(Number(el.dataset.i), 1); $('sd-opts').innerHTML = optionsSondageHtml(!!el.dataset.dates); };
+FORMS.sondage = (v) => {
+  const dates = v.type === 'dates', opts = Object.keys(v).filter((x) => /^o_\d+$/.test(x)).sort((a, b) => Number(a.slice(2)) - Number(b.slice(2))).map((x) => String(v[x] || '').trim()).filter(Boolean);
+  const uniques = [...new Set(opts)]; if (dates) uniques.sort();
+  if (!v.question || uniques.length < 2) { toast(dates ? 'Une question et au moins 2 dates.' : 'Une question et au moins 2 choix.'); return; }
+  if (!Sync.me) { toast('Connecte-toi d\'abord.'); return; }
+  const cree = new Date().toISOString();
+  DB.put('msg:' + uid('m'), { de: Sync.me, texte: '', cree, sondage: { type: dates ? 'dates' : 'simple', question: v.question.trim(), options: uniques.map((t, i) => ({ k: 'o' + i, t })), plusieurs: !dates && !!v.plusieurs } });
+  DB.put('lu:' + Sync.me, { jusqua: cree }); Sync.schedule(0);
+  notifierDiscord(Sync.me, `${dates ? '📅 Sondage de dates' : '📊 Sondage'} : ${v.question.trim()} (${uniques.map((t) => dates ? jourCourt(t) : t).join(' / ')})`);
+  closeSheet(); toast('Sondage envoyé.');
+};
+/* Date trouvée → événement de travail (titre = la question, jour = la date commune la plus proche, modifiable) */
+ACTIONS.sondageEvenement = (el) => {
+  const k = el.dataset.key, m = DB.get(k); if (!m) return; const c = datesCommunes(k, Object.assign({ key: k }, m)); if (!c.length) return;
+  EVF.sondage = k; ACTIONS.evEdit({ dataset: { date: c[0], titre: m.sondage.question || '' } });
+  if (c.length > 1) { const d = $('ev-date'); if (d) d.insertAdjacentHTML('afterend', `<div class="chips" style="margin-top:6px">${c.map((x) => `<button type="button" class="chip" data-act="evDateSondage" data-d="${x}">${esc(jourCourt(x))}</button>`).join('')}</div>`); }
+};
+ACTIONS.evDateSondage = (el) => { const d = $('ev-date'); if (d) d.value = el.dataset.d; };
 ACTIONS.msgDel = (el) => confirmSheet('Supprimer ce message ?', 'Il disparaît pour tout le monde (il reste récupérable dans la corbeille).', 'delItemOk', 'Supprimer', { key: el.dataset.key });
 /* Menu d'un message */
 ACTIONS.msgMenu = (el) => {

@@ -142,6 +142,22 @@ button.gear { border: 0; background: none; cursor: pointer; padding: 0; }
 .btn.photo-btn svg, .btn.justif-btn svg, .photo-btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
 .justif-btn { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; align-self: flex-start; }
 .bubble.has-photo { padding: 4px 4px 6px; }
+.sondage { display: flex; flex-direction: column; gap: 6px; min-width: min(300px, 70vw); }
+.sd-q { font-size: 15px; }
+.sd-ok { font-size: 12px; font-weight: 800; background: #fff; color: var(--c-cultures); border-radius: 999px; padding: 2px 9px; }
+.msg.mine .sondage .hint { color: rgba(255,255,255,.85); }
+.sd-opts { display: flex; flex-direction: column; gap: 4px; }
+.sd-opt { display: grid; grid-template-columns: 22px minmax(0, 1fr); grid-template-areas: "c t" "c q"; column-gap: 8px; text-align: left; font: inherit; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 7px 10px; cursor: pointer; }
+.sd-opt .sd-case { grid-area: c; width: 20px; height: 20px; border: 2px solid var(--muted); border-radius: 6px; display: grid; place-items: center; font-weight: 800; font-size: 13px; align-self: center; }
+.sd-opt.on .sd-case { background: var(--c-messages); border-color: var(--c-messages); color: #fff; }
+.sd-opt .sd-t { grid-area: t; font-weight: 700; }
+.sd-opt .sd-qui { grid-area: q; font-size: 12px; color: var(--muted); }
+.sd-opt.commun { border: 2px solid var(--c-cultures); }
+.sd-res { margin: 0; font-weight: 700; }
+.msg.mine .sd-aucune, .msg.mine .sd-res { color: #fff; }
+.sd-trouve { white-space: normal; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; background: color-mix(in srgb, var(--c-cultures) 12%, white); border-color: var(--c-cultures); }
+.msg-fichier { display: inline-flex; gap: 6px; align-items: baseline; font: inherit; color: inherit; background: rgba(0,0,0,.06); border: 0; border-radius: 8px; padding: 6px 10px; margin-bottom: 4px; cursor: pointer; text-decoration: none; max-width: 100%; }
+.msg.mine .msg-fichier { background: rgba(255,255,255,.18); color: #fff; }
 .bubble.has-photo .msg-t { padding: 0 8px; }
 .msg-photo { display: block; border: 0; padding: 0; background: none; cursor: zoom-in; margin-bottom: 4px; }
 .msg-photo img { display: block; max-width: min(280px, 62vw); max-height: 340px; height: auto; border-radius: 12px; background: color-mix(in srgb, var(--line) 60%, transparent); min-width: 120px; min-height: 90px; object-fit: cover; }
@@ -474,6 +490,8 @@ textarea { resize: vertical; }
 .item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--line); border-radius: 6px; cursor: pointer; text-decoration: none; color: inherit; }
 .item:hover, .item.sel { background: var(--soft); }
 .item .who { min-width: 0; display: flex; flex-direction: column; }
+button.item { width: 100%; text-align: left; font: inherit; background: none; border: 0; border-bottom: 1px solid var(--line); }
+button.item .who { align-items: flex-start; }
 .item .who strong { overflow-wrap: anywhere; }
 .item .meta { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
 .item .amt { font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -627,6 +645,16 @@ table.matrix td.neg { color: var(--muted); }
 .pl-cols { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1000px) { .pl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } .pl-cols > .panel { margin: 0; } .panel.pl-aplan { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; } }
 .pl-jour.vide { display: none; }
+.mdp-barre { height: 6px; background: var(--line); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.mdp-barre span { display: block; height: 100%; width: 0; transition: width .2s; background: var(--late); }
+.mdp-barre span.n2 { background: #D9822B; } .mdp-barre span.n3 { background: #7A9E2E; } .mdp-barre span.n4 { background: var(--c-cultures); }
+.ard summary { cursor: pointer; padding: 6px 0; } .ard-l { gap: 10px; font-size: 14px; padding: 4px 0 4px 14px; border-top: 1px solid var(--line); }
+.item.off { opacity: .55; }
+.hello-btns { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.jc-btn { background: var(--c); border-color: var(--c); color: #fff; }
+.jc-btn small { opacity: .85; font-weight: 600; }
+.panel.jc { border: 2px solid var(--c); border-top-width: 6px; }
+.panel.jc h2 small { font-family: var(--font-body, inherit); font-weight: 600; font-size: 14px; }
 .ajout-barre { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .ajout-barre input[name=titre] { flex: 1 1 220px; min-width: 0; }
 .ajout-barre .btn { flex: none; }
@@ -788,6 +816,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
     <div class="field"><label for="l-pass">Mot de passe</label><input id="l-pass" type="password" autocomplete="current-password" required></div>
     <p id="l-err" class="errors" hidden></p>
     <button class="btn primary" id="l-go" type="submit">Se connecter</button>
+    <button class="btn link small" id="l-oubli" type="button">Mot de passe oublié ?</button>
   </form>
 </div>
 

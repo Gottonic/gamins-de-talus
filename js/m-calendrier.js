@@ -214,7 +214,7 @@ ACTIONS.hOff = _hOff;
    Un événement, c'est du travail, un congé, ou autre chose. Ce qu'on fait pendant une journée de travail (récolte,
    livraison…) et sa catégorie, ce sont ses tâches. Les anciens événements « récolte », « livraison », « marché »
    gardent leur type (et leur culture / client) tant qu'on ne les passe pas en Congé ou Autre. */
-const EVF = { genre: 'travail', type: 'travail', ancien: '' };
+const EVF = { genre: 'travail', type: 'travail', ancien: '', sondage: '' };
 const EV_CHAMPS = { titre: ['travail', 'recolte', 'livraison', 'vente', 'autre'], heures: ['travail', 'recolte', 'livraison', 'vente', 'autre'], contact: [], culture: [], rep: ['travail', 'recolte', 'livraison', 'vente', 'autre'] };
 function evFormHtml() {
   return `<div class="seg ev-genre">${[['travail', '🧰 Travail'], ['conge', '🏖️ Congé'], ['autre', '📌 Autre']].map(([k, n]) => `<button type="button" class="${EVF.genre === k ? 'on' : ''}" data-act="evGenre" data-g="${k}">${n}</button>`).join('')}</div>`;
@@ -234,7 +234,8 @@ function majEvForm() {
 }
 ACTIONS.evGenre = (el) => { EVF.genre = el.dataset.g; EVF.type = EVF.genre === 'conge' ? 'vacances' : EVF.genre === 'autre' ? 'autre' : EVF.ancien || 'travail'; majEvForm(); };
 ACTIONS.evEdit = (el) => {
-  const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
+  const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', titre: el.dataset.titre || '', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
+  if (!el.dataset.titre) EVF.sondage = '';
   EVF.type = EV_GENRES[e.type] ? e.type : 'autre'; EVF.genre = evGenre(e).genre; EVF.ancien = ['recolte', 'livraison', 'vente'].includes(e.type) ? e.type : '';
   openSheet(`${sheetHead(k ? 'Modifier l\'événement' : 'Nouvel événement', k && e.rec && e.rec.freq ? 'Modifie toute la série' : '')}<form class="sbody form" data-form="ev" id="ev-form"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="type" value="${esc(EVF.type)}">
     <div id="ev-choix">${evFormHtml()}</div>
@@ -257,7 +258,8 @@ FORMS.ev = (v) => {
   const o = Object.assign({}, old, { type: t, titre: champ('titre') ? v.titre : '', date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: champ('heures') ? v.heureDebut : '', heureFin: champ('heures') ? v.heureFin : '', qui: v.qui,
     contactId: EVF.ancien && t === EVF.ancien ? old.contactId || '' : '', cultureId: EVF.ancien && t === EVF.ancien ? old.cultureId || '' : '', remarque: v.remarque, rec: champ('rep') ? { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } : { freq: '' } });
   delete o.cat; delete o.sous;
-  DB.put(k, o); closeSheet(); toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
+  DB.put(k, o); closeSheet();
+  if (EVF.sondage && !v.key) { const m = DB.get(EVF.sondage); if (m) DB.put(EVF.sondage, Object.assign({}, m, { evenement: k })); EVF.sondage = ''; } toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
 };
 
 /* ---------- Vue d'ensemble : les 14 prochains jours ----------
@@ -306,6 +308,25 @@ function renderVue() {
       ${ajoutTacheBarre({ id: 'pl-aplan-ajout' })}
       ${plan}
       <p class="hint pl-aide">Touche une tâche pour la planifier. Sur ordinateur, tu peux aussi la glisser sur un jour ou sur une journée.</p></div></div>`;
+}
+/* ---------- Journée en cours (accueil) ----------
+   Une journée de travail aujourd'hui qui me concerne : un bouton à côté de « Enregistrer mes heures ».
+   Ouverte, elle reste affichée sur l'accueil (tâches à cocher) jusqu'à ce qu'on la ferme (✕). */
+function journeesEnCours() {
+  const d = todayISO();
+  return ((itemsPeriode(d, d)[d]) || []).filter((x) => x.kind === 'ev' && evGenre(DB.get(x.key) || {}).genre === 'travail' && concerneMoi(x.qui)).map((x) => ({ j: x.key + '|' + x.occ, titre: x.titre, couleur: x.couleur, heure: x.heure }));
+}
+const jcOuverte = () => { const j = ls.get('gdt-jc') || ''; return j && DB.get(j.split('|')[0]) ? j : ''; };
+ACTIONS.jcOuvrir = (el) => { ls.set('gdt-jc', el.dataset.j); render(); };
+ACTIONS.jcFermer = () => { ls.del('gdt-jc'); render(); };
+function journeeEnCoursHtml() {
+  const j = jcOuverte(); if (!j) return '';
+  const [ek, d] = j.split('|'), e = DB.get(ek); const tj = taches().filter((t) => t.journee === j).sort(triOrdre), faites = tj.filter((t) => t.statut === 'termine').length;
+  return `<section class="panel jc" style="--c:${esc(couleurEv(e, d, ek))}"><div class="between"><h2>${esc(iconeEv(e))} ${esc(titreEv(e))} <small class="hint">${d === todayISO() ? "aujourd'hui" : esc(dateLongue(d))}${e.heureDebut ? ' · ' + esc(e.heureDebut) + (e.heureFin ? '–' + esc(e.heureFin) : '') : ''}${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</small></h2>
+      <span class="row"><button class="btn small" type="button" data-act="plJourneeVoir" data-j="${esc(j)}">Ouvrir</button><button class="btn small" type="button" data-act="jcFermer" aria-label="Fermer la journée en cours">✕</button></span></div>
+    ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
+    ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Pas encore de tâche pour cette journée.</p>'}
+    ${ajoutTacheBarre({ id: 'jc-ajout', journee: j, placeholder: 'Ajouter une tâche à la journée…' })}</section>`;
 }
 /* Un jour sans rien : le choisir, puis y mettre une tâche ou un événement */
 ACTIONS.plAutreJour = () => {

@@ -165,8 +165,10 @@ function ajoutTacheBarre(o) {
 FORMS.taAjout = (v) => {
   if (!v.titre) { toast('Tape le nom de la tâche, ou « + d\'options ».'); return; }
   const e = v.journee ? DB.get(v.journee.split('|')[0]) : null;
-  DB.put('t:' + uid('t'), { titre: v.titre, statut: 'afaire', importance: 2, cat: v.cat || '', responsable: v.resp || (e && e.qui) || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cree: new Date().toISOString(), creePar: Sync.me || '' });
-  toast(v.journee || v.jour ? `« ${v.titre} » ajoutée.` : `« ${v.titre} » ajoutée dans « À planifier ».`);
+  const g = devinerCategorie(v.titre, (v.journee ? v.journee.split('|')[1] : v.jour || todayISO()).slice(0, 4)), cat = v.cat || g.cat, sous = v.cat ? '' : g.sous;
+  DB.put('t:' + uid('t'), { titre: v.titre, statut: 'afaire', importance: 2, cat, sous, cultures: g.cultures, responsable: v.resp || (e && e.qui) || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cree: new Date().toISOString(), creePar: Sync.me || '' });
+  const classe = [cat ? catInfo(cat).icone + ' ' + catInfo(cat).nom : '', sous && sousInfo(cat, sous) ? sousInfo(cat, sous).nom : '', ...g.cultures.map((c) => (DB.get(c) || {}).nom)].filter(Boolean).join(' · ');
+  toast(`« ${v.titre} » ajoutée${v.journee || v.jour ? '' : ' dans « À planifier »'}${classe ? ' · ' + classe : ''}.`, classe ? 4500 : 3000);
   if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
   setTimeout(() => { const q = $(v.champ); if (q) { q.value = ''; q.focus(); } }, 40);
 };
@@ -231,6 +233,7 @@ ACTIONS.taEdit = (el) => {
   openSheet(`${sheetHead(k ? 'Modifier la tâche' : 'Nouvelle tâche')}<form class="sbody form" data-form="ta"><input type="hidden" name="key" value="${esc(k)}">
     ${inp('ta-titre', 'Tâche', t.titre, { name: 'titre', req: true, attrs: k ? {} : { autofocus: '' } })}
     ${catChoixHtml('ta-cat', c.cat, c.sous)}
+    ${k ? '' : '<p class="hint" id="ta-auto" style="margin:-4px 0 0"></p>'}
     <div class="field"><span class="flabel">Importance</span><div class="seg">${IMPORTANCES.map(([n, nom, pts]) => `<label><input type="radio" name="importance" value="${n}"${imp === n ? ' checked' : ''}> <span class="imp imp${n}">${pts}</span> ${nom}</label>`).join('')}</div></div>
     <div class="grid2">${inp('ta-ech', 'Échéance (facultatif)', t.echeance, { name: 'echeance', type: 'date', sub: `Date limite. Elle fait remonter la tâche en haut de la liste ${ECH_PROCHE} jours avant.` })}
       ${sel('ta-resp', 'Qui', t.responsable || '', [['', '—']].concat(persOptions(true)), { name: 'responsable' })}</div>
@@ -251,6 +254,19 @@ ACTIONS.taEdit = (el) => {
     ${k ? `<label class="row" style="font-size:14px"><input type="checkbox" name="faite"${t.statut === 'termine' ? ' checked' : ''}> Faite</label>` : ''}
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette tâche">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const li = $('ta-li'); if (li) li.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.taLiAjout(); } });
+  /* Nouvelle tâche : la catégorie (et la culture) se devinent pendant qu'on écrit, tant qu'on ne l'a pas choisie soi-même */
+  TA.catManuel = !!k || !!el.dataset.cat;
+  if (!k) {
+    const ti = $('ta-titre'); let tm = 0;
+    const deviner = () => {
+      if (TA.catManuel || !$('ta-cat')) return; const g = devinerCategorie(ti.value, s);
+      $('ta-cat').outerHTML = catChoixHtml('ta-cat', g.cat, g.sous);
+      const h = $('ta-cus'); if (h) { h.value = g.cultures.join(','); document.querySelectorAll('[data-act="taCu"]').forEach((b) => b.classList.toggle('on', g.cultures.includes(b.dataset.k))); if (g.cultures.length) { const f = $('tp-cult'); if (f) f.hidden = false; const bt = document.querySelector('[data-act="taPartie"][data-p="cult"]'); if (bt) bt.hidden = true; } }
+      const a = $('ta-auto'), txt = [g.cat ? catInfo(g.cat).nom : '', g.sous && sousInfo(g.cat, g.sous) ? sousInfo(g.cat, g.sous).nom : '', ...g.cultures.map((c) => (DB.get(c) || {}).nom)].filter(Boolean).join(' · ');
+      if (a) a.textContent = txt ? '🪄 Classée automatiquement : ' + txt + ' (tu peux changer)' : '';
+    };
+    if (ti) { ti.addEventListener('input', () => { clearTimeout(tm); tm = setTimeout(deviner, 250); }); if (ti.value) deviner(); }
+  }
   /* Une journée choisie efface le jour, et inversement */
   const sj = $('ta-jour'), dj = $('ta-j'); if (sj && dj) { sj.addEventListener('change', () => { if (sj.value) dj.value = ''; }); dj.addEventListener('change', () => { if (dj.value) sj.value = ''; }); }
 };
@@ -259,6 +275,8 @@ document.addEventListener('change', (e) => { const i = e.target.dataset && e.tar
 ACTIONS.taLiAjout = () => { const i = $('ta-li'); if (!i || !i.value.trim()) return; TA.liste.push({ t: i.value.trim(), fait: false }); i.value = ''; $('ta-liste').innerHTML = listeTacheHtml(); i.focus(); };
 ACTIONS.taLiOff = (el) => { TA.liste.splice(Number(el.dataset.i), 1); $('ta-liste').innerHTML = listeTacheHtml(); };
 ACTIONS.taCu = (el) => { const h = $('ta-cus'), l = h.value ? h.value.split(',') : [], i = l.indexOf(el.dataset.k); if (i >= 0) l.splice(i, 1); else l.push(el.dataset.k); h.value = l.join(','); el.classList.toggle('on', i < 0); };
+document.addEventListener('gdt-cat', (e) => { if (e.detail.id === 'ta-cat') { TA.catManuel = true; const a = $('ta-auto'); if (a) a.textContent = ''; } });
+document.addEventListener('change', (e) => { if (e.target.closest && e.target.closest('#ta-cat')) TA.catManuel = true; });
 ACTIONS.taPartie = (el) => { const f = $('tp-' + el.dataset.p); if (f) { f.hidden = false; const x = f.querySelector('input:not([type=hidden]), select, textarea'); if (x) x.focus(); } el.hidden = true; };
 ACTIONS.taNouvelle = (el) => ACTIONS.taEdit({ dataset: Object.assign({}, el.dataset, { key: '' }) });
 FORMS.ta = (v) => {

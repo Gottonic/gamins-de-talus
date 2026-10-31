@@ -83,3 +83,38 @@ document.addEventListener('click', (e) => {
   box.outerHTML = catChoixHtml(box.id, k, '', { ev: !!box.dataset.ev });
   document.dispatchEvent(new CustomEvent('gdt-cat', { detail: { id: box.id, cat: k } }));
 });
+
+/* ---------- Classement automatique d'une tâche selon ses mots ----------
+   Chaque catégorie / précision a des débuts de mots ; on garde celle qui a le plus de mots trouvés (à égalité, celle dont
+   le mot vient en premier). Les cultures du plan dont le nom apparaît sont liées (et classent en Champ si rien d'autre).
+   Les noms des catégories et précisions ajoutées dans les réglages comptent aussi. */
+const MOTS_CATS = {
+  champ: ['plant', 'sem', 'repiqu', 'desherb', 'bin', 'sarcl', 'paill', 'arros', 'irrig', 'goutte', 'tuyau', 'asperseur', 'recolt', 'cueill', 'arrach', 'taill', 'tuteur', 'butt', 'compost', 'fumier', 'engrais', 'trait', 'purin', 'bache', 'filet', 'voile', 'serre', 'tunnel', 'planche', 'labour', 'grelinette', 'motocult', 'tond', 'fauch', 'girobroy', 'broy', 'cloture', 'piquet', 'outil', 'repar', 'aiguis', 'champ', 'parcelle', 'butte', 'mulch', 'eclairc', 'pinc', 'effeuill', 'limace', 'ravageur', 'puceron', 'doryphore', 'chenille', 'soufre', 'cuivre', 'graine', 'pepiniere', 'lit de semence', 'herse'],
+  ventes: ['livr', 'client', 'vend', 'vente', 'marche', 'stand', 'self', 'panier', 'etiquet', 'caisse', 'prospect', 'demarch', 'resto', 'restaurant', 'epicerie', 'cantine', 'grossiste', 'commande client', 'degust', 'prix', 'tarif', 'flyer', 'affiche'],
+  admin: ['factur', 'compta', 'pay', 'paiement', 'banque', 'virement', 'impot', 'avs', 'assurance', 'fiduciaire', 'mail', 'courrier', 'declar', 'contrat', 'papier', 'admin', 'devis', 'achat', 'achet', 'command', 'inscri', 'formulaire', 'site', 'instagram', 'facebook', 'reunion', 'rdv', 'rendez', 'telephon', 'appel', 'subvention', 'tva', 'bail', 'statut', 'budget', 'releve', 'tableau', 'archive', 'sauvegard'],
+};
+const MOTS_SOUS = {
+  recolte: ['recolt', 'cueill', 'arrach'], plantation: ['plant', 'sem', 'repiqu', 'graine', 'pepiniere'], desherbage: ['desherb', 'bin', 'sarcl', 'paill', 'mulch'],
+  irrigation: ['arros', 'irrig', 'goutte', 'tuyau', 'asperseur'], soins: ['trait', 'purin', 'filet', 'voile', 'tuteur', 'taill', 'pinc', 'effeuill', 'limace', 'ravageur', 'puceron', 'doryphore', 'soufre', 'cuivre'],
+  entretien: ['repar', 'entretien', 'outil', 'motocult', 'girobroy', 'broy', 'cloture', 'piquet', 'nettoy', 'rang', 'aiguis', 'tond', 'fauch', 'bache', 'serre', 'tunnel'],
+  livraison: ['livr'], marche: ['marche', 'stand', 'self', 'caisse', 'degust'], prospection: ['prospect', 'demarch', 'appeler resto', 'flyer'],
+};
+const normMot = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function devinerCategorie(titre, saison) {
+  const t = normMot(titre), mots = t.split(/[^a-z0-9]+/).filter(Boolean);
+  const trouve = (racines) => { let n = 0, pos = 1e9; for (const r of racines) { const i = r.includes(' ') ? t.indexOf(r) : mots.findIndex((w) => w.startsWith(r)); if (i >= 0) { n++; pos = Math.min(pos, r.includes(' ') ? i : t.indexOf(mots[i])); } } return { n, pos }; };
+  const cats = categories().filter((c) => !c.evSeul);
+  let best = null;
+  for (const c of cats) {
+    const racines = (MOTS_CATS[c.k] || []).concat(normMot(c.nom).split(/[^a-z0-9]+/).filter((w) => w.length > 3).map((w) => w.slice(0, 5)), (c.sous || []).flatMap((s) => normMot(s.nom).split(/[^a-z0-9]+/).filter((w) => w.length > 3).map((w) => w.slice(0, 5))));
+    const r = trouve(racines); if (r.n && (!best || r.n > best.n || (r.n === best.n && r.pos < best.pos))) best = { cat: c.k, n: r.n, pos: r.pos };
+  }
+  /* Les cultures du plan de la saison (« courge » trouve « Courge butternut », « courges » aussi) */
+  const cus = typeof cultures === 'function' ? cultures(saison || (typeof saisonCourante === 'function' ? saisonCourante() : todayISO().slice(0, 4))) : [];
+  const liees = cus.filter((c) => { const n = normMot(c.nom).split(/[^a-z0-9]+/).filter((w) => w.length > 2); const premier = n[0] || ''; return premier.length > 2 && mots.some((w) => w === premier || w === premier + 's' || w === premier + 'x' || (premier.length > 4 && w.startsWith(premier.slice(0, premier.length - 1)))); }).map((c) => c.key);
+  if (!best && liees.length) best = { cat: 'champ' };
+  if (!best) return { cat: '', sous: '', cultures: liees };
+  let sous = '', sn = 0, spos = 1e9;
+  for (const s of catInfo(best.cat).sous || []) { const r = trouve((MOTS_SOUS[s.k] || []).concat(normMot(s.nom).split(/[^a-z0-9]+/).filter((w) => w.length > 3).map((w) => w.slice(0, 5)))); if (r.n && (r.n > sn || (r.n === sn && r.pos < spos))) { sous = s.k; sn = r.n; spos = r.pos; } }
+  return { cat: best.cat, sous, cultures: liees };
+}
