@@ -122,6 +122,7 @@ function tacheHtml(t, o = {}) {
   const cus = (t.cultures || []).map((k) => DB.get(k)).filter(Boolean);
   if (cus.length) meta.push(`<span>🌿 ${esc(cus.map((x) => x.nom).join(', '))}</span>`);
   if (t.planches) meta.push(`<span>▦ ${esc(t.planches)}</span>`);
+  const ctc = t.contactId && DB.get(t.contactId); if (ctc) meta.push(`<span>👤 ${esc(displayName(ctc))}</span>`);
   const li = t.liste || []; if (li.length) meta.push(`<span>☑ ${li.filter((x) => x.fait).length}/${li.length}</span>`);
   if (t.rep && !done) meta.push(`<span title="Tâche qui se répète">↻</span>`);
   return `<div class="task${done ? ' done' : ''}" draggable="${done ? 'false' : 'true'}" data-tache="${esc(t.key)}" style="--c:${esc(couleurCat(c.cat))}">${o.tri && !done ? '<span class="poignee" data-poignee draggable="false" title="Glisser pour changer l\'ordre" aria-hidden="true">⋮⋮</span>' : ''}<button class="tick" type="button" data-act="taTick" data-key="${esc(t.key)}" aria-label="${done ? 'Rouvrir' : 'Marquer comme faite'} : ${esc(t.titre)}"></button>
@@ -164,7 +165,11 @@ ACTIONS.taTick = (el) => {
   const t = DB.get(el.dataset.key); if (!t) return;
   const done = t.statut === 'termine';
   DB.put(el.dataset.key, Object.assign({}, t, done ? { statut: 'afaire', termineLe: '' } : { statut: 'termine', termineLe: todayISO(), terminePar: Sync.me || '' }));
-  if (!done) { if (t.rep) repeterSiBesoin(el.dataset.key, t); else toast('Tâche faite. 👍'); }
+  if (!done) {
+    if (t.rep) repeterSiBesoin(el.dataset.key, t); else toast('Tâche faite. 👍');
+    /* Une récolte faite : on note tout de suite la quantité (sinon elle reste dans « Récoltes à noter ») */
+    if (catTache(t).sous === 'recolte' && typeof ACTIONS.mvtNouveau === 'function') { setTimeout(() => ACTIONS.recolteEv({ dataset: { key: el.dataset.key } }), 50); return; }
+  }
   if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
 };
 /* Toucher une tâche : pas planifiée → choisir son jour ; sinon → son résumé (pour la faire). « Modifier » ouvre la fiche complète. */
@@ -175,6 +180,7 @@ function resumeTacheHtml(t, k) {
     t.echeance ? `<span class="ech${t.echeance < todayISO() ? ' passee' : echeanceProche(t) ? ' proche' : ''}">⏰ avant le ${fmtDate(t.echeance)}</span>` : '',
     estPlanifiee(t) ? `📅 ${j ? esc(j.titre) + ', ' : ''}${esc(dateLongue(jourPlanifie(t)))}` : ''].filter(Boolean);
   return `<div class="ta-resume"><p class="meta">${infos.join(' <span class="sep">·</span> ')}</p>
+    ${t.contactId && DB.get(t.contactId) ? `<p>👤 ${esc(displayName(DB.get(t.contactId)))}</p>` : ''}
     ${cus.length || t.planches ? `<p>${cus.length ? '🌿 ' + esc(cus.map((x) => x.nom).join(', ')) : ''}${cus.length && t.planches ? ' · ' : ''}${t.planches ? '▦ ' + esc(t.planches) : ''}</p>` : ''}
     ${(t.liste || []).length ? `<div class="ta-res-liste">${t.liste.map((x, i) => `<label class="row ta-li"><input type="checkbox" data-li-t="${esc(k)}|${i}"${x.fait ? ' checked' : ''}> <span${x.fait ? ' class="barre"' : ''}>${esc(x.t)}</span></label>`).join('')}</div>` : ''}
     ${t.remarques ? `<p class="pl-rem">${linkify(t.remarques)}</p>` : ''}</div>`;
@@ -183,9 +189,11 @@ ACTIONS.taResume = (el) => {
   const k = el.dataset.key, t = DB.get(k); if (!t) return; const done = t.statut === 'termine';
   const retour = PL.rafraichir;
   openSheet(`${sheetHead(t.titre)}<div class="sbody">${resumeTacheHtml(t, k)}
+    ${catTache(t).sous === 'livraison' && t.contactId ? `<div class="row"><button class="btn" type="button" data-act="taFacture" data-key="${esc(k)}">🧾 Créer la facture</button></div>` : ''}
     <div class="row-end"><button class="btn" type="button" data-act="taEdit" data-key="${esc(k)}">Modifier</button>${!done ? `<button class="btn" type="button" data-act="taPlanifier" data-key="${esc(k)}">📅 Changer le jour</button>` : ''}
       <button class="btn primary" type="button" data-act="taFaiteOk" data-key="${esc(k)}">${done ? 'Rouvrir' : '✓ Faite'}</button>${retour ? '<button class="btn link" type="button" data-act="plRetour">‹ Retour</button>' : ''}</div></div>`);
 };
+ACTIONS.taFacture = (el) => { const t = DB.get(el.dataset.key); if (!t || !t.contactId) return; draftF.livraison = jourPlanifie(t) || todayISO(); draftF.date = todayISO(); closeSheet(); go('#/factures/nouvelle/' + encodeURIComponent(t.contactId)); };
 ACTIONS.taFaiteOk = (el) => { ACTIONS.taTick(el); if (PL.rafraichir) PL.rafraichir(); else closeSheet(); };
 ACTIONS.plRetour = () => { if (PL.rafraichir) PL.rafraichir(); else closeSheet(); };
 document.addEventListener('change', (e) => {
@@ -215,10 +223,11 @@ ACTIONS.taEdit = (el) => {
       ${sel('ta-resp', 'Qui', t.responsable || '', [['', '—']].concat(persOptions(true)), { name: 'responsable' })}</div>
     ${(() => {
       /* Le reste s'ouvre à la demande : un bouton « + » par partie (déjà ouverte si la tâche en a) */
-      const a = { planif: !!(t.journee || t.jour), cult: !!((t.cultures || []).length || t.planches), liste: !!(t.liste || []).length, rep: !!t.rep, rem: !!t.remarques };
+      const a = { planif: !!(t.journee || t.jour), cult: !!((t.cultures || []).length || t.planches), client: !!t.contactId, liste: !!(t.liste || []).length, rep: !!t.rep, rem: !!t.remarques };
       const parts = [
         ['planif', '📅 Planifier', `<div class="grid2">${sel('ta-jour', 'Dans une journée prévue', t.journee || '', [['', '—']].concat(jrs), { name: 'journee' })}${inp('ta-j', 'Ou un jour', t.journee ? '' : t.jour, { name: 'jour', type: 'date' })}</div><span class="sub">Planifiée, elle quitte « À planifier » et se range à ce jour dans la vue d'ensemble.</span>`],
         ['cult', '🌿 Culture et planches', `${cus.length ? `<div class="field"><span class="flabel">Culture(s)</span><input type="hidden" name="cultures" id="ta-cus" value="${esc((t.cultures || []).join(','))}"><div class="chips">${cus.map((x) => `<button type="button" class="chip${(t.cultures || []).includes(x.key) ? ' on' : ''}" data-act="taCu" data-k="${esc(x.key)}">${esc(x.nom)}</button>`).join('')}</div></div>` : ''}${inp('ta-pl', 'Planche(s)', t.planches || '', { name: 'planches', attrs: { placeholder: 'ex. A3, A4 ou serre 2', maxlength: 60 } })}`],
+        ['client', '👤 Client', `${sel('ta-ct', 'Client ou contact', t.contactId || '', [['', '—']].concat(tousContacts().sort(byName).map((x) => [x.key, displayName(x) + (x.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour une livraison : « Créer la facture » depuis la tâche.' })}`],
         ['liste', '☑ Liste à cocher', `<div id="ta-liste">${listeTacheHtml()}</div><div class="row"><input id="ta-li" placeholder="Ajouter un élément…" style="flex:1" autocomplete="off"><button class="btn small" type="button" data-act="taLiAjout">+</button></div>`],
         ['rep', '↻ Répétition', sel('ta-rep', 'Se répète', t.rep || '', REPETITIONS, { name: 'rep', sub: 'Une fois faite, la suivante est créée avec la prochaine échéance.' })],
         ['rem', '📝 Remarques', txt('ta-rem', 'Remarques', t.remarques, { name: 'remarques', rows: 3 }) + (t.remarques && /https?:\/\//.test(t.remarques) ? `<p class="hint">${linkify(t.remarques)}</p>` : '')],
@@ -244,7 +253,7 @@ FORMS.ta = (v) => {
   const k = v.key || 't:' + uid('t'), t = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '' };
   const was = t.statut === 'termine', faite = !!v.faite;
   const o = Object.assign({}, t, { titre: v.titre, statut: faite ? 'termine' : 'afaire', importance: Number(v.importance) || 2, echeance: v.echeance || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', responsable: v.responsable, cat: v.cat || '', sous: v.cat ? v.sous || '' : '', rep: v.rep || '',
-    cultures: v.cultures != null ? String(v.cultures).split(',').filter(Boolean) : (t.cultures || []), planches: v.planches != null ? String(v.planches).trim() : t.planches || '', liste: (TA.liste || []).slice(), remarques: v.remarques,
+    contactId: v.contactId != null ? v.contactId : t.contactId || '', cultures: v.cultures != null ? String(v.cultures).split(',').filter(Boolean) : (t.cultures || []), planches: v.planches != null ? String(v.planches).trim() : t.planches || '', liste: (TA.liste || []).slice(), remarques: v.remarques,
     termineLe: faite ? (was ? t.termineLe : todayISO()) : '' });
   delete o.tag; delete o.urgent;
   DB.put(k, o); closeSheet(); if (PL.retourEdit) { const r = PL.retourEdit; PL.retourEdit = null; setTimeout(r, 0); }

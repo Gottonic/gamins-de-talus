@@ -102,15 +102,22 @@ function recoltesAEnregistrer() {
   for (const d of Object.keys(it).sort()) for (const x of it[d]) {
     if (x.kind !== 'ev') continue; const e = DB.get(x.key); if (!e || e.type !== 'recolte') continue;
     const st = (e.occ || {})[x.occ] || {}; if (st.sansRecolte || refs.has('ev:' + x.key + ':' + x.occ)) continue;
-    out.push({ key: x.key, occ: x.occ, titre: x.titre, qui: e.qui, culture: e.cultureId || '' });
+    out.push({ key: x.key, occ: x.occ, titre: x.titre, qui: e.qui, culture: e.cultureId || '', ref: 'ev:' + x.key + ':' + x.occ });
+  }
+  /* Les tâches « Champ · Récolte » faites ces 14 derniers jours, sans récolte notée */
+  if (typeof taches === 'function') for (const t of taches()) {
+    if (t.statut !== 'termine' || catTache(t).sous !== 'recolte' || t.sansRecolte || !t.termineLe || t.termineLe < addDays(today, -14) || refs.has('tache|' + t.key)) continue;
+    out.push({ key: t.key, occ: t.termineLe, titre: t.titre, qui: t.terminePar || t.responsable, culture: (t.cultures || [])[0] || '', ref: 'tache|' + t.key });
   }
   return out;
 }
 function marquerOccRecolte(ref, champs) {
+  if (String(ref).startsWith('tache|')) { const k = String(ref).slice(6), t = DB.get(k); if (t && champs.sansRecolte) DB.put(k, Object.assign({}, t, { sansRecolte: true })); return; }
   const m = String(ref).match(/^ev:(.+):(\d{4}-\d{2}-\d{2})$/); if (!m) return; const e = DB.get(m[1]); if (!e) return;
   DB.put(m[1], Object.assign({}, e, { occ: Object.assign({}, e.occ || {}, { [m[2]]: Object.assign({}, (e.occ || {})[m[2]] || {}, champs) }) }));
 }
 ACTIONS.recolteEv = (el) => {
+  if (String(el.dataset.key).startsWith('t:')) { const t = DB.get(el.dataset.key); if (!t) return; closeSheet(); ACTIONS.mvtNouveau({ dataset: { type: 'recolte', culture: (t.cultures || [])[0] || '', date: t.termineLe || todayISO(), ref: 'tache|' + el.dataset.key } }); return; }
   const e = DB.get(el.dataset.key); if (!e) return; closeSheet();
   ACTIONS.mvtNouveau({ dataset: { type: 'recolte', culture: e.cultureId || '', date: el.dataset.occ, ref: 'ev:' + el.dataset.key + ':' + el.dataset.occ } });
 };

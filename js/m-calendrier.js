@@ -211,21 +211,19 @@ const _hOff = (el) => {
 ACTIONS.hOff = _hOff;
 
 /* ---------- Formulaire d'événement ----------
-   D'abord : du travail, un congé, ou autre chose. Le travail se précise (journée, récolte, livraison, marché) ;
-   seuls les champs utiles à ce choix s'affichent (client pour une livraison, culture pour une récolte…). */
-const EVF = { genre: 'travail', type: 'travail' };
-/* Quels champs pour quel type : clé = id du bloc, valeur = types où il s'affiche */
-const EV_CHAMPS = { titre: ['travail', 'recolte', 'livraison', 'vente', 'autre'], heures: ['travail', 'recolte', 'livraison', 'vente', 'autre'], contact: ['livraison'], culture: ['recolte'], rep: ['travail', 'recolte', 'livraison', 'vente', 'autre'] };
+   Un événement, c'est du travail, un congé, ou autre chose. Ce qu'on fait pendant une journée de travail (récolte,
+   livraison…) et sa catégorie, ce sont ses tâches. Les anciens événements « récolte », « livraison », « marché »
+   gardent leur type (et leur culture / client) tant qu'on ne les passe pas en Congé ou Autre. */
+const EVF = { genre: 'travail', type: 'travail', ancien: '' };
+const EV_CHAMPS = { titre: ['travail', 'recolte', 'livraison', 'vente', 'autre'], heures: ['travail', 'recolte', 'livraison', 'vente', 'autre'], contact: [], culture: [], rep: ['travail', 'recolte', 'livraison', 'vente', 'autre'] };
 function evFormHtml() {
-  const g = EVF.genre, t = EVF.type, sousTravail = ['travail', 'recolte', 'livraison', 'vente'];
-  return `<div class="seg ev-genre">${[['travail', '🌱 Travail'], ['conge', '🏖️ Congé'], ['autre', '📌 Autre']].map(([k, n]) => `<button type="button" class="${g === k ? 'on' : ''}" data-act="evGenre" data-g="${k}">${n}</button>`).join('')}</div>
-    ${g === 'travail' ? `<div class="chips ev-sous">${sousTravail.map((k) => `<button type="button" class="chip${t === k ? ' on' : ''}" data-act="evType" data-t="${k}">${EV_GENRES[k].icone} ${EV_GENRES[k].court}</button>`).join('')}</div>` : ''}`;
+  return `<div class="seg ev-genre">${[['travail', '🌱 Travail'], ['conge', '🏖️ Congé'], ['autre', '📌 Autre']].map(([k, n]) => `<button type="button" class="${EVF.genre === k ? 'on' : ''}" data-act="evGenre" data-g="${k}">${n}</button>`).join('')}</div>`;
 }
 function majEvForm() {
   const f = $('ev-form'); if (!f) return; const t = EVF.type;
   $('ev-choix').innerHTML = evFormHtml(); f.querySelector('input[name=type]').value = t;
   for (const [bloc, types] of Object.entries(EV_CHAMPS)) f.querySelectorAll(`[data-bloc="${bloc}"]`).forEach((x) => { x.hidden = !types.includes(t); });
-  const titre = $('ev-titre'); if (titre) { titre.required = t === 'autre'; titre.placeholder = t === 'autre' ? 'Ex. Formation, rendez-vous banque…' : `Facultatif : sinon « ${titreEv({ type: t })} »`; }
+  const titre = $('ev-titre'); if (titre) { titre.required = t === 'autre'; titre.placeholder = t === 'autre' ? 'Ex. Formation, rendez-vous banque…' : 'Facultatif : sinon « Journée de travail » (ex. Journée au champ, Marché de Fribourg)'; }
   const lt = f.querySelector('label[for="ev-titre"]'); if (lt) lt.textContent = t === 'autre' ? 'Titre (obligatoire)' : 'Titre';
   const ld = f.querySelector('label[for="ev-date"]'), lf = f.querySelector('label[for="ev-fin"]'); if (ld) ld.textContent = t === 'vacances' ? 'Du' : 'Date'; if (lf) lf.textContent = t === 'vacances' ? 'Au (facultatif)' : "Jusqu'au (plusieurs jours)";
   /* Congé : il faut choisir la personne (pas « Ensemble ») */
@@ -234,17 +232,13 @@ function majEvForm() {
   qui.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
   qui.value = opts.some(([v]) => v === cur) ? cur : vac ? '' : cur; qui.required = vac; lab.textContent = vac ? 'Congé de (obligatoire)' : 'Qui';
 }
-ACTIONS.evGenre = (el) => { EVF.genre = el.dataset.g; EVF.type = EVF.genre === 'conge' ? 'vacances' : EVF.genre === 'autre' ? 'autre' : 'travail'; majEvForm(); };
-ACTIONS.evType = (el) => { EVF.type = el.dataset.t; majEvForm(); };
+ACTIONS.evGenre = (el) => { EVF.genre = el.dataset.g; EVF.type = EVF.genre === 'conge' ? 'vacances' : EVF.genre === 'autre' ? 'autre' : EVF.ancien || 'travail'; majEvForm(); };
 ACTIONS.evEdit = (el) => {
   const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
-  EVF.type = EV_GENRES[e.type] ? e.type : 'autre'; EVF.genre = evGenre(e).genre;
-  const cl = tousContacts().sort(byName), cu = DB.all('cul:').sort((a, b) => String(b.saison).localeCompare(String(a.saison)) || (a.ordre || 0) - (b.ordre || 0));
+  EVF.type = EV_GENRES[e.type] ? e.type : 'autre'; EVF.genre = evGenre(e).genre; EVF.ancien = ['recolte', 'livraison', 'vente'].includes(e.type) ? e.type : '';
   openSheet(`${sheetHead(k ? 'Modifier l\'événement' : 'Nouvel événement', k && e.rec && e.rec.freq ? 'Modifie toute la série' : '')}<form class="sbody form" data-form="ev" id="ev-form"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="type" value="${esc(EVF.type)}">
     <div id="ev-choix">${evFormHtml()}</div>
     <div data-bloc="titre">${inp('ev-titre', 'Titre', e.titre, { name: 'titre' })}</div>
-    <div data-bloc="culture">${sel('ev-cul', 'Culture', e.cultureId || '', [['', '—']].concat(cu.map((c) => [c.key, `${c.nom} (${c.saison})`])), { name: 'cultureId', sub: 'Rappel pour enregistrer la récolte ; elle compte dans la récolte réelle de la culture.' })}</div>
-    <div data-bloc="contact">${sel('ev-contact', 'Client', e.contactId || '', [['', '—']].concat(cl.map((c) => [c.key, displayName(c) + (c.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour créer la facture depuis la journée.' })}</div>
     <div class="grid2">${inp('ev-date', 'Date', e.date, { name: 'date', type: 'date', req: true })}${inp('ev-fin', "Jusqu'au (plusieurs jours)", e.fin, { name: 'fin', type: 'date' })}</div>
     <div class="grid2" data-bloc="heures">${inp('ev-hd', 'Heure de début', e.heureDebut, { name: 'heureDebut', type: 'time' })}${inp('ev-hf', 'Heure de fin', e.heureFin, { name: 'heureFin', type: 'time' })}</div>
     ${sel('ev-qui', 'Qui', e.qui || '', [['', '—']].concat(persOptions(true)), { name: 'qui' })}
@@ -261,7 +255,7 @@ FORMS.ev = (v) => {
   if (t === 'vacances' && !personnes().some((p) => p.k === v.qui)) { toast('Indique pour qui est le congé.'); $('ev-qui').focus(); return; }
   const k = v.key || 'ev:' + uid('e'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '', occ: {}, exceptions: [] };
   const o = Object.assign({}, old, { type: t, titre: champ('titre') ? v.titre : '', date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: champ('heures') ? v.heureDebut : '', heureFin: champ('heures') ? v.heureFin : '', qui: v.qui,
-    contactId: champ('contact') ? v.contactId : '', cultureId: champ('culture') ? v.cultureId : '', remarque: v.remarque, rec: champ('rep') ? { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } : { freq: '' } });
+    contactId: EVF.ancien && t === EVF.ancien ? old.contactId || '' : '', cultureId: EVF.ancien && t === EVF.ancien ? old.cultureId || '' : '', remarque: v.remarque, rec: champ('rep') ? { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } : { freq: '' } });
   delete o.cat; delete o.sous;
   DB.put(k, o); closeSheet(); toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
 };
