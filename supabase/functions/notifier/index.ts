@@ -47,9 +47,11 @@ export async function verifierCle(d: string, pub = VAPID_PUBLIC) {
     return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, cle, deB64u(sig), enc.encode(h + '.' + c));
   } catch (_) { return false; }
 }
+/* Urgency « high » : sur Android, une notification « normale » attend que le téléphone se réveille (mode économie,
+   « Doze ») ; « high » la fait arriver tout de suite, même écran éteint et navigateur fermé. */
 async function envoyer(abo: any, message: any, d: string) {
   const corps = await chiffrer(JSON.stringify(message), abo.p256dh, abo.auth);
-  return fetch(abo.endpoint, { method: 'POST', body: corps, headers: { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'normal', Authorization: `vapid t=${await jetonVapid(abo.endpoint, d)}, k=${VAPID_PUBLIC}` } });
+  return fetch(abo.endpoint, { method: 'POST', body: corps, headers: { 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'high', Authorization: `vapid t=${await jetonVapid(abo.endpoint, d)}, k=${VAPID_PUBLIC}` } });
 }
 
 /* Jour J à Zurich, et occurrences des événements (comme la fonction calendrier) */
