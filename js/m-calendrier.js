@@ -302,7 +302,8 @@ function renderVue() {
   return `<div class="pl-cols"><div class="panel"><div class="between"><div class="row">${quiChips}</div><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
       <div class="pl-jours">${jours}</div>
       <div class="row"><button class="btn link" type="button" data-act="plAutreJour">+ Prévoir un autre jour…</button>${PL.jours < 42 ? `<button class="btn link" type="button" data-act="plPlus">Voir plus loin</button>` : ''}</div></div>
-    <div class="panel pl-aplan" data-jour=""><div class="between"><h2>À planifier${aPlan.length ? ' · ' + aPlan.length : ''}</h2><button class="btn small" type="button" data-act="taNouvelle">+ Tâche</button></div>
+    <div class="panel pl-aplan" data-jour=""><div class="between"><h2>À planifier${aPlan.length ? ' · ' + aPlan.length : ''}</h2></div>
+      ${ajoutTacheBarre({ id: 'pl-aplan-ajout' })}
       ${plan}
       <p class="hint pl-aide">Touche une tâche pour la planifier. Sur ordinateur, tu peux aussi la glisser sur un jour ou sur une journée.</p></div></div>`;
 }
@@ -317,13 +318,7 @@ ACTIONS.plAutreJourOk = () => { const d = ($('pa-d') || {}).value; if (!d) retur
    On y coche les tâches, on en ajoute ; « Modifier » ouvre la fiche complète. */
 PL.rafraichir = null;
 const rafraichirFenetre = () => { if (PL.rafraichir && document.body.classList.contains('sheet-open')) PL.rafraichir(); };
-const ajoutTacheHtml = (o) => `<form class="quick" data-form="plAjout"><input type="hidden" name="jour" value="${esc(o.jour || '')}"><input type="hidden" name="journee" value="${esc(o.journee || '')}">
-  <input name="titre" id="pl-ajout" placeholder="Nouvelle tâche${o.journee ? ' pour cette journée' : ' ce jour-là'}…" autocomplete="off" aria-label="Nouvelle tâche"><button class="btn primary" type="submit">Ajouter</button></form>`;
-FORMS.plAjout = (v) => {
-  if (!v.titre) return; const e = v.journee ? DB.get(v.journee.split('|')[0]) || {} : null, ce = e ? catEv(e) : { cat: '' };
-  DB.put('t:' + uid('t'), { titre: v.titre, statut: 'afaire', importance: 2, cat: ce.cat === 'conge' ? '' : ce.cat || '', responsable: e && e.qui ? e.qui : Sync.me || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cultures: e && e.cultureId ? [e.cultureId] : [], cree: new Date().toISOString(), creePar: Sync.me || '' });
-  rafraichirFenetre(); setTimeout(() => { const i = $('pl-ajout'); if (i) i.focus(); }, 30);
-};
+const ajoutTacheHtml = (o) => ajoutTacheBarre({ id: 'pl-ajout', jour: o.jour, journee: o.journee, placeholder: `Nouvelle tâche${o.journee ? ' pour cette journée' : ' ce jour-là'}…` });
 ACTIONS.plJourneeVoir = (el) => {
   const j = el.dataset.j, [ek, d] = j.split('|'), e = DB.get(ek); if (!e) return; const ce = catEv(e);
   PL.rafraichir = () => ACTIONS.plJourneeVoir({ dataset: { j } });

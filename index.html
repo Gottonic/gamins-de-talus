@@ -627,6 +627,10 @@ table.matrix td.neg { color: var(--muted); }
 .pl-cols { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1000px) { .pl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } .pl-cols > .panel { margin: 0; } .panel.pl-aplan { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; } }
 .pl-jour.vide { display: none; }
+.ajout-barre { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.ajout-barre input[name=titre] { flex: 1 1 220px; min-width: 0; }
+.ajout-barre .btn { flex: none; }
+@media (max-width: 520px) { .ajout-barre input[name=titre] { flex-basis: 100%; } .ajout-barre .btn { flex: 1; } }
 .task .poignee { flex: none; cursor: grab; color: var(--muted); font-size: 14px; letter-spacing: -2px; padding: 3px 4px 3px 0; touch-action: none; user-select: none; align-self: center; }
 .task.en-tri { background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.18); position: relative; z-index: 2; border-radius: 6px; }
 .tri-actif { user-select: none; }
