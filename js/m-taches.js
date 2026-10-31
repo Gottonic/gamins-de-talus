@@ -97,7 +97,7 @@ function renderTaches() {
   } else corps = l.sort((a, b) => String(b.termineLe || '').localeCompare(String(a.termineLe || ''))).slice(0, 80).map((t) => tacheHtml(t)).join('') || '<p class="empty">Aucune tâche faite.</p>';
   const catQ = TA.cat && TA.cat !== '-' ? catInfo(TA.cat) : null;
   return `<div class="panel">
-    <div class="between"><form class="quick" data-form="taQuick" style="flex:1"><input name="titre" id="ta-quick" placeholder="Nouvelle tâche${catQ ? ' (' + esc(catQ.nom) + ')' : ''}… (Entrée pour ajouter)" autocomplete="off" aria-label="Nouvelle tâche"><button class="btn primary" type="submit">Ajouter</button></form>
+    <div class="between"><form class="quick" data-form="taQuick" style="flex:1"><input name="titre" id="ta-quick" placeholder="Nouvelle tâche${catQ ? ' (' + esc(catQ.nom) + ')' : ''}… (Entrée : ajout rapide)" autocomplete="off" aria-label="Nouvelle tâche"><button class="btn primary" type="button" data-act="taAjoutFiche">+ Tâche</button></form>
       <a class="btn small" href="#/calendrier/feuille">🖨 Feuille de la semaine</a></div>
     <div class="chips">${vues}</div><div class="chips">${quiChips}</div>${catChips ? `<div class="chips">${catChips}</div>` : ''}
     ${corps}
@@ -159,8 +159,11 @@ FORMS.taQuick = (v) => {
   if (!v.titre) return;
   const resp = TA.qui && TA.qui !== 'moi' ? TA.qui : '';
   DB.put('t:' + uid('t'), { titre: v.titre, statut: 'afaire', importance: 2, responsable: resp, cat: TA.cat && TA.cat !== '-' ? TA.cat : '', cree: new Date().toISOString(), creePar: Sync.me || '' });
+  toast(`« ${v.titre} » ajoutée dans « À planifier ».`);
   setTimeout(() => { const q = $('ta-quick'); if (q) q.focus(); }, 0);
 };
+/* Le bouton ouvre la fiche (avec le titre déjà tapé) ; Entrée ajoute directement */
+ACTIONS.taAjoutFiche = () => { const q = $('ta-quick'); ACTIONS.taEdit({ dataset: { key: '', titre: q ? q.value.trim() : '', cat: TA.cat && TA.cat !== '-' ? TA.cat : '' } }); };
 ACTIONS.taTick = (el) => {
   const t = DB.get(el.dataset.key); if (!t) return;
   const done = t.statut === 'termine';
@@ -209,7 +212,7 @@ function journeesProchaines(garder) {
 }
 /* Fiche d'une tâche (nouvelle si pas de clé) ; el.dataset peut préremplir jour, journee, cat */
 ACTIONS.taEdit = (el) => {
-  const k = el.dataset.key || '', t = k ? DB.get(k) : { statut: 'afaire', importance: 2, jour: el.dataset.date || '', journee: el.dataset.journee || '', cat: el.dataset.cat || '', responsable: '' };
+  const k = el.dataset.key || '', t = k ? DB.get(k) : { titre: el.dataset.titre || '', statut: 'afaire', importance: 2, jour: el.dataset.date || '', journee: el.dataset.journee || '', cat: el.dataset.cat || '', responsable: '' };
   if (!t) return; const c = catTache(t), s = (jourPlanifie(t) || todayISO()).slice(0, 4), imp = importanceDe(t);
   const cus = typeof cultures === 'function' ? cultures(typeof saisons === 'function' && saisons().includes(s) ? s : saisonCourante()) : [];
   const jrs = journeesProchaines(t.journee);
