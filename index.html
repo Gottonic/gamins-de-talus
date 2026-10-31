@@ -622,6 +622,16 @@ table.matrix td.neg { color: var(--muted); }
 .ta-li { font-size: 14px; padding: 2px 0; }
 .pl-cols { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1000px) { .pl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } .pl-cols > .panel { margin: 0; } .panel.pl-aplan { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; } }
+.imp { font-size: 9px; letter-spacing: 1px; vertical-align: middle; color: var(--muted); }
+.imp.imp1 { color: var(--late); }
+.imp.imp2 { color: var(--c-taches); }
+.imp.imp3 { color: var(--muted); opacity: .7; }
+.ech { font-size: 12px; }
+.ech.proche { color: var(--c-taches); font-weight: 700; }
+.ech.passee { color: var(--late); font-weight: 700; }
+.ta-sec h4 { margin: 10px 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.ta-sec.proche { border: 2px solid var(--c-taches); border-radius: 10px; padding: 0 10px 4px; }
+.ta-sec.proche h4 { color: var(--c-taches); }
 .pl-presse { border: 2px solid var(--mod); border-radius: 10px; padding: 8px 10px; }
 .pl-presse h3 { margin: 0 0 4px; }
 .pl-jours { display: flex; flex-direction: column; gap: 6px; }

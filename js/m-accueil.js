@@ -54,17 +54,20 @@ function renderAccueil() {
   const pasEchues = ACC.vue === 'moi' ? ouvertes.filter((f) => !verif.includes(f) && !(f.echeance && f.echeance <= today && f.paiement !== 'especes')) : ouvertes.filter((f) => !verif.includes(f));
   if (pasEchues.length) groupes.push({ mod: 'factures', titre: 'Ventes pas encore payées', n: pasEchues.length, items: pasEchues.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
     .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero || f.blNumero || 'Vente'} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });
-  /* Tâches : d'abord urgentes et en retard, puis les prochaines échéances, puis les autres tâches ouvertes */
-  const ouvT = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && pourMoi(t.responsable));
+  /* Tâches : celles prévues aujourd'hui hors d'une journée (celles d'une journée sont avec la journée, plus bas),
+     puis celles pas planifiées dont l'échéance approche */
   const demain = addDays(today, 1);
-  const rang = (t) => (t.urgent || (dateTache(t) && dateTache(t) < today) ? 0 : dateTache(t) ? 1 : 2);
-  const tch = ouvT.sort((a, c) => rang(a) - rang(c) || String(dateTache(a) || '9').localeCompare(String(dateTache(c) || '9')) || String(a.cree || '').localeCompare(String(c.cree || '')));
-  groupes.push({ mod: 'calendrier', titre: 'Tâches urgentes et prochaines', n: ouvT.length, vide: 'Aucune tâche ouverte.',
-    items: tch.slice(0, 7).map((t) => ({ act: 'taEdit', data: { key: t.key }, txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''), val: t.urgent ? 'urgent' : dateTache(t) ? (dateTache(t) < today ? 'en retard' : dateTache(t) === today ? "aujourd'hui" : dateTache(t) === demain ? 'demain' : fmtDateCourt(dateTache(t))) : '', bad: rang(t) === 0, fort: !!t.urgent || (!!dateTache(t) && dateTache(t) <= demain) })),
-    plus: ouvT.length > 7 ? { href: '#/calendrier/taches', txt: `Voir les ${ouvT.length} tâches` } : null });
+  const tAuj = taches().filter((t) => tacheOuverte(t) && !t.journee && t.jour === today && pourMoi(t.responsable));
+  const tEch = trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t) && echeanceProche(t) && pourMoi(t.responsable)));
+  const tch = tAuj.concat(tEch), ouvT = tch;
+  if (tch.length) groupes.push({ mod: 'calendrier', titre: "Tâches du jour et échéances proches", n: tch.length,
+    items: tch.slice(0, 7).map((t) => ({ act: 'taEdit', data: { key: t.key }, txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''),
+      val: t.jour === today && !t.journee ? "aujourd'hui" : t.echeance < today ? 'échéance dépassée' : t.echeance === today ? "échéance aujourd'hui" : 'avant le ' + fmtDateCourt(t.echeance),
+      bad: !!t.echeance && t.echeance < today, fort: !(t.jour === today) && !!t.echeance && t.echeance <= demain })),
+    plus: { href: '#/calendrier/taches', txt: 'Voir les tâches à planifier' } });
   /* Calendrier des 7 prochains jours */
   const prochains = []; const it7 = itemsPeriode(today, addDays(today, 6));
-  for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ act: 'evEdit', data: { key: x.key }, txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : d === addDays(today, 1) ? 'demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : ''), fort: d <= addDays(today, 1) });
+  for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ act: 'evEdit', data: { key: x.key }, txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : d === addDays(today, 1) ? 'demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : ''), fort: d === today });
   groupes.push({ mod: 'calendrier', titre: 'Ces 7 prochains jours', n: prochains.length, vide: 'Rien de prévu.', items: prochains.slice(0, 7), plus: { href: '#/calendrier', txt: "Voir la planification" } });
   /* Récoltes prévues au calendrier, pas encore enregistrées */
   const rae = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => pourMoi(r.qui)) : [];
