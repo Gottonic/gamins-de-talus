@@ -622,6 +622,10 @@ table.matrix td.neg { color: var(--muted); }
 .ta-li { font-size: 14px; padding: 2px 0; }
 .pl-cols { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1000px) { .pl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } .pl-cols > .panel { margin: 0; } .panel.pl-aplan { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; } }
+.pl-jour.vide { display: none; }
+.glisse-tache .pl-jour.vide { display: flex; border: 1px dashed var(--line); padding: 6px 10px; }
+.task .ta-plan { display: none; flex: none; align-self: center; }
+@media (pointer: coarse) { .task .ta-plan { display: inline-flex; } }
 .imp { font-size: 9px; letter-spacing: 1px; vertical-align: middle; color: var(--muted); }
 .imp.imp1 { color: var(--late); }
 .imp.imp2 { color: var(--c-taches); }
@@ -662,7 +666,7 @@ table.matrix td.neg { color: var(--muted); }
 .cat-ico { width: 3.2em; text-align: center; }
 .cat-l1 input[type=color] { width: 40px; height: 34px; padding: 2px; }
 .cat-sous { gap: 6px; flex-wrap: wrap; align-items: center; }
-@media (pointer: coarse) { .pl-aide { display: none; } }
+@media (pointer: coarse) { p.hint.pl-aide { display: none; } }
 .agit.clic:hover { background: color-mix(in srgb, var(--c) 18%, white); }
 .daybtn { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; display: flex; flex-direction: column; }
 .daybtn b { text-transform: capitalize; }

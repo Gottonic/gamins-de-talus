@@ -82,6 +82,7 @@ function listeAPlanifierHtml(l, o = {}) {
   if (!l.length) return `<p class="empty">${o.vide || 'Rien à planifier.'}</p>`;
   const proches = l.filter(echeanceProche), reste = l.filter((t) => !echeanceProche(t));
   const sec = (titre, xs, cls) => xs.length ? `<div class="ta-sec${cls ? ' ' + cls : ''}"><h4>${titre} · ${xs.length}</h4>${xs.map((t) => tacheHtml(t, o)).join('')}</div>` : '';
+  o = Object.assign({ planifier: true }, o);
   return sec('⏰ Échéance proche', proches, 'proche') + IMPORTANCES.map(([n, nom, pts]) => sec(`<span class="imp imp${n}">${pts}</span> ${nom}`, reste.filter((t) => importanceDe(t) === n))).join('');
 }
 function tacheHtml(t, o = {}) {
@@ -98,8 +99,26 @@ function tacheHtml(t, o = {}) {
   const li = t.liste || []; if (li.length) meta.push(`<span>☑ ${li.filter((x) => x.fait).length}/${li.length}</span>`);
   if (t.rep && !done) meta.push(`<span title="Tâche qui se répète">↻</span>`);
   return `<div class="task${done ? ' done' : ''}" draggable="${done ? 'false' : 'true'}" data-tache="${esc(t.key)}" style="--c:${esc(couleurCat(c.cat))}"><button class="tick" type="button" data-act="taTick" data-key="${esc(t.key)}" aria-label="${done ? 'Rouvrir' : 'Marquer comme faite'} : ${esc(t.titre)}"></button>
-    <div class="body" data-act="taEdit" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp ? `<span class="imp imp${imp}" title="${esc(IMPORTANCES[imp - 1][1])}">${IMPORTANCES[imp - 1][2]}</span> ` : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div></div>`;
+    <div class="body" data-act="taEdit" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp ? `<span class="imp imp${imp}" title="${esc(IMPORTANCES[imp - 1][1])}">${IMPORTANCES[imp - 1][2]}</span> ` : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div>
+    ${o.planifier && !done ? `<button class="btn small ta-plan" type="button" data-act="taPlanifier" data-key="${esc(t.key)}" aria-label="Planifier ${esc(t.titre)}">📅 Planifier</button>` : ''}</div>`;
 }
+/* Planifier en deux touches (téléphone) : une journée prévue, ou un jour */
+ACTIONS.taPlanifier = (el) => {
+  const k = el.dataset.key, t = DB.get(k); if (!t) return; const today = todayISO();
+  const jrs = journeesProchaines().slice(0, 8);
+  const jours = Array.from({ length: 7 }, (_, i) => addDays(today, i)).map((d, i) => [d, i === 0 ? "Aujourd'hui" : i === 1 ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)]);
+  openSheet(`${sheetHead('Planifier', t.titre)}<div class="sbody">
+    ${jrs.length ? `<h3>Dans une journée prévue</h3><div class="menu-list">${jrs.map(([j, l]) => `<button type="button" class="menu-it" data-act="taPlanOk" data-key="${esc(k)}" data-j="${esc(j)}">📅 ${esc(l)}</button>`).join('')}</div>` : ''}
+    <h3>Ou un jour</h3><div class="chips">${jours.map(([d, l]) => `<button type="button" class="chip" data-act="taPlanOk" data-key="${esc(k)}" data-d="${d}">${esc(l)}</button>`).join('')}</div>
+    <div class="row" style="margin-top:8px"><input type="date" id="tp-d" min="${today}"><button class="btn" type="button" data-act="taPlanOk" data-key="${esc(k)}" data-champ="1">OK</button></div></div>`);
+};
+ACTIONS.taPlanOk = (el) => {
+  const k = el.dataset.key, t = DB.get(k); if (!t) return;
+  const d = el.dataset.champ ? ($('tp-d') || {}).value : el.dataset.d, j = el.dataset.j || '';
+  if (!j && !d) { toast('Choisis un jour.'); return; }
+  DB.put(k, Object.assign({}, t, j ? { journee: j, jour: '' } : { jour: d, journee: '' })); closeSheet();
+  toast(j ? `Rattachée à ${titreEv(DB.get(j.split('|')[0]) || {})} (${fmtDateCourt(j.split('|')[1])}).` : `Prévue le ${fmtDate(d)}.`);
+};
 ACTIONS.taQui = (el) => { TA.qui = el.dataset.k; render(); };
 ACTIONS.taCat = (el) => { TA.cat = TA.cat === el.dataset.k ? '' : el.dataset.k; render(); };
 ACTIONS.taVue = (el) => { TA.vue = el.dataset.k; render(); };

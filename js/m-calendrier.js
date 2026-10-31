@@ -281,7 +281,8 @@ function renderVue() {
     const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => DB.get(x.key)).filter((t) => t && pour(t.responsable));
     const autres = xs.filter((x) => x.kind === 'facture' || x.kind === 'relance');
     const vide = !evs.length && !ts.length && !autres.length;
-    if (vide && d > addDays(today, 1)) { jours += `<div class="pl-jour vide" data-jour="${d}"><span class="pl-date">${JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3)} ${fmtDateCourt(d)}</span><button class="btn link small" type="button" data-act="evEdit" data-date="${d}">+ événement</button></div>`; continue; }
+    /* Jour vide : caché (il n'apparaît que pendant qu'on glisse une tâche, pour pouvoir l'y déposer) */
+    if (vide && d !== today) { jours += `<div class="pl-jour vide" data-jour="${d}"><span class="pl-date">${JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3)} ${fmtDateCourt(d)}</span><span class="hint">déposer ici</span></div>`; continue; }
     jours += `<div class="pl-jour${d === today ? ' auj' : ''}" data-jour="${d}">
       <div class="between pl-jour-h"><button type="button" class="pl-date" data-act="calDay" data-d="${d}"><b>${d === today ? "Aujourd'hui" : d === addDays(today, 1) ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b> ${fmtDateCourt(d)}</button>
         <span class="row"><button class="btn link small" type="button" data-act="taNouvelle" data-date="${d}">+ tâche</button><button class="btn link small" type="button" data-act="evEdit" data-date="${d}">+ événement</button></span></div>
@@ -294,11 +295,17 @@ function renderVue() {
   const quiChips = Sync.me ? `<div class="seg-mini" role="group" aria-label="Afficher"><button type="button" class="${PL.qui === 'moi' ? 'on' : ''}" data-act="plQui" data-v="moi">Pour moi</button><button type="button" class="${PL.qui !== 'moi' ? 'on' : ''}" data-act="plQui" data-v="">Tout le monde</button></div>` : '';
   return `<div class="pl-cols"><div class="panel"><div class="between"><div class="row">${quiChips}</div><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn small" type="button" data-act="taNouvelle">+ Tâche</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
       <div class="pl-jours">${jours}</div>
-      ${PL.jours < 42 ? `<div class="row"><button class="btn link" type="button" data-act="plPlus">Voir plus loin…</button></div>` : ''}</div>
+      <div class="row"><button class="btn link" type="button" data-act="plAutreJour">+ Prévoir un autre jour…</button>${PL.jours < 42 ? `<button class="btn link" type="button" data-act="plPlus">Voir plus loin</button>` : ''}</div></div>
     <div class="panel pl-aplan" data-jour=""><div class="between"><h2>À planifier${aPlan.length ? ' · ' + aPlan.length : ''}</h2><button class="btn small" type="button" data-act="taNouvelle">+ Tâche</button></div>
       ${plan}
       <p class="hint pl-aide">Sur ordinateur : glisse une tâche sur un jour, ou sur une journée prévue pour l'y rattacher. Sur téléphone : touche la tâche → « Planifier ».</p></div></div>`;
 }
+/* Un jour sans rien : le choisir, puis y mettre une tâche ou un événement */
+ACTIONS.plAutreJour = () => {
+  openSheet(`${sheetHead('Prévoir un autre jour')}<div class="sbody form">${inp('pa-d', 'Jour', addDays(todayISO(), 1), { type: 'date' })}
+    <div class="row-end"><button class="btn" type="button" data-act="plAutreJourOk" data-quoi="tache">+ Tâche ce jour-là</button><button class="btn primary" type="button" data-act="plAutreJourOk" data-quoi="ev">+ Événement</button></div></div>`);
+};
+ACTIONS.plAutreJourOk = (el) => { const d = ($('pa-d') || {}).value; if (!d) return; closeSheet(); if (el.dataset.quoi === 'ev') ACTIONS.evEdit({ dataset: { date: d } }); else ACTIONS.taNouvelle({ dataset: { date: d } }); };
 ACTIONS.plQui = (el) => { PL.qui = el.dataset.v; ls.set('gdt-pl-qui', PL.qui); render(); };
 ACTIONS.plPlus = () => { PL.jours += 14; render(); };
 try { PL.qui = ls.get('gdt-pl-qui') ?? 'moi'; } catch (e) { PL.qui = 'moi'; }
@@ -307,8 +314,8 @@ function brancherGlisserTaches(root) {
   if (!root || root._glisse) return; root._glisse = true;
   const T = 'application/x-gdt-tache';
   const cible = (e) => e.target.closest && (e.target.closest('[data-journee]') || e.target.closest('[data-jour]'));
-  root.addEventListener('dragstart', (e) => { const t = e.target.closest && e.target.closest('[data-tache]'); if (!t) return; e.dataTransfer.setData(T, t.dataset.tache); e.dataTransfer.effectAllowed = 'move'; t.classList.add('glisse'); });
-  root.addEventListener('dragend', () => root.querySelectorAll('.glisse, .drop').forEach((x) => x.classList.remove('glisse', 'drop')));
+  root.addEventListener('dragstart', (e) => { const t = e.target.closest && e.target.closest('[data-tache]'); if (!t) return; e.dataTransfer.setData(T, t.dataset.tache); e.dataTransfer.effectAllowed = 'move'; t.classList.add('glisse'); setTimeout(() => root.classList.add('glisse-tache'), 0); });
+  root.addEventListener('dragend', () => { root.classList.remove('glisse-tache'); root.querySelectorAll('.glisse, .drop').forEach((x) => x.classList.remove('glisse', 'drop')); });
   root.addEventListener('dragover', (e) => {
     if (![...e.dataTransfer.types].includes(T)) return; const c = cible(e);
     root.querySelectorAll('.drop').forEach((x) => { if (x !== c) x.classList.remove('drop'); });
@@ -316,7 +323,7 @@ function brancherGlisserTaches(root) {
   });
   root.addEventListener('drop', (e) => {
     if (![...e.dataTransfer.types].includes(T)) return; const c = cible(e); if (!c) return; e.preventDefault();
-    const k = e.dataTransfer.getData(T), t = DB.get(k); root.querySelectorAll('.drop, .glisse').forEach((x) => x.classList.remove('drop', 'glisse')); if (!t) return;
+    const k = e.dataTransfer.getData(T), t = DB.get(k); root.classList.remove('glisse-tache'); root.querySelectorAll('.drop, .glisse').forEach((x) => x.classList.remove('drop', 'glisse')); if (!t) return;
     if (c.dataset.journee) { const [ek, d] = c.dataset.journee.split('|'); DB.put(k, Object.assign({}, t, { journee: c.dataset.journee })); toast(`« ${t.titre} » rattachée à ${titreEv(DB.get(ek) || {})} (${fmtDateCourt(d)}).`); }
     else { const d = c.dataset.jour; DB.put(k, Object.assign({}, t, { jour: d, journee: '' })); toast(d ? `« ${t.titre} » pour le ${fmtDate(d)}.` : `« ${t.titre} » remise à planifier.`); }
   });
