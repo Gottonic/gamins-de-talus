@@ -259,9 +259,27 @@ FORMS.catSousRen = (v) => { const cs = categories(), s = (cs[Number(v.i)] || { s
    C'est la fonction Supabase « notifier » qui envoie : à chaque nouveau message ou mail, et le matin pour les tâches et événements du jour. */
 const VAPID_PUBLIC = 'BEWBqzH3etLZ-_g1_ZUOTJSyD-qECUilmuXsm9MIw6COqRTe4Ynqgu75jrlmAW3PGTVDD5VdjtL5zHWpBDUkCi0';
 const NOTIF = { etat: null, enCours: false };
-const NOTIF_CHOIX = [['messages', 'Nouveaux messages de la discussion', 'Sauf les tiens.'], ['mails', 'Nouveaux mails de la boîte', 'Dès qu\'ils sont relevés.'], ['jour', 'Le matin vers 7 h : tes tâches et événements du jour', 'Seulement s\'il y en a.']];
+const NOTIF_CHOIX = [['messages', 'Nouveaux messages de la discussion', 'Sauf les tiens.'], ['mails', 'Nouveaux mails de la boîte', 'Dès qu\'ils sont relevés.'], ['assignes', 'Un mail qu\'on me confie', 'Quand quelqu\'un te confie un mail.'], ['jour', 'Le matin vers 7 h : tes tâches et événements du jour', 'Seulement s\'il y en a.']];
 /* messages / mails / jour : notification sur les appareils ; d_messages / d_mails / d_jour : sur Discord */
-const prefsNotif = (p) => Object.assign({ messages: true, mails: true, jour: true, d_messages: true, d_mails: false, d_jour: false }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
+const prefsNotif = (p) => Object.assign({ messages: true, mails: true, assignes: true, jour: true, d_messages: true, d_mails: false, d_assignes: false, d_jour: false }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
+/* Jours et heures où on accepte les notifications : plage = { jours: [1..7] (1 = lundi), de, a } ; rien = toujours */
+const JOURS_NOTIF = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+function dansPlageNotif(p) {
+  const pl = (DB.get('cfg:notif:' + p) || {}).plage; if (!pl) return true;
+  const n = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Zurich' })), j = ((n.getDay() + 6) % 7) + 1, hm = String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0');
+  if (Array.isArray(pl.jours) && pl.jours.length && !pl.jours.includes(j)) return false;
+  const de = pl.de || '00:00', a = pl.a || '24:00'; return de <= a ? hm >= de && hm < a : hm >= de || hm < a;
+}
+function plageHtml(p) {
+  const pl = p.plage || { jours: [1, 2, 3, 4, 5, 6, 7], de: '00:00', a: '24:00' }, js = pl.jours && pl.jours.length ? pl.jours : [1, 2, 3, 4, 5, 6, 7];
+  return `<h3>Quand ?</h3><div class="chips">${JOURS_NOTIF.map((l, i) => `<button type="button" class="chip${js.includes(i + 1) ? ' on' : ''}" data-act="notifJour" data-j="${i + 1}" aria-label="${JOURS[i]}">${l}</button>`).join('')}</div>
+    <div class="row" style="gap:8px;align-items:center;margin-top:8px"><span>de</span><input type="time" id="np-de" value="${esc(pl.de || '00:00')}" data-plage="de" style="width:auto"><span>à</span><input type="time" id="np-a" value="${esc(pl.a === '24:00' ? '23:59' : pl.a || '23:59')}" data-plage="a" style="width:auto"></div>
+    <p class="hint">En dehors (jours pas cochés, heures hors de la plage), rien n'arrive, ni sur les appareils ni sur Discord. ${p.plage ? `<button class="btn link small" type="button" data-act="notifToujours">Toujours (tous les jours, toute la journée)</button>` : 'Pour l\'instant : tous les jours, toute la journée.'}</p>`;
+}
+const majPlage = (o) => { const p = prefsNotif(), pl = Object.assign({ jours: [1, 2, 3, 4, 5, 6, 7], de: '00:00', a: '24:00' }, p.plage || {}, o); DB.put('cfg:notif:' + Sync.me, Object.assign(p, { plage: pl })); };
+ACTIONS.notifJour = (el) => { const p = prefsNotif(), j = Number(el.dataset.j), js = ((p.plage && p.plage.jours && p.plage.jours.length) ? p.plage.jours : [1, 2, 3, 4, 5, 6, 7]).slice(); const i = js.indexOf(j); if (i >= 0) js.splice(i, 1); else js.push(j); if (!js.length) { toast('Garde au moins un jour (sinon décoche les notifications au-dessus).'); return; } majPlage({ jours: js.sort() }); };
+ACTIONS.notifToujours = () => { const p = prefsNotif(); delete p.plage; DB.put('cfg:notif:' + Sync.me, p); toast('Notifications à tout moment.'); };
+document.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.plage; if (!k || !Sync.me) return; let v = e.target.value || (k === 'de' ? '00:00' : '24:00'); if (k === 'a' && v === '23:59') v = '24:00'; majPlage({ [k]: v }); toast('Enregistré.'); });
 const idAppareil = () => { let i = ls.get('gdt-appareil'); if (!i) { i = uid('a'); ls.set('gdt-appareil', i); } return i; };
 const nomAppareil = () => { const u = navigator.userAgent; return (/iPhone|iPad/.test(u) ? 'iPhone/iPad' : /Android/.test(u) ? 'Android' : /Mac/.test(u) ? 'Mac' : /Windows/.test(u) ? 'Windows' : /Linux/.test(u) ? 'Linux' : 'Appareil') + ' · ' + (/Firefox/.test(u) ? 'Firefox' : /Edg\//.test(u) ? 'Edge' : /Chrome/.test(u) ? 'Chrome' : /Safari/.test(u) ? 'Safari' : 'navigateur'); };
 const b64uVersOctets = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
@@ -294,7 +312,8 @@ function renderNotifs() {
       ${NOTIF_CHOIX.map(([k, l, sub]) => `<tr><td>${esc(l)}<br><span class="hint">${esc(sub)}</span></td>
         <td><input type="checkbox" data-notif="${k}" aria-label="${esc(l)} sur les appareils"${p[k] ? ' checked' : ''}></td>
         <td><input type="checkbox" data-notif="d_${k}" aria-label="${esc(l)} sur Discord"${p['d_' + k] && dOn ? ' checked' : ''}${dOn ? '' : ' disabled'}></td></tr>`).join('')}</tbody></table>
-      <p class="hint">Ces choix valent pour tous tes appareils. Chacun règle les siens.${dOn ? '' : ' Pour cocher Discord, relie d\'abord ton salon (à gauche).'}</p></div></div>`;
+      <p class="hint">Ces choix valent pour tous tes appareils. Chacun règle les siens.${dOn ? '' : ' Pour cocher Discord, relie d\'abord ton salon (à gauche).'}</p>
+      ${plageHtml(p)}</div></div>`;
 }
 document.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.notif; if (!k || !Sync.me) return; DB.put('cfg:notif:' + Sync.me, Object.assign(prefsNotif(), { [k]: e.target.checked })); toast('Enregistré.'); });
 ACTIONS.notifOn = async () => {

@@ -561,7 +561,7 @@ ACTIONS.icsSheet = () => {
     <h3>Google Agenda</h3><p class="hint">Sur ordinateur : calendar.google.com → « Autres agendas » → <b>+</b> → <b>À partir de l'URL</b> → colle l'adresse. Il apparaît ensuite aussi sur le téléphone. Google le met à jour plusieurs fois par jour (pas tout de suite).</p>
     <h3>Proton Calendar</h3><p class="hint">Calendrier → <b>+</b> à côté de « Mes agendas » → <b>Ajouter un agenda</b> → <b>S'abonner via un lien</b> (ou « Autres calendriers » selon la version) → colle l'adresse.</p>
     <h3>Apple, Thunderbird…</h3><p class="hint">« S'abonner à un calendrier » / « Nouveau calendrier en réseau » avec la même adresse.</p>
-    <p class="hint">Contenu : événements (livraisons, récoltes, journées, vacances…) et échéances des tâches, de 2 mois en arrière à 1 an en avant. Lecture seule : on modifie dans l'app.</p>
+    <p class="hint">Contenu : les événements planifiés (journées de travail, congés…), de 2 mois en arrière à 1 an en avant. Les tâches n'y vont pas. Lecture seule : on modifie dans l'app.</p>
     <div class="row-end"><button class="btn danger" type="button" data-act="icsNouveau">Changer l'adresse</button></div></div>`);
   $('ics-tout').addEventListener('change', (e) => { DB.put(k, Object.assign({}, DB.get(k), { tout: e.target.checked })); });
 };

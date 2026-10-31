@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
   if (!qui) return new Response('Jeton inconnu', { status: 403 });
   const personne = qui.key.split(':')[2], opts = qui.data;
   const tout = !!opts.tout, pour = (q: string) => tout || !q || q === 'ensemble' || q === personne;
-  const [evs, ts, cul, cts, cfg] = await Promise.all([lire('ev:'), lire('t:'), lire('cul:'), lire('ct:'), lire('cfg:reglages')]);
+  const [evs, cul, cts, cfg] = await Promise.all([lire('ev:'), lire('cul:'), lire('ct:'), lire('cfg:reglages')]);
   const noms: Record<string, string> = {}; for (const p of (cfg[0]?.data?.personnes || [])) noms[p.k] = p.nom;
   const get = (rows: any[], k: string) => rows.find((r) => r.key === k)?.data;
   const de = addDays(iso(new Date()), -60), a = addDays(iso(new Date()), 400), stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
@@ -64,13 +64,7 @@ Deno.serve(async (req) => {
       L.push('END:VEVENT');
     }
   }
-  for (const { key, data: t } of ts) {
-    if (!t.echeance || t.statut === 'termine' || t.statut === 'suspendu' || t.echeance < de || !pour(t.responsable)) continue;
-    const d = t.echeance.replace(/-/g, '');
-    L.push('BEGIN:VEVENT', `UID:${key.replace(/[^a-zA-Z0-9]/g, '')}@gaminsdetalus`, 'DTSTAMP:' + stamp, 'DTSTART;VALUE=DATE:' + d, 'DTEND;VALUE=DATE:' + addDays(t.echeance, 1).replace(/-/g, ''),
-      'SUMMARY:' + txt('✓ ' + (t.urgent ? 'URGENT : ' : '') + t.titre + (tout && t.responsable && t.responsable !== 'ensemble' ? ' · ' + (noms[t.responsable] || t.responsable) : '')),
-      'DESCRIPTION:' + txt([t.remarques, 'https://gottonic.github.io/gamins-de-talus/#/taches'].filter(Boolean).join('\n')), 'TRANSP:TRANSPARENT', 'END:VEVENT');
-  }
+  /* Les tâches ne vont pas dans l'agenda : seulement les événements planifiés */
   L.push('END:VCALENDAR');
   return new Response(L.map(plier).join('\r\n') + '\r\n', { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'max-age=900', 'Access-Control-Allow-Origin': '*' } });
 });

@@ -305,11 +305,11 @@ const chiffresTel = (s) => String(s || '').replace(/\D/g, '').replace(/^(0041|41
 const contactParTel = (t) => { const c = chiffresTel(t); return c.length >= 9 ? tousContacts().find((x) => chiffresTel(x.telephone) === c) : null; };
 function paiementsMessageHtml() {
   const l = paiementsMessage(), af = l.filter((x) => !x.facture);
-  if (!l.length) return `<div class="panel"><div class="between"><h2>Payé par message</h2><button class="btn small" type="button" data-act="ardNouveau">+ Paiement par message</button></div><p class="hint">Quelqu'un prend des légumes et t'envoie un SMS ou un WhatsApp avec le montant : note-le ici avec son numéro. En fin de saison, « Facturer » fait une facture par personne.</p></div>`;
+  if (!l.length) return `<div class="panel"><div class="between"><h2>Payé par message</h2><button class="btn small" type="button" data-act="ardNouveau">+ Paiement par message</button></div><p class="hint">Quelqu'un se sert au stand et t'envoie un SMS ou un WhatsApp avec le montant (au lieu de TWINT) : note le numéro et le montant. Comme pour TWINT, ça compte comme encaissé dans le bilan de la vente directe. En fin de saison, « Facturer » fait une facture par personne.</p></div>`;
   const parC = {}; for (const x of af) { (parC[x.contactId] = parC[x.contactId] || []).push(x); }
   return `<div class="panel"><div class="between"><h2>Payé par message · à facturer ${chf(af.reduce((a, x) => a + num(x.montant), 0))}</h2><span class="row"><button class="btn small" type="button" data-act="ardNouveau">+ Paiement par message</button>${af.length ? '<button class="btn small primary" type="button" data-act="ardFacturer">Facturer…</button>' : ''}</span></div>
     ${Object.entries(parC).map(([ck, xs]) => { const c = DB.get(ck) || {}; return `<details class="ard"><summary><b>${esc(displayName(c))}</b> <span class="hint">${esc(c.telephone || '')}</span> · ${xs.length} achat${xs.length > 1 ? 's' : ''} · <b>${chf(xs.reduce((a, x) => a + num(x.montant), 0))}</b></summary>
-      ${xs.map((x) => `<div class="row ard-l"><span>${fmtDate(x.date)}</span><span style="flex:1">${esc(x.note || '')}</span><b>${chf(x.montant)}</b><button class="btn link small" type="button" data-act="ardEdit" data-key="${esc(x.key)}">modifier</button></div>`).join('')}</details>`; }).join('') || '<p class="hint">Tout est facturé.</p>'}
+      ${xs.map((x) => `<div class="row ard-l"><span>${fmtDate(x.date)}</span><span style="flex:1" class="hint">${x.self && DB.get(x.self) ? esc((DB.get(x.self).lieu || 'Self-service') + ' du ' + fmtDateCourt(DB.get(x.self).date)) : ''}</span><b>${chf(x.montant)}</b><button class="btn link small" type="button" data-act="ardEdit" data-key="${esc(x.key)}">modifier</button></div>`).join('')}</details>`; }).join('') || '<p class="hint">Tout est facturé.</p>'}
     ${l.length > af.length ? `<p class="hint">${l.length - af.length} paiement(s) déjà facturé(s).</p>` : ''}</div>`;
 }
 ACTIONS.ardNouveau = (el) => ACTIONS.ardEdit({ dataset: { key: '', self: el.dataset.self || '' } });
@@ -323,7 +323,6 @@ ACTIONS.ardEdit = (el) => {
     <p class="hint" id="ad-qui">${c ? '👤 ' + esc(displayName(c)) : ''}</p>
     <div class="grid2" id="ad-nouveau" hidden>${inp('ad-pre', 'Prénom (nouveau contact)', '', { name: 'prenom' })}${inp('ad-nom', 'Nom', '', { name: 'nomFamille' })}</div>
     <div class="grid2">${inp('ad-m', 'Montant CHF', x.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}${inp('ad-d', 'Date', x.date, { name: 'date', type: 'date' })}</div>
-    ${inp('ad-note', 'Ce qu\'il / elle a pris (facultatif)', x.note || '', { name: 'note', attrs: { placeholder: 'Ex. 2 butternuts, 1 sachet de patates douces' } })}
     ${ouvertes.length ? sel('ad-self', 'Mise en vente', x.self || '', [['', '—']].concat(ouvertes.map((s) => [s.key, `${s.lieu || 'Self-service'} · ${fmtDate(s.date)}`])), { name: 'self', sub: 'Compte comme payé dans le bilan de cette vente directe.' }) : ''}
     ${x.facture ? `<p class="hint">Déjà facturé (${esc((DB.get(x.facture) || {}).numero || '')}).</p>` : ''}
     <div class="row-end">${k && !x.facture ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="ce paiement">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
@@ -336,7 +335,7 @@ FORMS.ard = (v) => {
   let c = contactParTel(v.tel), ck = c ? c.key : '';
   if (!c) { ck = 'ct:' + uid('c'); const nom = nomComplet(v.prenom, v.nomFamille) || String(v.tel).trim(); DB.put(ck, { prenom: v.prenom || '', nomFamille: v.nomFamille || '', nom, telephone: String(v.tel).trim(), type: 'particulier', notes: 'Créé depuis un paiement par message (vente directe).', cree: new Date().toISOString() }); }
   const k = v.key || 'ard:' + uid('d');
-  DB.put(k, Object.assign({}, DB.get(k) || { cree: new Date().toISOString(), par: Sync.me || '' }, { date: v.date || todayISO(), contactId: ck, montant: r2(m), note: v.note || '', self: v.self || '' }));
+  DB.put(k, Object.assign({}, DB.get(k) || { cree: new Date().toISOString(), par: Sync.me || '' }, { date: v.date || todayISO(), contactId: ck, montant: r2(m), self: v.self || '' }));
   closeSheet(); toast(`${chf(m)} noté pour ${displayName(DB.get(ck))}.`);
 };
 /* Fin de saison : une facture par personne (une ligne par mois), avec le QR pour payer */

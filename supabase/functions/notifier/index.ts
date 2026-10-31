@@ -76,14 +76,14 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
   const env = (k: string) => Deno.env.get(k);
   const sb = createClient(env('SUPABASE_URL')!, env('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
   const corps = await req.json().catch(() => ({}));
-  /* Qui appelle ? La base ou le cron (secret), sinon un membre connecté (seulement pour un test) */
+  /* Qui appelle ? La base ou le cron (secret), sinon un membre connecté (un test, ou un mail qu'il confie à quelqu'un) */
   let membre = '';
   const cron = env('CRON_SECRET'), h = req.headers.get('x-cron');
   if (!(cron && h && h === cron)) {
     const jwt = (req.headers.get('authorization') || '').replace(/^Bearer /, '');
     const { data: u } = await sb.auth.getUser(jwt); if (!u || !u.user) return json({ erreur: 'non connecté' }, 401);
     const { data: m } = await sb.from('membres').select('personne').eq('user_id', u.user.id).maybeSingle(); if (!m) return json({ erreur: 'pas membre' }, 403);
-    if (!corps.test) return json({ erreur: 'réservé aux tests' }, 403);
+    if (!corps.test && !corps.confier) return json({ erreur: 'réservé aux tests' }, 403);
     membre = m.personne;
   }
   const d = String(env('VAPID_PRIVATE') || '').trim().replace(/^["']|["']$/g, '').replace(/\s+/g, '');
@@ -102,10 +102,27 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
   const discord: Record<string, any> = {}; for (const r of await lire('cfg:discord:')) discord[r.key.split(':')[2]] = r.data || {};
   const surDiscord = (p: string, quoi: string) => !!(discord[p] && discord[p].webhook) && (prefs[p] || {})['d_' + quoi] === true;
   const discordEnvois: { personne: string; contenu: string }[] = [];
+  /* Jours et heures où chacun accepte d'être dérangé : prefs.plage = { jours: [1..7] (1 = lundi), de: 'HH:MM', a: 'HH:MM' } */
+  const maintenant = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Zurich', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const jourSem = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf((maintenant.find((x) => x.type === 'weekday') as any)?.value || '') + 1;
+  const hm = `${(maintenant.find((x) => x.type === 'hour') as any)?.value || '00'}:${(maintenant.find((x) => x.type === 'minute') as any)?.value || '00'}`.replace(/^24/, '00');
+  const dansPlage = (p: string) => {
+    const pl = (prefs[p] || {}).plage; if (!pl) return true;
+    if (Array.isArray(pl.jours) && pl.jours.length && !pl.jours.includes(jourSem)) return false;
+    const de = pl.de || '00:00', a = pl.a || '24:00';
+    return de <= a ? hm >= de && hm < a : hm >= de || hm < a;
+  };
 
   /* Ce qu'il faut envoyer, à qui */
   const envois: { personne: string; message: any }[] = [];
   if (corps.test) envois.push({ personne: membre, message: { titre: 'Gamins de Talus', texte: 'Les notifications marchent sur cet appareil 🎉', url: APP + '#/reglages/notifications', tag: 'test' } });
+  else if (corps.confier) {
+    const c = corps.confier, p = String(c.personne || '');
+    if (p && p !== membre) {
+      if (veut(p, 'assignes')) envois.push({ personne: p, message: { titre: '📧 ' + nom(membre) + ' te confie un mail', texte: court((c.de ? c.de + ' : ' : '') + (c.objet || '(sans objet)'), 140), url: APP + '#/mails', tag: 'confie' } });
+      if (surDiscord(p, 'assignes')) discordEnvois.push({ personne: p, contenu: `[🔗](<${APP}#/mails>) 📧 **${nom(membre)}** te confie un mail` + (discord[p].texte === false ? '' : ` : ${court((c.de ? c.de + ' : ' : '') + (c.objet || '(sans objet)'), 200)}`) });
+    }
+  }
   else if (String(corps.key || '').startsWith('msg:')) {
     const m = corps.data || {};
     for (const p of personnes) if (p.k !== m.de && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } });
@@ -120,7 +137,8 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     for (const p of personnes) {
       if (!veut(p.k, 'jour') && !surDiscord(p.k, 'jour')) continue;
       const pour = (q: string) => !q || q === 'ensemble' || q === p.k;
-      const ts = taches.map((r) => r.data).filter((t) => t && t.statut !== 'termine' && t.statut !== 'suspendu' && t.echeance === jour && pour(t.responsable));
+      /* Tâches prévues aujourd'hui (un jour, ou une journée de travail d'aujourd'hui), ou dont l'échéance tombe aujourd'hui */
+      const ts = taches.map((r) => r.data).filter((t) => t && t.statut !== 'termine' && pour(t.responsable) && (t.jour === jour || String(t.journee || '').endsWith('|' + jour) || (t.echeance === jour && !t.jour && !t.journee)));
       const es = evs.map((r) => r.data).filter((e) => e && aLieu(e, jour) && pour(e.qui));
       if (!ts.length && !es.length) continue;
       const lignes = [...es.map((e) => '📅 ' + (e.heureDebut ? e.heureDebut + ' ' : '') + (e.titre || 'Événement')), ...ts.map((t) => '✓ ' + t.titre)];
@@ -128,6 +146,8 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
       if (surDiscord(p.k, 'jour')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/>) **Aujourd'hui**\n` + court(lignes.join('\n'), 1800) });
     }
   }
+  /* Hors des jours et heures choisis : rien (sauf le test) */
+  if (!corps.test) { for (let i = envois.length - 1; i >= 0; i--) if (!dansPlage(envois[i].personne)) envois.splice(i, 1); for (let i = discordEnvois.length - 1; i >= 0; i--) if (!dansPlage(discordEnvois[i].personne)) discordEnvois.splice(i, 1); }
   /* Envoi à chaque appareil ; un abonnement expiré (404/410) est retiré */
   let ok = 0; const erreurs: string[] = pbVapid && envois.length ? [pbVapid] : [];
   for (const e of pbVapid ? [] : envois) for (const a of abos.filter((x) => x.personne === e.personne)) {

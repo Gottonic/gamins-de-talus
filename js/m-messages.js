@@ -16,7 +16,7 @@ const luJusqua = (p) => ((DB.get('lu:' + p) || {}).jusqua || '');
 function nonLus(p) { p = p || Sync.me; const l = luJusqua(p); return messages().filter((m) => m.de !== p && String(m.cree) > l); }
 const discordDe = (p) => DB.get('cfg:discord:' + p) || {};
 /* Discord pour les messages : oui par défaut dès qu'un webhook est enregistré (choix dans Réglages → Notifications) */
-const discordMessages = (p) => !!discordDe(p).webhook && (DB.get('cfg:notif:' + p) || {}).d_messages !== false;
+const discordMessages = (p) => !!discordDe(p).webhook && (DB.get('cfg:notif:' + p) || {}).d_messages !== false && (typeof dansPlageNotif !== 'function' || dansPlageNotif(p));
 const APP_URL = 'https://gottonic.github.io/gamins-de-talus/';
 /* Petit lien 🔗 au début de chaque message Discord : ouvre la messagerie pour répondre (les < > évitent l'aperçu du site) */
 const LIEN_MSG = `[🔗](<${APP_URL}#/messages>)`;
@@ -478,6 +478,9 @@ ACTIONS.mailAssigner = (el) => {
   const p = el.dataset.p || '';
   majMail(el.dataset.key, { par: p, statut: p ? 'encours' : '', traitePar: '', confiePar: p && p !== Sync.me ? (Sync.me || '') : '' });
   closeSheet(); toast(p ? (p === Sync.me ? 'Pour toi.' : `Confié à ${nomDe(p)}.`) : 'Confié à personne.');
+  /* Prévenir la personne à qui on le confie (notification « Un mail qu'on me confie ») */
+  const m = DB.get(el.dataset.key);
+  if (p && p !== Sync.me && m && !LOCAL_MODE && Sync.sb && navigator.onLine) Sync.sb.functions.invoke('notifier', { body: { confier: { personne: p, objet: m.objet || '', de: (m.de && (m.de.nom || m.de.adresse)) || '' } } }).catch(() => {});
 };
 ACTIONS.mailWebmail = () => { closeSheet(); ouvrirWebmail(); };
 ACTIONS.mailRelever = () => releverMails(true);
