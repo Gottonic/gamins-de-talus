@@ -28,8 +28,10 @@ function titreEv(e) {
   const c = e.contactId && DB.get(e.contactId), cu = e.cultureId && DB.get(e.cultureId);
   if (e.type === 'livraison') return 'Livraison' + (c ? ' ' + displayName(c) : '');
   if (e.type === 'recolte') return 'Récolte' + (cu ? ' ' + cu.nom : '');
-  if (e.type === 'vacances') return 'Vacances' + (e.qui && e.qui !== 'ensemble' ? ' ' + nomDe(e.qui) : '');
-  return evType(e.type).label;
+  if (e.type === 'vacances') return 'Congé' + (e.qui && e.qui !== 'ensemble' ? ' ' + nomDe(e.qui) : '');
+  const ce = catEv(e), so = ce.sous && sousInfo(ce.cat, ce.sous);
+  if (so) return so.nom + (cu ? ' ' + cu.nom : '');
+  return ce.cat === 'champ' ? 'Journée au champ' + (cu ? ' · ' + cu.nom : '') : catInfo(ce.cat).nom;
 }
 /* Récoltes notées au calendrier pour une culture (kg) */
 function recolteNotee(cultureKey) {
@@ -45,10 +47,10 @@ function itemsPeriode(de, a) {
   for (const e of evenements()) for (const o of occurrences(e, de, a)) {
     for (let d = o.date > de ? o.date : de; d <= o.fin && d <= a; d = addDays(d, 1)) {
       const st = (e.occ || {})[o.date] || {};
-      add(d, { kind: 'ev', type: e.type, key: e.key, occ: o.date, titre: titreEv(e), heure: d === o.date ? e.heureDebut || '' : '', qui: e.qui, fait: !!st.fait, multi: o.fin > o.date, debut: d === o.date });
+      add(d, { kind: 'ev', type: e.type, cat: catEv(e).cat, couleur: couleurCat(catEv(e).cat), key: e.key, occ: o.date, titre: titreEv(e), heure: d === o.date ? e.heureDebut || '' : '', qui: e.qui, fait: !!st.fait, multi: o.fin > o.date, debut: d === o.date });
     }
   }
-  for (const t of taches()) if (t.statut !== 'termine' && t.echeance && t.echeance >= de && t.echeance <= a) add(t.echeance, { kind: 'tache', key: t.key, titre: t.titre, urgent: t.urgent, qui: t.responsable });
+  for (const t of taches()) { const d = dateTache(t); if (t.statut !== 'termine' && d && d >= de && d <= a) add(d, { kind: 'tache', key: t.key, titre: t.titre, urgent: t.urgent, qui: t.responsable, journee: (journeeDe(t) || {}).key || '' }); }
   for (const f of factures()) { const s = facStatut(f); if ((s === 'ouverte' || s === 'retard') && f.echeance >= de && f.echeance <= a) add(f.echeance, { kind: 'facture', key: f.key, titre: `Échéance ${f.numero || f.blNumero || 'vente'} · ${f.client.nom}`, montant: f.total }); }
   for (const h of heuresToutes()) if (h.date >= de && h.date <= a) add(h.date, { kind: 'heures', personne: h.personne, heures: num(h.heures), off: !!h.off });
   for (const c of relancesProspection(de, a)) add(c.prospection.relanceLe, { kind: 'relance', key: c.key, titre: 'Relancer ' + displayName(c) });
@@ -56,23 +58,29 @@ function itemsPeriode(de, a) {
 }
 
 /* ---------- Module ---------- */
+/* Planification = calendrier + tâches : Vue d'ensemble, Tâches, Mois, Heures (l'adresse reste #/calendrier) */
 MODULES.calendrier = {
-  titre: 'Calendrier',
+  titre: 'Planification',
   tuile() {
-    const l = lundiDe(todayISO()), fin = addDays(l, 6), t = totalHeures(heuresToutes(), (h) => h.date >= l && h.date <= fin);
-    const prochains = Object.entries(itemsPeriode(todayISO(), addDays(todayISO(), 6))).reduce((a, [, xs]) => a + xs.filter((x) => x.kind === 'ev' && x.debut).length, 0);
     const auj = (itemsPeriode(todayISO(), todayISO())[todayISO()] || []).filter((x) => x.kind === 'ev' && (typeof pourMoi !== 'function' || pourMoi(x.qui))).length;
-    return { line: `Semaine : ${personnes().map((p) => `${p.nom} ${fmtH(t[p.k] || 0)} h`).join(' · ')}${prochains ? ` · ${prochains} événement${prochains > 1 ? 's' : ''} à venir` : ''}`, badge: auj };
+    const ouv = taches().filter(tacheOuverte), urg = ouv.filter((t) => t.urgent || tacheEnRetard(t)), presse = tachesUrgentesPourMoi().length;
+    const ev7 = Object.entries(itemsPeriode(todayISO(), addDays(todayISO(), 6))).reduce((a, [, xs]) => a + xs.filter((x) => x.kind === 'ev' && x.debut).length, 0);
+    return { line: `${auj ? auj + " aujourd'hui · " : ''}${ev7} événement${ev7 > 1 ? 's' : ''} sur 7 jours · ${ouv.length} tâche${ouv.length > 1 ? 's' : ''}${urg.length ? ` (${urg.length} urgente${urg.length > 1 ? 's' : ''} ou en retard)` : ''}`, warn: !!urg.length, badge: auj + presse };
   },
   render(sub) {
     if (sub === 'semaine') { setTimeout(() => location.replace('#/calendrier/heures'), 0); return ''; }
-    const t = tabs('calendrier', [['', 'Agenda'], ['mois', 'Mois'], ['heures', 'Heures']], sub === 'agenda' ? '' : sub);
+    if (sub === 'agenda') sub = '';
+    const nUrg = tachesUrgentesPourMoi().length;
+    const t = tabs('calendrier', [['', "Vue d'ensemble"], ['taches', `Tâches${nUrg ? ' · ' + nUrg + ' pressée' + (nUrg > 1 ? 's' : '') : ''}`, nUrg > 0], ['mois', 'Mois'], ['heures', 'Heures']], sub === 'feuille' ? 'taches' : sub);
+    if (sub === 'taches') return t + renderTaches();
+    if (sub === 'feuille') return t + renderFeuille();
     if (sub === 'mois') return t + renderMois();
     if (sub === 'heures') return t + `<div class="row"><button class="btn primary" type="button" data-act="mesHeures">+ Enregistrer mes heures</button></div>` + renderSemaineHeures() + renderBilanHeures();
-    return t + renderAgenda();
+    return t + renderVue();
   },
   after(sub) {
     if (sub === 'heures') { const s = $('h-annee'); if (s) s.addEventListener('change', () => { HEU.annee = s.value; render(); }); return; }
+    if (!sub || sub === 'agenda' || sub === 'taches') brancherGlisserTaches($('view'));
     brancherHeures($('view'));
   },
 };
@@ -114,7 +122,7 @@ function renderMois() {
     const hrs = L.heures ? hs.filter((x) => x.heures > 0).map((x) => `<span class="h">${esc(ini(x.personne))} ${fmtH(x.heures)}</span>`).join('') : '';
     const chips = [];
     if (L.heures) off.forEach((p) => chips.push(`<span class="ch" style="--c:var(--ev-vacances)">${esc(nomDe(p))} off</span>`));
-    if (L.evenements) xs.filter((x) => x.kind === 'ev').sort((a, b) => String(a.heure).localeCompare(String(b.heure))).forEach((x) => chips.push(`<span class="ch${x.fait ? ' fait' : ''}${x.multi ? ' multi' : ''}" style="--c:var(--ev-${x.type})">${x.heure ? `<i>${esc(x.heure)}</i> ` : ''}${esc(x.titre)}</span>`));
+    if (L.evenements) xs.filter((x) => x.kind === 'ev').sort((a, b) => String(a.heure).localeCompare(String(b.heure))).forEach((x) => chips.push(`<span class="ch${x.fait ? ' fait' : ''}${x.multi ? ' multi' : ''}" style="--c:${x.couleur}">${x.heure ? `<i>${esc(x.heure)}</i> ` : ''}${esc(x.titre)}</span>`));
     if (L.taches) xs.filter((x) => x.kind === 'tache').forEach((x) => chips.push(`<span class="ch tache${x.urgent ? ' urgent' : ''}" style="--c:var(--c-taches)">⚑ ${esc(x.titre)}</span>`));
     if (L.factures) xs.filter((x) => x.kind === 'facture').forEach((x) => chips.push(`<span class="ch" style="--c:var(--c-factures)">${esc(x.titre)}</span>`));
     if (L.relances) xs.filter((x) => x.kind === 'relance').forEach((x) => chips.push(`<span class="ch" style="--c:var(--c-contacts)">☎ ${esc(x.titre)}</span>`));
@@ -152,11 +160,13 @@ function ouvrirJour(d) {
     const e = DB.get(x.key) || {}, st = (e.occ || {})[x.occ] || {}, rec = e.rec && e.rec.freq;
     const c = e.contactId && DB.get(e.contactId), cu = e.cultureId && DB.get(e.cultureId);
     const det = [e.heureDebut ? e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : '', quiLabel(e.qui), c ? displayName(c) : '', cu ? cu.nom : '', rec ? (RECS.find((r) => r[0] === rec) || [, ''])[1].toLowerCase() : '', x.multi ? `du ${fmtDateCourt(x.occ)} au ${fmtDateCourt(addDays(x.occ, Math.round((new Date((e.fin || e.date) + 'T12:00') - new Date(e.date + 'T12:00')) / 864e5)))}` : ''].filter(Boolean).join(' · ');
-    return `<div class="evline" style="--c:var(--ev-${e.type})"><div class="between"><div><strong>${esc(x.titre)}</strong><br><span class="hint">${esc(evType(e.type).court)}${det ? ' · ' + esc(det) : ''}</span></div>
+    const ce = catEv(e), tj = taches().filter((t) => t.journee === x.key + '|' + x.occ);
+    return `<div class="evline" style="--c:${couleurCat(ce.cat)}"><div class="between"><div><strong>${esc(x.titre)}</strong><br><span class="hint">${catPill(ce.cat, ce.sous)}${det ? ' · ' + esc(det) : ''}</span></div>
       <label class="row" style="font-size:14px"><input type="checkbox" data-fait="${esc(x.key)}|${x.occ}"${st.fait ? ' checked' : ''}> Fait</label></div>
       ${e.type === 'recolte' ? (() => { const kg = typeof recolteDeLEvenement === 'function' ? recolteDeLEvenement(x.key, x.occ) : 0; return kg ? `<p class="hint">✓ Récolte enregistrée : ${esc(fmtNum(kg, 1))} kg.</p>` : st.sansRecolte ? '<p class="hint">Pas de récolte ce jour-là.</p>' : `<div class="row"><button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button></div>`; })() : ''}
       ${e.remarque ? `<p class="hint" style="white-space:pre-wrap">${esc(e.remarque)}</p>` : ''}
-      <div class="row">${e.type === 'livraison' && e.contactId ? `<button class="btn small primary" type="button" data-act="evFacturer" data-key="${esc(x.key)}" data-occ="${x.occ}">Créer la facture</button>` : ''}
+      ${tj.length ? `<div class="ev-taches">${tj.map((t) => tacheHtml(t, { sansDate: true, court: true })).join('')}</div>` : ''}
+      <div class="row">${ce.cat !== 'conge' ? `<button class="btn small" type="button" data-act="plJournee" data-j="${esc(x.key + '|' + x.occ)}">☑ Tâches de la journée${tj.length ? ' · ' + tj.length : ''}</button>` : ''}${e.type === 'livraison' && e.contactId ? `<button class="btn small primary" type="button" data-act="evFacturer" data-key="${esc(x.key)}" data-occ="${x.occ}">Créer la facture</button>` : ''}
         <button class="btn small" type="button" data-act="evEdit" data-key="${esc(x.key)}">Modifier</button>
         ${rec ? `<button class="btn small" type="button" data-act="evSauter" data-key="${esc(x.key)}" data-occ="${x.occ}">Annuler ce jour-là</button>` : ''}
         <button class="btn small danger" type="button" data-act="delItem" data-key="${esc(x.key)}" data-what="${rec ? 'toute la série' : 'cet événement'}">Supprimer${rec ? ' la série' : ''}</button></div></div>`;
@@ -166,7 +176,8 @@ function ouvrirJour(d) {
     ${fld('jr-rem', 'Remarque du jour', `<input id="jr-rem" data-jour="${d}" value="${esc(j.remarque || '')}" placeholder="Ex. Journée au champ ensemble">`)}
     <div class="between"><h3>Événements</h3><button class="btn small primary" type="button" data-act="evEdit" data-date="${d}">+ Événement</button></div>
     ${evHtml || '<p class="hint">Aucun événement ce jour.</p>'}
-    ${tch.length ? `<h3>Tâches à rendre</h3>${tch.map((t) => `<a class="item" href="#" data-act="taEdit" data-key="${esc(t.key)}" style="--c:var(--c-taches)"><span class="who"><strong>${esc(t.titre)}</strong><span class="meta">${t.qui ? esc(quiLabel(t.qui)) : ''}${t.urgent ? ' · urgent' : ''}</span></span></a>`).join('')}` : ''}
+    ${tch.filter((x) => !x.journee).length ? `<h3>Tâches de ce jour</h3>${tch.filter((x) => !x.journee).map((x) => tacheHtml(DB.get(x.key) || {}, { sansDate: true, court: true })).join('')}` : ''}
+    <div class="row"><button class="btn small" type="button" data-act="taNouvelle" data-date="${d}">+ Tâche pour ce jour</button></div>
     ${rel.length ? `<h3>Relances prospection</h3>${rel.map((r) => `<a class="item" href="#/contacts/prospect/${encodeURIComponent(r.key)}"><span class="who"><strong>${esc(r.titre)}</strong></span></a>`).join('')}` : ''}
     ${fac.length ? `<h3>Factures à échéance</h3>${fac.map((f) => `<a class="item" href="#/factures/voir/${encodeURIComponent(f.key)}"><span class="who"><strong>${esc(f.titre)}</strong></span><span class="amt">${chf(f.montant)}</span></a>`).join('')}` : ''}
   </div>`);
@@ -198,54 +209,143 @@ ACTIONS.hOff = _hOff;
 
 /* ---------- Formulaire d'événement ---------- */
 ACTIONS.evEdit = (el) => {
-  const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
+  const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', cat: 'champ', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
+  const ce = catEv(e);
   const cl = tousContacts().sort(byName), cu = DB.all('cul:').sort((a, b) => String(b.saison).localeCompare(String(a.saison)) || (a.ordre || 0) - (b.ordre || 0));
   openSheet(`${sheetHead(k ? 'Modifier l\'événement' : 'Nouvel événement', k && e.rec && e.rec.freq ? 'Modifie toute la série' : '')}<form class="sbody form" data-form="ev" id="ev-form"><input type="hidden" name="key" value="${esc(k)}">
-    <div class="field"><span class="flabel">Type</span><div class="seg">${EV_TYPES.map((t) => `<label style="--c:var(--ev-${t.k})"><input type="radio" name="type" value="${t.k}"${e.type === t.k ? ' checked' : ''}> ${t.court}</label>`).join('')}</div></div>
-    ${inp('ev-titre', 'Titre', e.titre, { name: 'titre', attrs: { placeholder: 'Facultatif : sinon « Livraison Epinettes », « Récolte Courge »…' } })}
+    ${catChoixHtml('ev-cat', ce.cat, ce.sous, { ev: true })}
+    ${inp('ev-titre', 'Titre', e.titre, { name: 'titre', attrs: { placeholder: 'Facultatif : sinon « Livraison Epinettes », « Récolte Courge », « Journée au champ »…' } })}
     <div class="grid2">${inp('ev-date', 'Date', e.date, { name: 'date', type: 'date', req: true })}${inp('ev-fin', "Jusqu'au (plusieurs jours)", e.fin, { name: 'fin', type: 'date', sub: 'Pour des vacances, une semaine de récolte…' })}
       ${inp('ev-hd', 'Heure de début', e.heureDebut, { name: 'heureDebut', type: 'time' })}${inp('ev-hf', 'Heure de fin', e.heureFin, { name: 'heureFin', type: 'time' })}
       ${sel('ev-qui', 'Qui', e.qui || '', [['', '—']].concat(persOptions(true)), { name: 'qui' })}
-      ${sel('ev-contact', 'Client / contact', e.contactId || '', [['', '—']].concat(cl.map((c) => [c.key, displayName(c) + (c.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour une livraison : permet de créer la facture depuis le calendrier.' })}
-      ${sel('ev-cul', 'Culture', e.cultureId || '', [['', '—']].concat(cu.map((c) => [c.key, `${c.nom} (${c.saison})`])), { name: 'cultureId', sub: 'Pour une récolte : les kilos notés s\'ajoutent à la récolte réelle.' })}
+      ${sel('ev-contact', 'Client / contact', e.contactId || '', [['', '—']].concat(cl.map((c) => [c.key, displayName(c) + (c.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour une livraison : permet de créer la facture depuis la Planification.' })}
+      ${sel('ev-cul', 'Culture', e.cultureId || '', [['', '—']].concat(cu.map((c) => [c.key, `${c.nom} (${c.saison})`])), { name: 'cultureId', sub: 'Pour une récolte : rappel pour l\'enregistrer. Pour le champ : pré-coche la culture quand tu notes tes heures.' })}
     </div>
     <h3>Répétition</h3>
     <div class="grid2">${sel('ev-rec', 'Se répète', (e.rec && e.rec.freq) || '', RECS, { name: 'freq' })}${inp('ev-jq', "Jusqu'au", e.rec && e.rec.jusquau, { name: 'jusquau', type: 'date', sub: 'Vide : sans fin.' })}</div>
     ${txt('ev-rem', 'Remarque', e.remarque, { name: 'remarque' })}
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="${e.rec && e.rec.freq ? 'toute la série' : 'cet événement'}">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
-  /* Vacances : il faut choisir la personne (pas « Ensemble ») */
+  /* Congé : il faut choisir la personne (pas « Ensemble ») */
   const f = $('ev-form'), qui = $('ev-qui'), lab = f.querySelector('label[for="ev-qui"]');
   const majQui = () => {
-    const vac = (f.querySelector('input[name=type]:checked') || {}).value === 'vacances', cur = qui.value;
+    const vac = (f.querySelector('input[name=cat]') || {}).value === 'conge', cur = qui.value;
     const opts = vac ? [['', 'Choisir…']].concat(persOptions()) : [['', '—']].concat(persOptions(true));
     qui.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
     qui.value = opts.some(([v]) => v === cur) ? cur : '';
-    qui.required = vac; lab.textContent = vac ? 'Vacances de (obligatoire)' : 'Qui';
+    qui.required = vac; lab.textContent = vac ? 'Congé de (obligatoire)' : 'Qui';
   };
-  f.querySelectorAll('input[name=type]').forEach((r) => r.addEventListener('change', majQui)); majQui();
+  EVF.majQui = majQui; majQui();
 };
+const EVF = { majQui: null };
+document.addEventListener('gdt-cat', (e) => { if (e.detail.id === 'ev-cat' && EVF.majQui && $('ev-form')) EVF.majQui(); });
 FORMS.ev = (v) => {
   if (!v.date) { toast('La date est obligatoire.'); return; }
   if (v.fin && v.fin < v.date) { toast('La date de fin est avant le début.'); return; }
-  if (v.type === 'vacances' && !personnes().some((p) => p.k === v.qui)) { toast('Indique pour qui sont les vacances.'); $('ev-qui').focus(); return; }
+  if (!v.cat) { toast('Choisis une catégorie.'); return; }
+  if (v.cat === 'conge' && !personnes().some((p) => p.k === v.qui)) { toast('Indique pour qui est le congé.'); $('ev-qui').focus(); return; }
   const k = v.key || 'ev:' + uid('e'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '', occ: {}, exceptions: [] };
-  DB.put(k, Object.assign({}, old, { type: v.type || 'autre', titre: v.titre, date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: v.heureDebut, heureFin: v.heureFin, qui: v.qui, contactId: v.contactId, cultureId: v.cultureId, remarque: v.remarque, rec: { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } }));
+  DB.put(k, Object.assign({}, old, { cat: v.cat, sous: v.sous || '', type: typeDepuisCat(v.cat, v.sous), titre: v.titre, date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: v.heureDebut, heureFin: v.heureFin, qui: v.qui, contactId: v.contactId, cultureId: v.cultureId, remarque: v.remarque, rec: { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } }));
   closeSheet(); toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
 };
 
-/* ---------- Agenda (liste des 8 prochaines semaines) ---------- */
-/* Toucher un élément de l'agenda l'ouvre pour le modifier : événement, tâche, vente, relance */
-const agAction = (x) => x.kind === 'ev' ? ` data-act="evEdit" data-key="${esc(x.key)}" role="button" tabindex="0"` : x.kind === 'tache' ? ` data-act="taEdit" data-key="${esc(x.key)}" role="button" tabindex="0"`
-  : x.kind === 'facture' ? ` data-act="go" data-href="#/factures/voir/${encodeURIComponent(x.key)}" role="button" tabindex="0"` : x.kind === 'relance' ? ` data-act="go" data-href="#/contacts/prospect/${encodeURIComponent(x.key)}" role="button" tabindex="0"` : '';
-function renderAgenda() {
-  const today = todayISO(), a = addDays(today, 55), items = itemsPeriode(today, a);
-  const days = Object.keys(items).sort().filter((d) => items[d].some((x) => x.kind !== 'heures'));
-  const ic = (x) => x.kind === 'ev' ? `var(--ev-${x.type})` : x.kind === 'tache' ? 'var(--c-taches)' : x.kind === 'facture' ? 'var(--c-factures)' : x.kind === 'relance' ? 'var(--c-contacts)' : 'var(--c-cultures)';
-  return `<div class="panel"><div class="between"><h2>Les 8 prochaines semaines</h2><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
-    ${days.length ? days.map((d) => `<div class="agday"><button type="button" class="agdate" data-act="calDay" data-d="${d}"><b>${d === today ? "Aujourd'hui" : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b><span>${fmtDateCourt(d)}</span></button>
-      <div class="agitems">${items[d].filter((x) => x.kind !== 'heures' && !(x.kind === 'ev' && x.multi && !x.debut && d !== today)).map((x) => `<div class="agit${x.fait ? ' fait' : ''}${agAction(x) ? ' clic' : ''}" style="--c:${ic(x)}"${agAction(x)}>${x.heure ? `<span class="num">${esc(x.heure)}</span> ` : ''}${esc(x.kind === 'tache' ? '⚑ ' + x.titre : x.titre)}${x.qui ? ` <span class="hint">· ${esc(quiLabel(x.qui))}</span>` : ''}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}</div></div>`).join('')
-      : '<p class="empty">Rien de prévu. Ajoute des journées de travail, récoltes ou livraisons avec « + Événement ».</p>'}</div>`;
+/* ---------- Vue d'ensemble : les 14 prochains jours ----------
+   En haut : ce qui presse (urgent, en retard). Puis jour par jour : les événements en cartes, avec les tâches rattachées
+   à chaque journée, puis les tâches du jour. En bas : les tâches à planifier, par catégorie.
+   Sur ordinateur : glisser une tâche sur un jour (lui donne cette date), sur une journée (l'y rattache) ou sur « À planifier ». */
+const PL = { qui: '', jours: 14 };
+const concerneMoi = (q) => !Sync.me || !q || q === 'ensemble' || q === Sync.me;
+function renderVue() {
+  const today = todayISO(), fin = addDays(today, PL.jours - 1), items = itemsPeriode(today, fin);
+  const pour = (q) => PL.qui !== 'moi' || concerneMoi(q);
+  const ouv = taches().filter((t) => tacheOuverte(t) && pour(t.responsable));
+  const presse = ouv.filter((t) => t.urgent || tacheEnRetard(t)).sort((a, b) => (dateTache(a) || '9').localeCompare(dateTache(b) || '9'));
+  const aPlanifier = ouv.filter((t) => !dateTache(t) && !presse.includes(t));
+  const ev = (x, d) => {
+    const e = DB.get(x.key) || {}, ce = catEv(e), j = x.key + '|' + x.occ, tj = taches().filter((t) => t.journee === j && t.statut !== 'suspendu');
+    const fort = d === today && concerneMoi(x.qui) && !x.fait;
+    const cu = e.cultureId && DB.get(e.cultureId), c = e.contactId && DB.get(e.contactId);
+    const det = [x.heure ? x.heure + (e.heureFin ? '–' + e.heureFin : '') : '', x.qui ? quiLabel(x.qui) : '', c && !x.titre.includes(displayName(c)) ? displayName(c) : '', cu && !x.titre.includes(cu.nom) ? cu.nom : ''].filter(Boolean).join(' · ');
+    const rec = e.type === 'recolte' && d <= today && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(x.key, x.occ) && !((e.occ || {})[x.occ] || {}).sansRecolte;
+    return `<div class="pl-ev${fort ? ' fort' : ''}${x.fait ? ' fait' : ''}" style="--c:${esc(x.couleur)}" data-journee="${esc(j)}">
+      <div class="pl-ev-h" data-act="calDay" data-d="${d}" role="button" tabindex="0"><span class="pl-ev-t">${esc(catInfo(ce.cat).icone || '')} <b>${esc(x.titre)}</b>${x.multi ? ' <span class="hint">(plusieurs jours)</span>' : ''}</span>${det ? `<span class="pl-ev-d">${esc(det)}</span>` : ''}</div>
+      ${tj.length ? `<div class="pl-ev-taches">${tj.map((t) => tacheHtml(t, { sansDate: true, court: true, sansCat: true })).join('')}</div>` : ''}
+      <div class="row pl-ev-act">${rec ? `<button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button>` : ''}${ce.cat !== 'conge' ? `<button class="btn small" type="button" data-act="plJournee" data-j="${esc(j)}">☑ Tâches${tj.length ? '' : ' de la journée'}</button>` : ''}<button class="btn small" type="button" data-act="evEdit" data-key="${esc(x.key)}">Modifier</button></div></div>`;
+  };
+  let jours = '';
+  for (let d = today; d <= fin; d = addDays(d, 1)) {
+    const xs = (items[d] || []).filter((x) => x.kind !== 'heures' && (x.kind === 'tache' || x.kind === 'facture' || pour(x.qui)));
+    const evs = xs.filter((x) => x.kind === 'ev' && (x.debut || d === today) && pour(x.qui)).sort((a, b) => String(a.heure || '99').localeCompare(String(b.heure || '99')));
+    const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => DB.get(x.key)).filter((t) => t && pour(t.responsable) && !presse.includes(t));
+    const autres = xs.filter((x) => x.kind === 'facture' || x.kind === 'relance');
+    const vide = !evs.length && !ts.length && !autres.length;
+    if (vide && d > addDays(today, 1)) { jours += `<div class="pl-jour vide" data-jour="${d}"><span class="pl-date">${JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3)} ${fmtDateCourt(d)}</span><button class="btn link small" type="button" data-act="evEdit" data-date="${d}">+ événement</button></div>`; continue; }
+    jours += `<div class="pl-jour${d === today ? ' auj' : ''}" data-jour="${d}">
+      <div class="between pl-jour-h"><button type="button" class="pl-date" data-act="calDay" data-d="${d}"><b>${d === today ? "Aujourd'hui" : d === addDays(today, 1) ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b> ${fmtDateCourt(d)}</button>
+        <span class="row"><button class="btn link small" type="button" data-act="taNouvelle" data-date="${d}">+ tâche</button><button class="btn link small" type="button" data-act="evEdit" data-date="${d}">+ événement</button></span></div>
+      ${evs.map((x) => ev(x, d)).join('')}
+      ${ts.length ? `<div class="pl-taches">${ts.map((t) => tacheHtml(t, { sansDate: true, court: true })).join('')}</div>` : ''}
+      ${autres.map((x) => `<div class="agit clic" style="--c:${x.kind === 'facture' ? 'var(--c-factures)' : 'var(--c-contacts)'}" data-act="go" data-href="${x.kind === 'facture' ? '#/factures/voir/' : '#/contacts/prospect/'}${encodeURIComponent(x.key)}" role="button" tabindex="0">${esc(x.titre)}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}
+      ${vide ? '<p class="hint" style="margin:0">Rien de prévu.</p>' : ''}</div>`;
+  }
+  const parCat = {}; for (const t of aPlanifier) { const c = catTache(t).cat || '-'; (parCat[c] = parCat[c] || []).push(t); }
+  const ordre = catsTaches().map((c) => c.k).concat(['-']);
+  const plan = ordre.filter((k) => parCat[k]).map((k) => { const c = k === '-' ? { nom: 'Sans catégorie', icone: '', couleur: '#999' } : catInfo(k); return `<div class="pl-cat" style="--c:${esc(c.couleur)}"><h4>${esc(c.icone || '')} ${esc(c.nom)} · ${parCat[k].length}</h4>${parCat[k].map((t) => tacheHtml(t, { sansCat: true, court: true })).join('')}</div>`; }).join('');
+  const quiChips = Sync.me ? `<div class="seg-mini" role="group" aria-label="Afficher"><button type="button" class="${PL.qui === 'moi' ? 'on' : ''}" data-act="plQui" data-v="moi">Pour moi</button><button type="button" class="${PL.qui !== 'moi' ? 'on' : ''}" data-act="plQui" data-v="">Tout le monde</button></div>` : '';
+  return `<div class="pl-cols"><div class="panel"><div class="between"><div class="row">${quiChips}</div><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn small" type="button" data-act="taNouvelle">+ Tâche</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
+      ${presse.length ? `<div class="pl-presse"><h3 class="titre-fort">⚑ Urgent ou en retard · ${presse.length}</h3>${presse.map((t) => tacheHtml(t, { court: true })).join('')}</div>` : ''}
+      <div class="pl-jours">${jours}</div>
+      ${PL.jours < 42 ? `<div class="row"><button class="btn link" type="button" data-act="plPlus">Voir plus loin…</button></div>` : ''}</div>
+    <div class="panel pl-aplan" data-jour=""><div class="between"><h2>À planifier${aPlanifier.length ? ' · ' + aPlanifier.length : ''}</h2><button class="btn small" type="button" data-act="taNouvelle">+ Tâche</button></div>
+      ${plan || '<p class="empty">Toutes les tâches ont un jour. 👌</p>'}
+      <p class="hint pl-aide">Sur ordinateur : glisse une tâche sur un jour, ou sur une journée prévue pour l'y rattacher. Sur téléphone : touche la tâche → « Pour le » ou « Rattachée à une journée ».</p></div></div>`;
 }
+ACTIONS.plQui = (el) => { PL.qui = el.dataset.v; ls.set('gdt-pl-qui', PL.qui); render(); };
+ACTIONS.plPlus = () => { PL.jours += 14; render(); };
+try { PL.qui = ls.get('gdt-pl-qui') ?? 'moi'; } catch (e) { PL.qui = 'moi'; }
+/* Glisser une tâche (ordinateur) */
+function brancherGlisserTaches(root) {
+  if (!root || root._glisse) return; root._glisse = true;
+  const T = 'application/x-gdt-tache';
+  const cible = (e) => e.target.closest && (e.target.closest('[data-journee]') || e.target.closest('[data-jour]'));
+  root.addEventListener('dragstart', (e) => { const t = e.target.closest && e.target.closest('[data-tache]'); if (!t) return; e.dataTransfer.setData(T, t.dataset.tache); e.dataTransfer.effectAllowed = 'move'; t.classList.add('glisse'); });
+  root.addEventListener('dragend', () => root.querySelectorAll('.glisse, .drop').forEach((x) => x.classList.remove('glisse', 'drop')));
+  root.addEventListener('dragover', (e) => {
+    if (![...e.dataTransfer.types].includes(T)) return; const c = cible(e);
+    root.querySelectorAll('.drop').forEach((x) => { if (x !== c) x.classList.remove('drop'); });
+    if (!c) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; c.classList.add('drop');
+  });
+  root.addEventListener('drop', (e) => {
+    if (![...e.dataTransfer.types].includes(T)) return; const c = cible(e); if (!c) return; e.preventDefault();
+    const k = e.dataTransfer.getData(T), t = DB.get(k); root.querySelectorAll('.drop, .glisse').forEach((x) => x.classList.remove('drop', 'glisse')); if (!t) return;
+    if (c.dataset.journee) { const [ek, d] = c.dataset.journee.split('|'); DB.put(k, Object.assign({}, t, { journee: c.dataset.journee })); toast(`« ${t.titre} » rattachée à ${titreEv(DB.get(ek) || {})} (${fmtDateCourt(d)}).`); }
+    else { const d = c.dataset.jour; DB.put(k, Object.assign({}, t, { echeance: d, journee: '' })); toast(d ? `« ${t.titre} » pour le ${fmtDate(d)}.` : `« ${t.titre} » remise à planifier.`); }
+  });
+}
+/* Les tâches d'une journée prévue : cocher celles à y faire (parmi les tâches ouvertes), ou en créer une */
+ACTIONS.plJournee = (el) => {
+  const j = el.dataset.j, [ek, d] = j.split('|'), e = DB.get(ek); if (!e) return; const ce = catEv(e);
+  const ouv = taches().filter((t) => tacheOuverte(t) && (t.journee === j || !journeeDe(t)));
+  const rang = (t) => (t.journee === j ? 0 : catTache(t).cat === ce.cat ? 1 : !catTache(t).cat ? 2 : 3);
+  const l = ouv.sort((a, b) => rang(a) - rang(b) || (dateTache(a) || '9').localeCompare(dateTache(b) || '9'));
+  openSheet(`${sheetHead('Tâches de la journée', `${titreEv(e)} · ${dateLongue(d)}`)}<form class="sbody form" data-form="plJournee"><input type="hidden" name="j" value="${esc(j)}">
+    <div class="row"><input id="pj-new" placeholder="Nouvelle tâche pour cette journée…" style="flex:1" autocomplete="off"><button class="btn small" type="button" data-act="plJourneeNew">Ajouter</button></div>
+    <div class="pj-liste">${l.length ? l.map((t) => { const c = catTache(t), dt = dateTache(t); return `<label class="row pj-it" style="--c:${esc(couleurCat(c.cat))}"><input type="checkbox" name="t" value="${esc(t.key)}"${t.journee === j ? ' checked' : ''}> <span style="flex:1"><b>${esc(t.titre)}</b> ${c.cat ? catPill(c.cat, c.sous, true) : ''}<br><span class="hint">${[t.responsable ? nomDe(t.responsable) : '', dt && t.journee !== j ? 'pour le ' + fmtDateCourt(dt) : '', t.urgent ? 'urgent' : ''].filter(Boolean).join(' · ')}</span></span></label>`; }).join('') : '<p class="empty">Aucune tâche ouverte.</p>'}</div>
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  const n = $('pj-new'); if (n) n.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ACTIONS.plJourneeNew(); } });
+};
+ACTIONS.plJourneeNew = () => {
+  const n = $('pj-new'), f = n && n.closest('form'); if (!n || !n.value.trim() || !f) return; const j = f.querySelector('input[name=j]').value, e = DB.get(j.split('|')[0]) || {};
+  const ce = catEv(e); DB.put('t:' + uid('t'), { titre: n.value.trim(), statut: 'afaire', cat: ce.cat === 'conge' ? '' : ce.cat, responsable: e.qui || '', journee: j, cultures: e.cultureId ? [e.cultureId] : [], cree: new Date().toISOString(), creePar: Sync.me || '' });
+  ACTIONS.plJournee({ dataset: { j } }); toast('Tâche ajoutée à la journée.');
+};
+FORMS.plJournee = (v, form) => {
+  const j = v.j, coches = new Set([...form.querySelectorAll('input[name=t]:checked')].map((x) => x.value));
+  for (const t of taches()) {
+    if (coches.has(t.key) && t.journee !== j) DB.put(t.key, Object.assign({}, t, { journee: j }));
+    else if (!coches.has(t.key) && t.journee === j) DB.put(t.key, Object.assign({}, t, { journee: '' }));
+  }
+  closeSheet(); toast(`${coches.size} tâche${coches.size > 1 ? 's' : ''} pour cette journée.`);
+};
 
 /* ---------- Heures : la semaine en lecture (un clic sur une case pour noter), puis le bilan de l'année ---------- */
 function renderSemaineHeures() {
@@ -334,11 +434,34 @@ ACTIONS.mesHeures = (el) => {
     const h = DB.get(hKey($('mh-d').value, $('mh-p').value)) || {};
     $('mh-h').value = h.heures ? fmtH(h.heures) : ''; $('mh-n').value = h.note || '';
     $('mh-deja').textContent = h.heures ? `Déjà noté ce jour-là : ${fmtH(h.heures)} h (tu peux corriger). ` : '';
-    const pb = $('mh-pour'); if (pb && typeof choixPourHtml === 'function') pb.outerHTML = choixPourHtml('mh-pour', h.pour, $('mh-d').value.slice(0, 4));
+    const sug = h.pour ? null : pourSuggere($('mh-d').value, $('mh-p').value);
+    const pb = $('mh-pour'); if (pb && typeof choixPourHtml === 'function') pb.outerHTML = choixPourHtml('mh-pour', h.pour || (sug && sug.pour), $('mh-d').value.slice(0, 4));
+    const ex = $('mh-sug'); if (ex) ex.remove();
+    if (sug && $('mh-pour')) $('mh-pour').insertAdjacentHTML('afterend', `<p class="hint" id="mh-sug">Pré-coché d'après ta journée : ${esc(sug.d)}. Corrige si besoin.</p>`);
+    if (sug && !$('mh-n').value && sug.note) $('mh-n').value = sug.note;
   };
   $('mh-p').addEventListener('change', maj); $('mh-d').addEventListener('change', maj); maj();
   setTimeout(() => { const i = $('mh-h'); if (i) i.focus(); }, 60);
 };
+/* Ce qu'une journée prévue dit des heures : catégories des événements et tâches du jour (de cette personne) → « Pour quoi ? » */
+function pourSuggere(d, p) {
+  if (!d || !p) return null;
+  const pourP = (q) => !q || q === 'ensemble' || q === p;
+  const evs = ((itemsPeriode(d, d)[d]) || []).filter((x) => x.kind === 'ev' && pourP(x.qui)).map((x) => DB.get(x.key)).filter(Boolean);
+  if (evs.some((e) => catEv(e).cat === 'conge')) return null;
+  const js = new Set(evs.map((e) => e.key));
+  const ts = taches().filter((t) => t.statut !== 'suspendu' && pourP(t.responsable) && (dateTache(t) === d || (t.statut === 'termine' && t.termineLe === d && t.terminePar === p) || (t.journee && js.has(t.journee.split('|')[0]) && t.journee.endsWith('|' + d))));
+  const o = {}, cus = new Set(), noms = [];
+  const ajoute = (cat, cultures) => { const h = cat && catInfo(cat).heures; if (h === 'admin') o.admin = true; else if (h === 'ventes') o.ventes = true; else if (h === 'cultures') { o.cultures = o.cultures || []; for (const c of cultures || []) cus.add(c); } };
+  for (const e of evs) { ajoute(catEv(e).cat, e.cultureId ? [e.cultureId] : []); noms.push(titreEv(e)); }
+  /* Les tâches faites d'abord ; s'il n'y en a pas encore, celles prévues ce jour-là */
+  const faitesT = ts.filter((t) => t.statut === 'termine');
+  for (const t of faitesT.length ? faitesT : ts) { ajoute(catTache(t).cat, t.cultures); }
+  if (!Object.keys(o).length) return null;
+  if (o.cultures) o.cultures = [...cus].filter((k) => { const c = DB.get(k); return c && String(c.saison) === d.slice(0, 4); });
+  const faites = ts.filter((t) => t.statut === 'termine').map((t) => t.titre);
+  return { pour: o, d: [...noms, ...(ts.length ? [`${ts.length} tâche${ts.length > 1 ? 's' : ''}`] : [])].join(', '), note: trunc([...noms, ...faites].join(', '), 120) };
+}
 ACTIONS.mhSet = (el) => { $('mh-h').value = el.dataset.h; $('mh-h').focus(); };
 FORMS.mesHeures = (v) => {
   if (!v.d || !v.p) { toast('Indique le jour et la personne.'); return; }

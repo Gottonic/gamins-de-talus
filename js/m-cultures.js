@@ -14,7 +14,7 @@ MODULES.cultures = {
   render(sub, id) {
     creerFichesManquantes();
     const nR = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().length : 0;
-    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
     if (sub === 'recoltes') return t + renderRecoltes();
     if (sub === 'marges') return t + renderMarges();
     if (sub === 'fiches') return t + renderFiches(id);

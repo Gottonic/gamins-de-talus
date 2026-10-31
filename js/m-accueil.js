@@ -15,7 +15,7 @@ const ICONS = {
   contacts: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.5.2 4.3 1.9 4.9 4.9"/></svg>',
   reglages: '<svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
 };
-const ORDRE = ['messages', 'mails', 'contacts', 'taches', 'calendrier', 'factures', 'finances', 'cultures', 'irrigation']; // par paires de couleur ; le Drive s'ouvre par le bouton en haut de l'écran
+const ORDRE = ['messages', 'mails', 'contacts', 'calendrier', 'factures', 'finances', 'cultures', 'irrigation']; // par paires de couleur ; le Drive s'ouvre par le bouton en haut de l'écran
 
 /* Ce que l'accueil montre : « moi » (ce qui me concerne, par défaut) ou « tous » ; mémorisé sur l'appareil */
 const ACC = { vue: ls.get('gdt-accueil-vue') || 'moi' };
@@ -45,7 +45,7 @@ function renderAccueil() {
   if (nl.length) groupes.push({ mod: 'messages', titre: 'Messages non lus', n: nl.length, items: nl.slice(-4).reverse().map((m) => ({ href: '#/messages', txt: `${nomDe(m.de)} : ${trunc(apercuMsg(m), 60)}`, val: fmtDateCourt(isoDate(new Date(m.cree))) })),
     plus: { href: '#/messages', txt: 'Ouvrir la messagerie' } });
   const ml = typeof mailsATraiter === 'function' ? mailsATraiter().filter((m) => ACC.vue !== 'moi' || !m.par || m.par === Sync.me) : [];
-  if (ml.length) groupes.push({ mod: 'mails', titre: 'Mails à traiter', n: ml.length, items: ml.slice(0, 4).map((m) => ({ href: '#/mails', txt: `${(m.de && (m.de.nom || m.de.adresse)) || '?'} : ${trunc(m.objet || '(sans objet)', 50)}`, val: m.par ? (m.par === Sync.me ? 'pour toi' : 'pour ' + nomDe(m.par)) : fmtDateCourt(String(m.date || '').slice(0, 10)), bad: !m.par, fort: m.par === Sync.me && m.confiePar && m.confiePar !== Sync.me })), plus: { href: '#/mails', txt: 'Voir les mails' } });
+  if (ml.length) groupes.push({ mod: 'mails', titre: 'Mails à traiter', n: ml.length, items: ml.slice(0, 4).map((m) => ({ href: '#/mails', txt: `${(m.de && (m.de.nom || m.de.adresse)) || '?'} : ${trunc(m.objet || '(sans objet)', 50)}`, val: m.par ? (m.par === Sync.me ? 'pour toi' : 'pour ' + nomDe(m.par)) : fmtDateCourt(String(m.date || '').slice(0, 10)), bad: !m.par, fort: !!Sync.me && m.par === Sync.me })), plus: { href: '#/mails', txt: 'Voir les mails' } });
   /* Factures échues : la personne à qui appartient le compte vérifie si le virement est arrivé */
   const tit = typeof titulaireCompte === 'function' ? titulaireCompte() : '';
   const verif = typeof virementsAVerifier === 'function' && (ACC.vue !== 'moi' || !Sync.me || !tit || tit === Sync.me) ? virementsAVerifier() : [];
@@ -57,15 +57,15 @@ function renderAccueil() {
   /* Tâches : d'abord urgentes et en retard, puis les prochaines échéances, puis les autres tâches ouvertes */
   const ouvT = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && pourMoi(t.responsable));
   const demain = addDays(today, 1);
-  const rang = (t) => (t.urgent || (t.echeance && t.echeance < today) ? 0 : t.echeance ? 1 : 2);
-  const tch = ouvT.sort((a, c) => rang(a) - rang(c) || String(a.echeance || '9').localeCompare(String(c.echeance || '9')) || String(a.cree || '').localeCompare(String(c.cree || '')));
-  groupes.push({ mod: 'taches', titre: 'Tâches urgentes et prochaines', n: ouvT.length, vide: 'Aucune tâche ouverte.',
-    items: tch.slice(0, 7).map((t) => ({ act: 'taEdit', data: { key: t.key }, txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''), val: t.urgent ? 'urgent' : t.echeance ? (t.echeance < today ? 'en retard' : t.echeance === today ? "aujourd'hui" : t.echeance === demain ? 'demain' : fmtDateCourt(t.echeance)) : '', bad: rang(t) === 0, fort: !!t.urgent || (!!t.echeance && t.echeance <= demain) })),
-    plus: ouvT.length > 7 ? { href: '#/taches', txt: `Voir les ${ouvT.length} tâches` } : null });
+  const rang = (t) => (t.urgent || (dateTache(t) && dateTache(t) < today) ? 0 : dateTache(t) ? 1 : 2);
+  const tch = ouvT.sort((a, c) => rang(a) - rang(c) || String(dateTache(a) || '9').localeCompare(String(dateTache(c) || '9')) || String(a.cree || '').localeCompare(String(c.cree || '')));
+  groupes.push({ mod: 'calendrier', titre: 'Tâches urgentes et prochaines', n: ouvT.length, vide: 'Aucune tâche ouverte.',
+    items: tch.slice(0, 7).map((t) => ({ act: 'taEdit', data: { key: t.key }, txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''), val: t.urgent ? 'urgent' : dateTache(t) ? (dateTache(t) < today ? 'en retard' : dateTache(t) === today ? "aujourd'hui" : dateTache(t) === demain ? 'demain' : fmtDateCourt(dateTache(t))) : '', bad: rang(t) === 0, fort: !!t.urgent || (!!dateTache(t) && dateTache(t) <= demain) })),
+    plus: ouvT.length > 7 ? { href: '#/calendrier/taches', txt: `Voir les ${ouvT.length} tâches` } : null });
   /* Calendrier des 7 prochains jours */
   const prochains = []; const it7 = itemsPeriode(today, addDays(today, 6));
   for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ act: 'evEdit', data: { key: x.key }, txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : d === addDays(today, 1) ? 'demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : ''), fort: d <= addDays(today, 1) });
-  groupes.push({ mod: 'calendrier', titre: 'Ces 7 prochains jours', n: prochains.length, vide: 'Rien de prévu au calendrier.', items: prochains.slice(0, 7), plus: { href: '#/calendrier/agenda', txt: "Voir l'agenda" } });
+  groupes.push({ mod: 'calendrier', titre: 'Ces 7 prochains jours', n: prochains.length, vide: 'Rien de prévu.', items: prochains.slice(0, 7), plus: { href: '#/calendrier', txt: "Voir la planification" } });
   /* Récoltes prévues au calendrier, pas encore enregistrées */
   const rae = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => pourMoi(r.qui)) : [];
   if (rae.length) groupes.push({ mod: 'cultures', titre: 'Récoltes à enregistrer', n: rae.length, items: rae.slice(0, 5).map((r) => ({ act: 'recolteEv', data: { key: r.key, occ: r.occ }, txt: r.titre, val: r.occ === today ? "aujourd'hui" : 'depuis le ' + fmtDateCourt(r.occ), fort: r.occ === today, bad: r.occ < today })) });

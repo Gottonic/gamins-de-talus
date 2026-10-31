@@ -60,7 +60,8 @@ MODULES.contacts = {
     if (sub === 'modifier' && (DB.get(id) || {}).prospect) sub = 'pmodifier';
     const pr = ['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub);
     const np = prospects().filter((c) => !['clos', 'valide'].includes(groupeStatut(pStat(c)))).length;
-    const t = tabs('contacts', [['', 'Contacts'], ['prospection', `Prospection${np ? ' · ' + np : ''}`]], pr ? 'prospection' : '');
+    const nRel = prospects().filter(aRelancer).length;
+    const t = tabs('contacts', [['', 'Contacts'], ['prospection', `Prospection${nRel ? ' · ' + nRel + ' à relancer' : np ? ' · ' + np : ''}`, nRel > 0]], pr ? 'prospection' : '');
     if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     return t + renderContacts(sub, id);
   },

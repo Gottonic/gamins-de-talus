@@ -13,8 +13,8 @@ function renderFeuille() {
     return `<tr><td class="fj"><b>${JOURS[i]}</b> ${fmtDateCourt(d)}</td><td>${xs.map((x) => `${x.heure ? '<b>' + esc(x.heure) + '</b> ' : ''}${esc(x.titre)}${x.qui && x.qui !== 'ensemble' && !String(x.titre).includes(nomDe(x.qui)) ? ' (' + esc(nomDe(x.qui)) + ')' : ''}`).join(' · ') || ''}</td></tr>`;
   }).join('');
   const ts = taches().filter((t) => t.statut !== 'termine' && t.statut !== 'suspendu' && pour(t.responsable))
-    .sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')));
-  const tachesHtml = ts.map((t) => `<li><span class="case"></span><span><b>${esc(t.titre)}</b>${t.urgent ? ' · URGENT' : ''}${t.echeance ? ' · pour le ' + fmtDateCourt(t.echeance) : ''}${t.responsable ? ' · ' + esc(nomDe(t.responsable)) : ''}${t.remarques ? `<br><small>${esc(trunc(t.remarques.replace(/\s+/g, ' '), 120))}</small>` : ''}</span></li>`).join('');
+    .sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0) || String(dateTache(a) || '9').localeCompare(String(dateTache(b) || '9')));
+  const tachesHtml = ts.map((t) => `<li><span class="case"></span><span><b>${esc(t.titre)}</b>${t.urgent ? ' · URGENT' : ''}${dateTache(t) ? ' · pour le ' + fmtDateCourt(dateTache(t)) : ''}${t.responsable ? ' · ' + esc(nomDe(t.responsable)) : ''}${t.remarques ? `<br><small>${esc(trunc(t.remarques.replace(/\s+/g, ' '), 120))}</small>` : ''}</span></li>`).join('');
   /* Cultures : à planter, à récolter, en place (avec où) */
   const y = l.slice(0, 4), cs = (typeof cultures === 'function' ? cultures(y) : []), sem = w.semaine;
   const dans = (s) => { const r = parseSemaines(s); return r && (r[0] <= r[1] ? sem >= r[0] && sem <= r[1] : sem >= r[0] || sem <= r[1]); };

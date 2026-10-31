@@ -226,8 +226,9 @@ function render() {
 addEventListener('hashchange', () => { closeSheet(); render(); });
 
 /* Onglets d'un module */
+/* items : [clé, libellé, fort] — « fort » met l'onglet en évidence (quelque chose à faire dedans) */
 function tabs(mod, items, cur) {
-  return `<nav class="subtabs" aria-label="Sections">${items.map(([k, label]) => `<a href="#/${mod}/${k}" class="${k === cur ? 'on' : ''}" ${k === cur ? 'aria-current="page"' : ''}>${esc(label)}</a>`).join('')}</nav>`;
+  return `<nav class="subtabs" aria-label="Sections">${items.map(([k, label, fort]) => `<a href="#/${mod}/${k}" class="${k === cur ? 'on' : ''}${fort ? ' fort' : ''}" ${k === cur ? 'aria-current="page"' : ''}>${esc(label)}</a>`).join('')}</nav>`;
 }
 
 /* Feuille (formulaire en bas d'écran sur téléphone, fenêtre au centre sur ordinateur) */

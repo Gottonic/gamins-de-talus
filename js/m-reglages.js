@@ -7,7 +7,8 @@ MODULES.reglages = {
   render(sub) {
     /* Notifications d'abord (onglet par défaut), puis Associés, Données, Entreprise */
     if (sub === 'notifications') sub = '';
-    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise']], sub);
+    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise'], ['categories', 'Catégories']], sub);
+    if (sub === 'categories') return t + renderCategories();
     if (sub === 'associes') return t + renderRegAssocies();
     if (sub === 'donnees') return t + renderDonnees();
     if (sub === 'entreprise') return t + renderEntreprise();
@@ -219,6 +220,39 @@ ACTIONS.importOk = () => {
   for (const [k, v] of IMPORT.completes) { if (!(k in DB.data)) continue; DB.data[k] = v; DB.sig[k] = canon(v); DB.dirty.add(k); c++; }
   IMPORT = null; Sync.changed(); toast(`${n} élément(s) importé(s)${c ? `, ${c} complété(s)` : ''}.`); render();
 };
+
+/* ---------- Catégories de la Planification (tâches, événements, heures) ---------- */
+const HEURES_CHOIX = [['cultures', 'Cultures'], ['ventes', 'Ventes & livraisons'], ['admin', 'Admin'], ['', '— (ne compte pas)']];
+function renderCategories() {
+  const cs = categories();
+  return `<div class="panel"><h2>Catégories</h2>
+    <p class="hint">Elles servent aux tâches, aux événements et aux heures. ⏱ = pour quoi comptent les heures : quand tu notes tes heures après une journée, la catégorie pré-coche Admin, Ventes ou Cultures (pour les marges). Les catégories et précisions marquées 🔒 servent à l'app (rappel de récolte, facture de livraison, congés) : on peut les renommer, pas les supprimer.</p>
+    <div class="cat-ed">${cs.map((c, i) => `<div class="cat-it" style="--c:${esc(c.couleur)}">
+      <div class="row cat-l1"><input class="cat-ico" value="${esc(c.icone || '')}" data-cat="${i}" data-f="icone" maxlength="4" aria-label="Icône"><input value="${esc(c.nom)}" data-cat="${i}" data-f="nom" maxlength="30" aria-label="Nom" style="flex:1;min-width:120px">
+        <input type="color" value="${esc(c.couleur)}" data-cat="${i}" data-f="couleur" aria-label="Couleur">
+        <label class="hint" style="display:flex;gap:6px;align-items:center;white-space:nowrap" title="Heures comptées pour (marges)">⏱ <select data-cat="${i}" data-f="heures">${HEURES_CHOIX.map(([k, l]) => `<option value="${k}"${(c.heures || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        ${c.fixe ? '<span title="Utilisée par l\'app">🔒</span>' : `<button class="btn small danger" type="button" data-act="catSuppr" data-i="${i}">Supprimer</button>`}</div>
+      <div class="row cat-sous">${(c.sous || []).map((s, j) => `<span class="tpill">${esc(s.nom)}${s.fixe ? ' 🔒' : ''}<button type="button" class="btn link small" data-act="catSousRen" data-i="${i}" data-j="${j}" aria-label="Renommer">✎</button>${s.fixe ? '' : `<button type="button" class="btn link small" data-act="catSousOff" data-i="${i}" data-j="${j}" aria-label="Retirer">×</button>`}</span>`).join('')}
+        <input placeholder="+ précision (ex. Taille, Paillage)" data-sous-new="${i}" maxlength="30" style="max-width:220px"></div></div>`).join('')}</div>
+    <div class="row"><input id="cat-new" placeholder="Nouvelle catégorie (ex. Formation)" maxlength="30"><button class="btn" type="button" data-act="catAjout">+ Catégorie</button></div>
+    <p class="hint">Une tâche ou un événement d'une catégorie supprimée passe dans « Autre ».</p></div>`;
+}
+const sauverCats = (cs) => { DB.put('cfg:categories', { liste: cs }); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset && (e.target.dataset.sousNew != null || e.target.id === 'cat-new' || e.target.dataset.cat != null)) { e.preventDefault(); if (e.target.id === 'cat-new') ACTIONS.catAjout(); else e.target.blur(); } });
+document.addEventListener('change', (e) => {
+  const el = e.target; if (!el.dataset) return;
+  if (el.dataset.cat != null && el.dataset.f) { const cs = categories(), c = cs[Number(el.dataset.cat)]; if (!c) return; c[el.dataset.f] = el.dataset.f === 'nom' ? (el.value.trim() || c.nom) : el.value; sauverCats(cs); toast('Enregistré.'); }
+  else if (el.dataset.sousNew != null && el.value.trim()) { const cs = categories(), c = cs[Number(el.dataset.sousNew)]; c.sous = (c.sous || []).concat([{ k: uid('s'), nom: el.value.trim() }]); sauverCats(cs); }
+});
+ACTIONS.catAjout = () => { const n = $('cat-new'); if (!n || !n.value.trim()) return; const cs = categories(); cs.splice(cs.findIndex((c) => c.k === 'autre'), 0, { k: uid('c'), nom: n.value.trim(), icone: '•', couleur: '#B4237A', heures: '', sous: [] }); sauverCats(cs); };
+ACTIONS.catSuppr = (el) => { const cs = categories(), c = cs[Number(el.dataset.i)]; if (!c || c.fixe) return; confirmSheet(`Supprimer « ${c.nom} » ?`, 'Ses tâches et événements passent dans « Autre ».', 'catSupprOk', 'Supprimer', { i: el.dataset.i }); };
+ACTIONS.catSupprOk = (el) => { const cs = categories(); cs.splice(Number(el.dataset.i), 1); sauverCats(cs); closeSheet(); };
+ACTIONS.catSousOff = (el) => { const cs = categories(), c = cs[Number(el.dataset.i)]; if (!c || (c.sous[Number(el.dataset.j)] || {}).fixe) return; c.sous.splice(Number(el.dataset.j), 1); sauverCats(cs); };
+ACTIONS.catSousRen = (el) => {
+  const c = categories()[Number(el.dataset.i)], s = c && c.sous[Number(el.dataset.j)]; if (!s) return;
+  openSheet(`${sheetHead('Renommer la précision', c.nom)}<form class="sbody form" data-form="catSousRen"><input type="hidden" name="i" value="${el.dataset.i}"><input type="hidden" name="j" value="${el.dataset.j}">${inp('cs-n', 'Nom', s.nom, { name: 'nom', req: true, attrs: { maxlength: 30, autofocus: '' } })}<div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+};
+FORMS.catSousRen = (v) => { const cs = categories(), s = (cs[Number(v.i)] || { sous: [] }).sous[Number(v.j)]; if (s && v.nom.trim()) { s.nom = v.nom.trim(); sauverCats(cs); } closeSheet(); };
 
 /* ---------- Notifications « pop-up » sur le téléphone ou l'ordinateur (Web Push) ----------
    Chaque appareil s'abonne (ligne push:<personne>:<appareil>) ; chacun choisit ce qu'il reçoit (cfg:notif:<personne>).

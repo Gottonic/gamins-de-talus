@@ -324,7 +324,7 @@ function renderMails() {
   const c = cfgMails(), etat = DB.get('cfg:mails:etat') || {}, all = mails();
   const f = MAIL.filtre, list = all.filter((m) => f === 'tous' ? true : f === 'moi' ? !mailFini(m) && m.par === Sync.me : f === 'traites' ? mailFini(m) : !mailFini(m));
   const nMoi = mailsPourMoi().length;
-  const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', `Pour moi${nMoi ? ' · ' + nMoi : ''}`], ['traites', 'Traités'], ['tous', 'Tous']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
+  const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', `Pour moi${nMoi ? ' · ' + nMoi : ''}`], ['traites', 'Traités'], ['tous', 'Tous']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}${k === 'moi' && nMoi && f !== k ? ' fort' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
   if (!all.length && !etat.derniere) return `<div class="panel"><h2>Mails</h2><p>Les mails reçus sur votre adresse commune (${esc(c.adresse || 'Infomaniak')}) apparaîtront ici : qui s'en occupe, ce qui est traité, en lien avec vos contacts.</p>
     <p class="hint">Il reste à installer la fonction « mails » dans Supabase (voir le README, partie « Mails »). Ensuite, la boîte est relevée chaque fois que quelqu'un ouvre cette page, et toutes les 10 minutes par Supabase.</p>
     <div class="row"><button class="btn primary" type="button" data-act="mailEcrire">✉️ Nouveau mail</button><button class="btn" type="button" data-act="mailRelever">Essayer de relever maintenant</button><button class="btn" type="button" data-act="mailCfg">Réglages</button></div></div>`;
@@ -387,7 +387,7 @@ ACTIONS.mailPlus = (el) => {
 };
 ACTIONS.mailTache = (el) => {
   const m = DB.get(el.dataset.key); if (!m) return; const k = 't:' + uid('t');
-  DB.put(k, { titre: trunc('Mail : ' + (m.objet || (m.de && m.de.nom) || ''), 80), statut: 'afaire', responsable: Sync.me || '', tag: 'admin', remarques: `De ${(m.de && (m.de.nom + ' <' + m.de.adresse + '>')) || ''} le ${fmtDate(String(m.date || '').slice(0, 10))}\n\n${m.extrait || ''}`, cree: new Date().toISOString(), creePar: Sync.me || '' });
+  DB.put(k, { titre: trunc('Mail : ' + (m.objet || (m.de && m.de.nom) || ''), 80), statut: 'afaire', responsable: Sync.me || '', cat: 'admin', remarques: `De ${(m.de && (m.de.nom + ' <' + m.de.adresse + '>')) || ''} le ${fmtDate(String(m.date || '').slice(0, 10))}\n\n${m.extrait || ''}`, cree: new Date().toISOString(), creePar: Sync.me || '' });
   majMail(el.dataset.key, mailFini(m) ? { tache: k } : { statut: 'encours', par: m.par || Sync.me, tache: k }); closeSheet(); ACTIONS.taEdit({ dataset: { key: k } });
 };
 ACTIONS.mailContact = (el) => {
