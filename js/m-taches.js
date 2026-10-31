@@ -40,8 +40,10 @@ const tacheOuverte = (t) => t.statut !== 'termine';
 const estPlanifiee = (t) => { const d = jourPlanifie(t); return !!d && d >= todayISO(); };
 const tacheEnRetard = (t) => tacheOuverte(t) && !!t.echeance && t.echeance < todayISO();
 const echeanceProche = (t) => tacheOuverte(t) && !!t.echeance && t.echeance <= addDays(todayISO(), ECH_PROCHE);
+/* Prévue un jour passé (seule ou dans une journée) et pas cochée : elle revient en tête de « À planifier » */
+const pasTerminee = (t) => tacheOuverte(t) && !!jourPlanifie(t) && jourPlanifie(t) < todayISO();
 function trierAPlanifier(l) {
-  return l.sort((a, b) => (echeanceProche(b) - echeanceProche(a)) || (echeanceProche(a) && echeanceProche(b) ? String(a.echeance).localeCompare(String(b.echeance)) : 0)
+  return l.sort((a, b) => (pasTerminee(b) - pasTerminee(a)) || (pasTerminee(a) && pasTerminee(b) ? jourPlanifie(b).localeCompare(jourPlanifie(a)) : 0) || (echeanceProche(b) - echeanceProche(a)) || (echeanceProche(a) && echeanceProche(b) ? String(a.echeance).localeCompare(String(b.echeance)) : 0)
     || importanceDe(a) - importanceDe(b) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')) || String(a.cree || '').localeCompare(String(b.cree || '')));
 }
 const pourQui = (t) => TA.qui === 'moi' ? (t.responsable === Sync.me || t.responsable === 'ensemble' || !t.responsable) : TA.qui ? t.responsable === TA.qui : true;
@@ -80,10 +82,10 @@ function renderTaches() {
 /* La liste « À planifier » : échéance proche en haut, puis par importance */
 function listeAPlanifierHtml(l, o = {}) {
   if (!l.length) return `<p class="empty">${o.vide || 'Rien à planifier.'}</p>`;
-  const proches = l.filter(echeanceProche), reste = l.filter((t) => !echeanceProche(t));
+  const pasFinies = l.filter(pasTerminee), proches = l.filter((t) => !pasTerminee(t) && echeanceProche(t)), reste = l.filter((t) => !pasTerminee(t) && !echeanceProche(t));
   const sec = (titre, xs, cls) => xs.length ? `<div class="ta-sec${cls ? ' ' + cls : ''}"><h4>${titre} · ${xs.length}</h4>${xs.map((t) => tacheHtml(t, o)).join('')}</div>` : '';
   o = Object.assign({ planifier: true }, o);
-  return sec('⏰ Échéance proche', proches, 'proche') + IMPORTANCES.map(([n, nom, pts]) => sec(`<span class="imp imp${n}">${pts}</span> ${nom}`, reste.filter((t) => importanceDe(t) === n))).join('');
+  return sec('↩ Pas terminées ?', pasFinies, 'pasfinie') + sec('⏰ Échéance proche', proches, 'proche') + IMPORTANCES.map(([n, nom, pts]) => sec(`<span class="imp imp${n}">${pts}</span> ${nom}`, reste.filter((t) => importanceDe(t) === n))).join('');
 }
 function tacheHtml(t, o = {}) {
   const done = !tacheOuverte(t), c = catTache(t), j = journeeDe(t), imp = importanceDe(t), today = todayISO();
@@ -91,7 +93,7 @@ function tacheHtml(t, o = {}) {
   if (!o.sansCat && c.cat) meta.push(catPill(c.cat, c.sous)); else if (c.sous) meta.push(catPill(c.cat, c.sous, true));
   if (t.echeance && !done) meta.push(`<span class="ech${t.echeance < today ? ' passee' : echeanceProche(t) ? ' proche' : ''}">⏰ ${t.echeance < today ? 'échéance dépassée · ' : 'avant le '}${fmtDateCourt(t.echeance)}</span>`);
   if (o.plan && j) meta.push(`<span>📅 ${esc(j.titre)}</span>`);
-  if (!done && !estPlanifiee(t) && jourPlanifie(t) && jourPlanifie(t) < today) meta.push(`<span class="err">prévue le ${fmtDateCourt(jourPlanifie(t))}, pas faite</span>`);
+  if (pasTerminee(t)) { const jp = journeeDe(t); meta.push(`<span class="pasfinie">pas cochée ${jp ? '· ' + esc(jp.titre) + ' ' : ''}du ${fmtDateCourt(jourPlanifie(t))}</span>`); }
   if (t.responsable) meta.push(`<span>${esc(nomDe(t.responsable))}</span>`);
   const cus = (t.cultures || []).map((k) => DB.get(k)).filter(Boolean);
   if (cus.length) meta.push(`<span>🌿 ${esc(cus.map((x) => x.nom).join(', '))}</span>`);
@@ -107,12 +109,15 @@ ACTIONS.taPlanifier = (el) => {
   const jrs = journeesProchaines().slice(0, 8);
   const jours = Array.from({ length: 7 }, (_, i) => addDays(today, i)).map((d, i) => [d, i === 0 ? "Aujourd'hui" : i === 1 ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)]);
   PL.rafraichir = null;
-  openSheet(`${sheetHead(t.titre, 'À planifier')}<div class="sbody">${resumeTacheHtml(t, k)}
+  const jp = journeeDe(t), pf = pasTerminee(t);
+  openSheet(`${sheetHead(t.titre, pf ? 'Pas terminée ?' : 'À planifier')}<div class="sbody">
+    ${pf ? `<div class="pasfinie-box"><p>Prévue ${jp ? 'pendant « ' + esc(jp.titre) + ' » ' : ''}le ${esc(dateLongue(jourPlanifie(t)))}, mais pas cochée.</p><div class="row"><button class="btn primary" type="button" data-act="taFaiteOk" data-key="${esc(k)}">✓ En fait, c'est fait</button><span class="hint">Sinon, choisis un nouveau jour ci-dessous.</span></div></div>` : ''}
+    ${resumeTacheHtml(t, k)}
     <h2 class="pl-q">Quand la faire ?</h2>
     ${jrs.length ? `<h3>Dans une journée prévue</h3><div class="menu-list">${jrs.map(([j, l]) => `<button type="button" class="menu-it" data-act="taPlanOk" data-key="${esc(k)}" data-j="${esc(j)}">📅 ${esc(l)}</button>`).join('')}</div>` : ''}
     <h3>Ou un jour</h3><div class="chips">${jours.map(([d, l]) => `<button type="button" class="chip" data-act="taPlanOk" data-key="${esc(k)}" data-d="${d}">${esc(l)}</button>`).join('')}</div>
     <div class="row" style="margin-top:8px"><input type="date" id="tp-d" min="${today}"><button class="btn" type="button" data-act="taPlanOk" data-key="${esc(k)}" data-champ="1">OK</button></div>
-    <div class="row-end">${estPlanifiee(t) ? `<button class="btn" type="button" data-act="taPlanOk" data-key="${esc(k)}" data-retirer="1">Remettre à planifier</button>` : ''}<button class="btn" type="button" data-act="taEdit" data-key="${esc(k)}">Modifier</button><button class="btn" type="button" data-act="taFaiteOk" data-key="${esc(k)}">✓ Faite</button></div></div>`);
+    <div class="row-end">${estPlanifiee(t) ? `<button class="btn" type="button" data-act="taPlanOk" data-key="${esc(k)}" data-retirer="1">Remettre à planifier</button>` : ''}<button class="btn" type="button" data-act="taEdit" data-key="${esc(k)}">Modifier</button>${pf ? '' : `<button class="btn" type="button" data-act="taFaiteOk" data-key="${esc(k)}">✓ Faite</button>`}</div></div>`);
 };
 ACTIONS.taPlanOk = (el) => {
   const k = el.dataset.key, t = DB.get(k); if (!t) return;
