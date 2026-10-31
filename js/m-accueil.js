@@ -61,7 +61,7 @@ function renderAccueil() {
   const tEch = trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t) && echeanceProche(t) && pourMoi(t.responsable)));
   const tch = tAuj.concat(tEch), ouvT = tch;
   if (tch.length) groupes.push({ mod: 'calendrier', titre: "Tâches du jour et échéances proches", n: tch.length,
-    items: tch.slice(0, 7).map((t) => ({ act: 'taEdit', data: { key: t.key }, txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''),
+    items: tch.slice(0, 7).map((t) => ({ act: 'taVoir', data: { key: t.key }, txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''),
       val: t.jour === today && !t.journee ? "aujourd'hui" : t.echeance < today ? 'échéance dépassée' : t.echeance === today ? "échéance aujourd'hui" : 'avant le ' + fmtDateCourt(t.echeance),
       bad: !!t.echeance && t.echeance < today, fort: !(t.jour === today) && !!t.echeance && t.echeance <= demain })),
     plus: { href: '#/calendrier/taches', txt: 'Voir les tâches à planifier' } });

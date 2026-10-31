@@ -270,9 +270,9 @@ function renderVue() {
     const det = [x.heure ? x.heure + (e.heureFin ? '–' + e.heureFin : '') : '', x.qui ? quiLabel(x.qui) : '', c && !x.titre.includes(displayName(c)) ? displayName(c) : '', cu && !x.titre.includes(cu.nom) ? cu.nom : ''].filter(Boolean).join(' · ');
     const rec = e.type === 'recolte' && d <= today && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(x.key, x.occ) && !((e.occ || {})[x.occ] || {}).sansRecolte;
     return `<div class="pl-ev${fort ? ' fort' : ''}${x.fait ? ' fait' : ''}" style="--c:${esc(x.couleur)}" data-journee="${esc(j)}">
-      <div class="pl-ev-h" data-act="calDay" data-d="${d}" role="button" tabindex="0"><span class="pl-ev-t">${esc(catInfo(ce.cat).icone || '')} <b>${esc(x.titre)}</b>${x.multi ? ' <span class="hint">(plusieurs jours)</span>' : ''}</span>${det ? `<span class="pl-ev-d">${esc(det)}</span>` : ''}</div>
+      <div class="pl-ev-h" data-act="plJourneeVoir" data-j="${esc(j)}" role="button" tabindex="0" title="Ouvrir la journée"><span class="pl-ev-t">${esc(catInfo(ce.cat).icone || '')} <b>${esc(x.titre)}</b>${x.multi ? ' <span class="hint">(plusieurs jours)</span>' : ''}</span>${det ? `<span class="pl-ev-d">${esc(det)}</span>` : ''}</div>
       ${tj.length ? `<div class="pl-ev-taches">${tj.map((t) => tacheHtml(t, { sansDate: true, court: true, sansCat: true })).join('')}</div>` : ''}
-      <div class="row pl-ev-act">${rec ? `<button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button>` : ''}${ce.cat !== 'conge' ? `<button class="btn small" type="button" data-act="plJournee" data-j="${esc(j)}">☑ Tâches${tj.length ? '' : ' de la journée'}</button>` : ''}<button class="btn small" type="button" data-act="evEdit" data-key="${esc(x.key)}">Modifier</button></div></div>`;
+      ${rec ? `<div class="row pl-ev-act"><button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button></div>` : ''}</div>`;
   };
   let jours = '';
   for (let d = today; d <= fin; d = addDays(d, 1)) {
@@ -284,8 +284,7 @@ function renderVue() {
     /* Jour vide : caché (il n'apparaît que pendant qu'on glisse une tâche, pour pouvoir l'y déposer) */
     if (vide && d !== today) { jours += `<div class="pl-jour vide" data-jour="${d}"><span class="pl-date">${JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3)} ${fmtDateCourt(d)}</span><span class="hint">déposer ici</span></div>`; continue; }
     jours += `<div class="pl-jour${d === today ? ' auj' : ''}" data-jour="${d}">
-      <div class="between pl-jour-h"><button type="button" class="pl-date" data-act="calDay" data-d="${d}"><b>${d === today ? "Aujourd'hui" : d === addDays(today, 1) ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b> ${fmtDateCourt(d)}</button>
-        <span class="row"><button class="btn link small" type="button" data-act="taNouvelle" data-date="${d}">+ tâche</button><button class="btn link small" type="button" data-act="evEdit" data-date="${d}">+ événement</button></span></div>
+      <div class="between pl-jour-h"><button type="button" class="pl-date" data-act="plJourVoir" data-d="${d}" title="Ouvrir le jour"><b>${d === today ? "Aujourd'hui" : d === addDays(today, 1) ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b> ${fmtDateCourt(d)}</button></div>
       ${evs.map((x) => ev(x, d)).join('')}
       ${ts.length ? `<div class="pl-taches">${ts.map((t) => tacheHtml(t, { sansDate: true, court: true })).join('')}</div>` : ''}
       ${autres.map((x) => `<div class="agit clic" style="--c:${x.kind === 'facture' ? 'var(--c-factures)' : 'var(--c-contacts)'}" data-act="go" data-href="${x.kind === 'facture' ? '#/factures/voir/' : '#/contacts/prospect/'}${encodeURIComponent(x.key)}" role="button" tabindex="0">${esc(x.titre)}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}
@@ -293,19 +292,62 @@ function renderVue() {
   }
   const plan = listeAPlanifierHtml(aPlan, { court: true, vide: 'Tout est planifié. 👌' });
   const quiChips = Sync.me ? `<div class="seg-mini" role="group" aria-label="Afficher"><button type="button" class="${PL.qui === 'moi' ? 'on' : ''}" data-act="plQui" data-v="moi">Pour moi</button><button type="button" class="${PL.qui !== 'moi' ? 'on' : ''}" data-act="plQui" data-v="">Tout le monde</button></div>` : '';
-  return `<div class="pl-cols"><div class="panel"><div class="between"><div class="row">${quiChips}</div><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn small" type="button" data-act="taNouvelle">+ Tâche</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
+  return `<div class="pl-cols"><div class="panel"><div class="between"><div class="row">${quiChips}</div><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
       <div class="pl-jours">${jours}</div>
       <div class="row"><button class="btn link" type="button" data-act="plAutreJour">+ Prévoir un autre jour…</button>${PL.jours < 42 ? `<button class="btn link" type="button" data-act="plPlus">Voir plus loin</button>` : ''}</div></div>
     <div class="panel pl-aplan" data-jour=""><div class="between"><h2>À planifier${aPlan.length ? ' · ' + aPlan.length : ''}</h2><button class="btn small" type="button" data-act="taNouvelle">+ Tâche</button></div>
       ${plan}
-      <p class="hint pl-aide">Sur ordinateur : glisse une tâche sur un jour, ou sur une journée prévue pour l'y rattacher. Sur téléphone : touche la tâche → « Planifier ».</p></div></div>`;
+      <p class="hint pl-aide">Touche une tâche pour la planifier. Sur ordinateur, tu peux aussi la glisser sur un jour ou sur une journée.</p></div></div>`;
 }
 /* Un jour sans rien : le choisir, puis y mettre une tâche ou un événement */
 ACTIONS.plAutreJour = () => {
   openSheet(`${sheetHead('Prévoir un autre jour')}<div class="sbody form">${inp('pa-d', 'Jour', addDays(todayISO(), 1), { type: 'date' })}
-    <div class="row-end"><button class="btn" type="button" data-act="plAutreJourOk" data-quoi="tache">+ Tâche ce jour-là</button><button class="btn primary" type="button" data-act="plAutreJourOk" data-quoi="ev">+ Événement</button></div></div>`);
+    <div class="row-end"><button class="btn primary" type="button" data-act="plAutreJourOk">Ouvrir ce jour</button></div></div>`);
 };
-ACTIONS.plAutreJourOk = (el) => { const d = ($('pa-d') || {}).value; if (!d) return; closeSheet(); if (el.dataset.quoi === 'ev') ACTIONS.evEdit({ dataset: { date: d } }); else ACTIONS.taNouvelle({ dataset: { date: d } }); };
+ACTIONS.plAutreJourOk = () => { const d = ($('pa-d') || {}).value; if (!d) return; ACTIONS.plJourVoir({ dataset: { d } }); };
+
+/* ---------- Vues simplifiées (fenêtres) : un jour, une journée prévue ----------
+   On y coche les tâches, on en ajoute ; « Modifier » ouvre la fiche complète. */
+PL.rafraichir = null;
+const rafraichirFenetre = () => { if (PL.rafraichir && document.body.classList.contains('sheet-open')) PL.rafraichir(); };
+const ajoutTacheHtml = (o) => `<form class="quick" data-form="plAjout"><input type="hidden" name="jour" value="${esc(o.jour || '')}"><input type="hidden" name="journee" value="${esc(o.journee || '')}">
+  <input name="titre" id="pl-ajout" placeholder="Nouvelle tâche${o.journee ? ' pour cette journée' : ' ce jour-là'}…" autocomplete="off" aria-label="Nouvelle tâche"><button class="btn primary" type="submit">Ajouter</button></form>`;
+FORMS.plAjout = (v) => {
+  if (!v.titre) return; const e = v.journee ? DB.get(v.journee.split('|')[0]) || {} : null, ce = e ? catEv(e) : { cat: '' };
+  DB.put('t:' + uid('t'), { titre: v.titre, statut: 'afaire', importance: 2, cat: ce.cat === 'conge' ? '' : ce.cat || '', responsable: e && e.qui ? e.qui : Sync.me || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cultures: e && e.cultureId ? [e.cultureId] : [], cree: new Date().toISOString(), creePar: Sync.me || '' });
+  rafraichirFenetre(); setTimeout(() => { const i = $('pl-ajout'); if (i) i.focus(); }, 30);
+};
+ACTIONS.plJourneeVoir = (el) => {
+  const j = el.dataset.j, [ek, d] = j.split('|'), e = DB.get(ek); if (!e) return; const ce = catEv(e);
+  PL.rafraichir = () => ACTIONS.plJourneeVoir({ dataset: { j } });
+  const tj = taches().filter((t) => t.journee === j).sort((a, b) => (a.statut === 'termine') - (b.statut === 'termine') || importanceDe(a) - importanceDe(b));
+  const cu = e.cultureId && DB.get(e.cultureId), c = e.contactId && DB.get(e.contactId);
+  const det = [e.heureDebut ? e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : '', e.qui ? quiLabel(e.qui) : '', c ? displayName(c) : '', cu ? cu.nom : ''].filter(Boolean).join(' · ');
+  const rec = e.type === 'recolte' && d <= todayISO() && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(ek, d) && !((e.occ || {})[d] || {}).sansRecolte;
+  const faites = tj.filter((t) => t.statut === 'termine').length;
+  openSheet(`<div class="shead pl-tete" style="--c:${esc(couleurCat(ce.cat))}"><h2>${esc(catInfo(ce.cat).icone || '')} ${esc(titreEv(e))}<small>${esc(dateLongue(d))}${det ? ' · ' + esc(det) : ''}</small></h2><button type="button" class="xbtn" data-act="close" aria-label="Fermer">Fermer</button></div>
+    <div class="sbody">
+    ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
+    ${rec ? `<div class="row"><button class="btn primary" type="button" data-act="recolteEv" data-key="${esc(ek)}" data-occ="${d}">Enregistrer la récolte</button></div>` : ''}
+    <h3>Tâches${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</h3>
+    ${tj.length ? tj.map((t) => tacheHtml(t, { court: true, sansDate: true, sansCat: !!catTache(t).cat && catTache(t).cat === ce.cat })).join('') : '<p class="hint">Aucune tâche pour cette journée.</p>'}
+    ${ajoutTacheHtml({ journee: j })}
+    <button class="btn link small" type="button" data-act="plJournee" data-j="${esc(j)}">Choisir dans « À planifier »…</button>
+    <div class="row-end"><button class="btn" type="button" data-act="calDay" data-d="${d}">Heures et détails du jour</button><button class="btn" type="button" data-act="evEdit" data-key="${esc(ek)}">Modifier la journée</button></div></div>`);
+};
+ACTIONS.plJourVoir = (el) => {
+  const d = el.dataset.d, today = todayISO(); PL.rafraichir = () => ACTIONS.plJourVoir({ dataset: { d } });
+  const xs = itemsPeriode(d, d)[d] || [];
+  const evs = xs.filter((x) => x.kind === 'ev').sort((a, b) => String(a.heure || '99').localeCompare(String(b.heure || '99')));
+  const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => DB.get(x.key)).filter(Boolean)
+    .concat(taches().filter((t) => t.statut === 'termine' && !t.journee && t.jour === d)).sort((a, b) => (a.statut === 'termine') - (b.statut === 'termine') || importanceDe(a) - importanceDe(b));
+  openSheet(`${sheetHead((d === today ? "Aujourd'hui · " : '') + dateLongue(d).replace(/^./, (c) => c.toUpperCase()))}<div class="sbody">
+    ${evs.length ? evs.map((x) => { const nt = taches().filter((t) => t.journee === x.key + '|' + x.occ && t.statut !== 'termine').length; return `<button type="button" class="pl-ev pl-ev-btn" style="--c:${esc(x.couleur)}" data-act="plJourneeVoir" data-j="${esc(x.key + '|' + x.occ)}"><span><b>${esc(x.titre)}</b>${x.heure ? ' · ' + esc(x.heure) : ''}${x.qui ? ' · ' + esc(quiLabel(x.qui)) : ''}</span>${nt ? `<span class="hint">${nt} tâche${nt > 1 ? 's' : ''} ›</span>` : '<span class="hint">›</span>'}</button>`; }).join('') : ''}
+    <h3>Tâches de ce jour</h3>
+    ${ts.length ? ts.map((t) => tacheHtml(t, { court: true, sansDate: true })).join('') : '<p class="hint">Aucune tâche prévue ce jour-là (hors journées).</p>'}
+    ${ajoutTacheHtml({ jour: d })}
+    <div class="row-end"><button class="btn" type="button" data-act="calDay" data-d="${d}">Heures et détails du jour</button><button class="btn primary" type="button" data-act="evEdit" data-date="${d}">+ Événement</button></div></div>`);
+};
 ACTIONS.plQui = (el) => { PL.qui = el.dataset.v; ls.set('gdt-pl-qui', PL.qui); render(); };
 ACTIONS.plPlus = () => { PL.jours += 14; render(); };
 try { PL.qui = ls.get('gdt-pl-qui') ?? 'moi'; } catch (e) { PL.qui = 'moi'; }

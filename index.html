@@ -623,6 +623,22 @@ table.matrix td.neg { color: var(--muted); }
 .pl-cols { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1000px) { .pl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; } .pl-cols > .panel { margin: 0; } .panel.pl-aplan { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; } }
 .pl-jour.vide { display: none; }
+.pl-tete { border-top: 6px solid var(--c); }
+.pl-rem { white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 4px 0; font-size: 14px; }
+.pl-ev-btn { width: 100%; text-align: left; font: inherit; color: inherit; border-top: 0; border-right: 0; border-bottom: 0; cursor: pointer; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.pl-ev-h { cursor: pointer; }
+.pl-ev-h:hover b { text-decoration: underline; }
+.pl-q { font-size: 18px; margin: 14px 0 4px; }
+.ta-resume .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; margin: 0 0 6px; }
+.ta-resume .sep { color: var(--line); }
+.ta-res-liste { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; }
+.ta-res-liste .ta-li { font-size: 16px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.ta-res-liste input { width: 22px; height: 22px; }
+.barre { text-decoration: line-through; color: var(--muted); }
+.ta-plus-btns { gap: 6px; flex-wrap: wrap; }
+.ta-partie { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.ta-partie[hidden] { display: none; }
+.ta-partie legend { font-weight: 700; font-size: 14px; padding: 0 4px; }
 .glisse-tache .pl-jour.vide { display: flex; border: 1px dashed var(--line); padding: 6px 10px; }
 .task .ta-plan { display: none; flex: none; align-self: center; }
 @media (pointer: coarse) { .task .ta-plan { display: inline-flex; } }
