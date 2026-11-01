@@ -7,7 +7,8 @@ MODULES.reglages = {
   render(sub) {
     /* Notifications d'abord (onglet par défaut), puis Associés, Données, Entreprise */
     if (sub === 'notifications') sub = '';
-    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise'], ['categories', 'Catégories']], sub);
+    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise'], ['categories', 'Catégories'], ['apparence', 'Apparence']], sub);
+    if (sub === 'apparence') return t + renderApparence();
     if (sub === 'categories') return t + renderCategories();
     if (sub === 'associes') return t + renderRegAssocies();
     if (sub === 'donnees') return t + renderDonnees();
@@ -21,6 +22,34 @@ MODULES.reglages = {
     const f = $('imp-file'); if (f) f.addEventListener('change', () => lireImport(f.files[0]));
   },
 };
+
+/* Apparence : thème choisi par appareil (clair par défaut). L'application réelle se fait dans index.html (appliquerTheme). */
+const THEMES = [['clair', 'Clair', 'Le thème habituel'], ['sombre', 'Sombre', 'Repose les yeux le soir'], ['systeme', 'Système', 'Suit le réglage du téléphone ou de l\'ordi'], ['crazy', 'Crazy 🌈', 'Psychédélique. Vraiment.']];
+function themeChoisi() { try { return localStorage.getItem('gdt-theme') || 'clair'; } catch (e) { return 'clair'; } }
+function renderApparence() {
+  const c = themeChoisi();
+  return `<div class="panel"><h2>Thème</h2>
+    <div class="themes">${THEMES.map(([k, l, d]) => `<button type="button" class="theme-ch${k === c ? ' on' : ''}" data-act="themeChoisir" data-k="${k}" aria-pressed="${k === c}">
+      <span class="ap t-${k}"><i></i><i></i><i></i><i></i></span><b>${esc(l)}</b><span class="hint">${esc(d)}</span></button>`).join('')}</div>
+    <p class="hint">Le choix vaut pour cet appareil seulement : chacun règle le sien.${c === 'crazy' ? ' En mode crazy, chaque clic fait des étincelles.' : ''}</p></div>`;
+}
+ACTIONS.themeChoisir = (el) => {
+  const k = el.dataset.k; try { localStorage.setItem('gdt-theme', k); } catch (e) {}
+  if (typeof appliquerTheme === 'function') appliquerTheme();
+  render(); toast(k === 'crazy' ? '🌈✨ Accroche-toi !' : 'Thème : ' + THEMES.find((t) => t[0] === k)[1] + '.');
+};
+/* Étincelles au clic en mode crazy (rien si l'appareil demande moins d'animations) */
+const BOUMS = ['🌈', '✨', '🍄', '🌻', '🦄', '💫', '🌀', '🍓', '🥕', '🐸', '🌶️', '⭐'];
+document.addEventListener('pointerdown', (e) => {
+  if (document.documentElement.dataset.theme !== 'crazy' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  for (let i = 0; i < 7; i++) {
+    const s = document.createElement('span'), a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 70;
+    s.className = 'crazy-boum'; s.textContent = BOUMS[Math.floor(Math.random() * BOUMS.length)];
+    s.style.left = e.clientX + 'px'; s.style.top = e.clientY + 'px';
+    s.style.setProperty('--dx', Math.cos(a) * d + 'px'); s.style.setProperty('--dy', Math.sin(a) * d + 'px'); s.style.setProperty('--r', (Math.random() * 720 - 360) + 'deg');
+    document.body.appendChild(s); setTimeout(() => s.remove(), 950);
+  }
+}, { passive: true });
 
 function renderEntreprise() {
   const s = cfg();
