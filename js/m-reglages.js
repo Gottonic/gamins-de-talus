@@ -24,19 +24,16 @@ MODULES.reglages = {
 };
 
 /* Apparence : thème choisi par appareil (clair par défaut). L'application réelle se fait dans index.html (appliquerTheme). */
-const THEMES = [['clair', 'Clair', 'Le thème habituel'], ['sombre', 'Sombre', 'Repose les yeux le soir'], ['systeme', 'Système', 'Suit le réglage du téléphone ou de l\'ordi'], ['crazy', 'Crazy 🌈', 'Psychédélique. Vraiment.']];
+const THEMES = [['clair', 'Clair'], ['sombre', 'Sombre'], ['systeme', 'Système'], ['crazy', 'Crazy']];
 function themeChoisi() { try { return localStorage.getItem('gdt-theme') || 'clair'; } catch (e) { return 'clair'; } }
 function renderApparence() {
   const c = themeChoisi();
-  return `<div class="panel"><h2>Thème</h2>
-    <div class="themes">${THEMES.map(([k, l, d]) => `<button type="button" class="theme-ch${k === c ? ' on' : ''}" data-act="themeChoisir" data-k="${k}" aria-pressed="${k === c}">
-      <span class="ap t-${k}"><i></i><i></i><i></i><i></i></span><b>${esc(l)}</b><span class="hint">${esc(d)}</span></button>`).join('')}</div>
-    <p class="hint">Le choix vaut pour cet appareil seulement : chacun règle le sien.${c === 'crazy' ? ' En mode crazy, chaque clic fait des étincelles.' : ''}</p></div>`;
+  return `<div class="panel"><h2>Thème</h2><div class="themes">${THEMES.map(([k, l]) => `<button type="button" class="theme-ch t-${k}${k === c ? ' on' : ''}" data-act="themeChoisir" data-k="${k}" aria-pressed="${k === c}"><span>${esc(l)}</span></button>`).join('')}</div></div>`;
 }
 ACTIONS.themeChoisir = (el) => {
   const k = el.dataset.k; try { localStorage.setItem('gdt-theme', k); } catch (e) {}
   if (typeof appliquerTheme === 'function') appliquerTheme();
-  render(); toast(k === 'crazy' ? '🌈✨ Accroche-toi !' : 'Thème : ' + THEMES.find((t) => t[0] === k)[1] + '.');
+  render(); toast('Thème : ' + THEMES.find((t) => t[0] === k)[1] + '.');
 };
 /* Étincelles au clic en mode crazy (rien si l'appareil demande moins d'animations) */
 const BOUMS = ['🌈', '✨', '🍄', '🌻', '🦄', '💫', '🌀', '🍓', '🥕', '🐸', '🌶️', '⭐'];

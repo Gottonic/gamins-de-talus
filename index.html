@@ -935,17 +935,14 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 @media print { [data-theme] body::before, [data-theme] body::after { display: none; } }
 
 /* Choix du thème (Réglages → Apparence) */
-.themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-.theme-ch { font: inherit; cursor: pointer; border: 2px solid var(--line); border-radius: 14px; padding: 10px; background: var(--surface); color: var(--ink); display: flex; flex-direction: column; gap: 8px; text-align: left; }
-.theme-ch.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
-.theme-ch b { font-size: 15px; }
-.theme-ch .ap { height: 64px; border-radius: 9px; border: 1px solid rgba(0, 0, 0, .12); display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 7px; }
-.theme-ch .ap i { border-radius: 5px; display: block; }
-.ap.t-clair { background: #F8F8F3; } .ap.t-clair i:nth-child(1) { background: #FBE6F1; } .ap.t-clair i:nth-child(2) { background: #E6F0FB; } .ap.t-clair i:nth-child(3) { background: #EEF6DE; } .ap.t-clair i:nth-child(4) { background: #FCEFD6; }
-.ap.t-sombre { background: #121613; } .ap.t-sombre i:nth-child(1) { background: #351A2B; } .ap.t-sombre i:nth-child(2) { background: #1A283A; } .ap.t-sombre i:nth-child(3) { background: #222F18; } .ap.t-sombre i:nth-child(4) { background: #35280F; }
-.ap.t-systeme { background: linear-gradient(135deg, #F8F8F3 50%, #121613 50%); } .ap.t-systeme i:nth-child(odd) { background: #E4F2E8; } .ap.t-systeme i:nth-child(even) { background: #1D3326; }
-.ap.t-crazy { background: conic-gradient(#FF00C8, #FFE600, #00E5A0, #0066FF, #8B00FF, #FF00C8); } .ap.t-crazy i { background: rgba(255, 255, 255, .8); border: 2px solid #FF00C8; }
-.ap.t-crazy i:nth-child(2) { transform: rotate(6deg); } .ap.t-crazy i:nth-child(3) { transform: rotate(-5deg); border-radius: 50%; }
+.themes { display: flex; flex-wrap: wrap; gap: 8px; }
+.theme-ch { font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; border: 1px solid rgba(0, 0, 0, .18); border-radius: 999px; padding: 7px 16px; min-height: 36px; }
+.theme-ch.on { outline: 3px solid var(--accent); outline-offset: 2px; }
+.theme-ch.t-clair { background: #F8F8F3; color: #1B231E; }
+.theme-ch.t-sombre { background: #1C211D; color: #E6EAE3; border-color: #3A433C; }
+.theme-ch.t-systeme { background: linear-gradient(90deg, #F8F8F3 50%, #1C211D 50%); }
+.theme-ch.t-systeme span { background: linear-gradient(90deg, #1B231E 50%, #E6EAE3 50%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.theme-ch.t-crazy { background: linear-gradient(90deg, #FF00C8, #FF6A00, #FFC800, #00C878, #0066FF, #8B00FF); color: #fff; border: 0; text-shadow: 1px 1px 0 rgba(0, 0, 0, .45); }
 </style>
 </head>
 <body>
