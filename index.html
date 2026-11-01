@@ -682,7 +682,13 @@ table.matrix td.neg { color: var(--muted); }
 .hello-btns { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .jc-btn { background: var(--c); border-color: var(--c); color: #fff; }
 .jc-btn small { opacity: .85; font-weight: 600; }
-.panel.jc { border: 2px solid var(--c); border-top-width: 6px; }
+.panel.jc { border: 2px solid var(--c); border-top-width: 6px; position: relative; }
+.panel.jc h2 { padding-right: 84px; }
+.jc-coin { position: absolute; top: 10px; right: 10px; display: flex; gap: 6px; }
+.icone-btn { width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); cursor: pointer; font-size: 16px; padding: 0; }
+.icone-btn:hover { color: var(--ink); border-color: var(--muted); }
+.icone-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+.jc-plan { align-self: flex-start; }
 .panel.jc h2 small { font-family: var(--font-body, inherit); font-weight: 600; font-size: 14px; }
 .ajout-barre { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
 .ajout-barre input[name=titre] { flex: 1 1 220px; min-width: 0; }

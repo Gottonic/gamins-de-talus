@@ -196,7 +196,7 @@ ACTIONS.calDay = (el) => ouvrirJour(el.dataset.d);
 function ouvrirJour(d) {
   const xs = itemsPeriode(d, d)[d] || [], ps = personnes(), j = DB.get('jour:' + d) || {};
   const evs = xs.filter((x) => x.kind === 'ev'), tch = xs.filter((x) => x.kind === 'tache'), fac = xs.filter((x) => x.kind === 'facture'), rel = xs.filter((x) => x.kind === 'relance');
-  const heures = heuresGrilleHtml(d);
+  const heures = heuresGrilleHtml(d, '', true);
   const evHtml = evs.map((x) => {
     const e = DB.get(x.key) || {}, st = (e.occ || {})[x.occ] || {}, rec = e.rec && e.rec.freq;
     const c = e.contactId && DB.get(e.contactId), cu = e.cultureId && DB.get(e.cultureId);
@@ -328,7 +328,7 @@ function renderVue() {
   const aPlan = trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t) && pour(t.responsable)));
   const ev = (x, d) => {
     const e = DB.get(x.key) || {}, ce = catEv(e), j = x.key + '|' + x.occ, tj = taches().filter((t) => t.journee === j && t.statut !== 'suspendu');
-    const fort = d === today && concerneMoi(x.qui) && !x.fait;
+    const fort = d === today && concerneMoi(x.qui) && !x.fait && !(Sync.me && heuresNotees(d, Sync.me));
     const cu = e.cultureId && DB.get(e.cultureId), c = e.contactId && DB.get(e.contactId);
     const det = [x.heure ? x.heure + (e.heureFin ? '–' + e.heureFin : '') : '', x.qui ? quiLabel(x.qui) : '', c && !x.titre.includes(displayName(c)) ? displayName(c) : '', cu && !x.titre.includes(cu.nom) ? cu.nom : ''].filter(Boolean).join(' · ');
     const rec = e.type === 'recolte' && d <= today && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(x.key, x.occ) && !((e.occ || {})[x.occ] || {}).sansRecolte;
@@ -373,11 +373,13 @@ function journeesEnCours() {
   for (let d = today; d >= de; d = addDays(d, -1)) for (const x of it[d] || []) {
     if (x.kind !== 'ev' || !concerneMoi(x.qui) || evGenre(DB.get(x.key) || {}).genre !== 'travail') continue;
     const j = x.key + '|' + x.occ, id = j + '@' + d; if (vus.has(id)) continue; vus.add(id);
-    if (d < today && (!Sync.me || heuresNotees(d, Sync.me))) continue;
+    /* Mes heures notées : la journée est terminée, elle n'est plus mise en avant */
+    if (Sync.me ? heuresNotees(d, Sync.me) : d < today) continue;
     out.push({ j, d, id, titre: x.titre, couleur: x.couleur, heure: x.heure });
   }
   return out;
 }
+const ICONE_REGLAGES = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h3.4M11.1 6.5h9.4M3.5 12h9.9M17.6 12h2.9M3.5 17.5h1.4M9.1 17.5h11.4"/><circle cx="9" cy="6.5" r="2.1"/><circle cx="15.5" cy="12" r="2.1"/><circle cx="7" cy="17.5" r="2.1"/></svg>';
 const jcFermees = () => { try { return JSON.parse(ls.get('gdt-jc-fermees') || '[]'); } catch (e) { return []; } };
 const jcOuverte = (x) => !jcFermees().includes(x.id);
 ACTIONS.jcOuvrir = (el) => { ls.set('gdt-jc-fermees', JSON.stringify(jcFermees().filter((i) => i !== el.dataset.id))); render(); };
@@ -396,11 +398,13 @@ function journeeEnCoursHtml() {
     const { j, d } = x, [ek] = j.split('|'), e = DB.get(ek); if (!e) return '';
     const tj = taches().filter((t) => t.journee === j).sort(triOrdre), faites = tj.filter((t) => t.statut === 'termine').length;
     const quand = d === todayISO() ? "aujourd'hui" : dateLongue(d);
-    return `<section class="panel jc" style="--c:${esc(couleurEv(e, j.split('|')[1], ek))}"><div class="between"><h2>${esc(iconeEv(e))} ${esc(titreEv(e))} <small class="hint">${esc(quand)}${e.heureDebut ? ' · ' + esc(e.heureDebut) + (e.heureFin ? '–' + esc(e.heureFin) : '') : ''}${e.qui ? ' · ' + esc(quiLabel(e.qui)) : ''}${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</small></h2>
-        <span class="row"><button class="btn small" type="button" data-act="plJourneeVoir" data-j="${esc(j)}">Ouvrir</button><button class="btn small" type="button" data-act="jcFermer" data-id="${esc(x.id)}" aria-label="Replier la journée">✕</button></span></div>
+    return `<section class="panel jc" style="--c:${esc(couleurEv(e, j.split('|')[1], ek))}">
+      <span class="jc-coin"><button class="icone-btn" type="button" data-act="evEdit" data-key="${esc(ek)}" title="Modifier la journée" aria-label="Modifier la journée">${ICONE_REGLAGES}</button><button class="icone-btn" type="button" data-act="jcFermer" data-id="${esc(x.id)}" title="Replier" aria-label="Replier la journée">✕</button></span>
+      <h2>${esc(iconeEv(e))} ${esc(titreEv(e))} <small class="hint">${esc(quand)}${e.heureDebut ? ' · ' + esc(e.heureDebut) + (e.heureFin ? '–' + esc(e.heureFin) : '') : ''}${e.qui ? ' · ' + esc(quiLabel(e.qui)) : ''}${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</small></h2>
       ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
       ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Pas encore de tâche pour cette journée.</p>'}
       ${ajoutTacheBarre({ id: 'jc-ajout-' + x.id.replace(/[^\w-]/g, ''), journee: j, placeholder: 'Ajouter une tâche à la journée…' })}
+      <button class="btn link small jc-plan" type="button" data-act="plJournee" data-j="${esc(j)}">Choisir dans « À planifier »…</button>
       ${terminerJourneeHtml(j, d)}</section>`;
   }).join('');
 }
@@ -612,9 +616,9 @@ function inscritsDuJour(d, j) {
   if (!evs.length) return personnes().map((p) => p.k);
   return [...new Set(evs.flatMap((x) => quiListe(x.qui)))];
 }
-function heuresGrilleHtml(d, j) {
+function heuresGrilleHtml(d, j, avecOff) {
   const ins = new Set(inscritsDuJour(d, j)), ps = personnes();
-  const cellule = (p) => { const h = DB.get(hKey(d, p.k)) || {}; return `<div class="field"><label for="jh-${p.k}">${esc(p.nom)}</label><div class="hcell"><input id="jh-${p.k}" type="text" inputmode="decimal" autocomplete="off" data-h="${d}|${p.k}" value="${h.heures ? esc(fmtH(h.heures)) : ''}" placeholder="heures"><button type="button" class="off${h.off ? ' on' : ''}" data-act="hOff" data-d="${d}" data-p="${p.k}" data-sheet="1" aria-pressed="${!!h.off}">off</button></div></div>`; };
+  const cellule = (p) => { const h = DB.get(hKey(d, p.k)) || {}; return `<div class="field"><label for="jh-${p.k}">${esc(p.nom)}</label><div class="hcell"><input id="jh-${p.k}" type="text" inputmode="decimal" autocomplete="off" data-h="${d}|${p.k}" value="${h.heures ? esc(fmtH(h.heures)) : ''}" placeholder="heures">${avecOff || h.off ? `<button type="button" class="off${h.off ? ' on' : ''}" data-act="hOff" data-d="${d}" data-p="${p.k}" data-sheet="1" aria-pressed="${!!h.off}" title="Jour off : pas travaillé ce jour-là">off</button>` : ''}</div></div>`; };
   const deja = (p) => { const h = DB.get(hKey(d, p.k)); return h && (num(h.heures) > 0 || h.off); };
   const vus = ps.filter((p) => ins.has(p.k) || deja(p)), autres = ps.filter((p) => !vus.includes(p));
   return `<div class="grid2">${vus.map(cellule).join('')}</div>${autres.length ? `<details class="hj-autres"><summary class="hint">Quelqu'un d'autre a travaillé ?</summary><div class="grid2">${autres.map(cellule).join('')}</div></details>` : ''}`;
