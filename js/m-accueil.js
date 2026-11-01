@@ -19,7 +19,7 @@ const ORDRE = ['messages', 'mails', 'contacts', 'calendrier', 'factures', 'finan
 
 /* Ce que l'accueil montre : « moi » (ce qui me concerne, par défaut) ou « tous » ; mémorisé sur l'appareil */
 const ACC = { vue: ls.get('gdt-accueil-vue') || 'moi' };
-const pourMoi = (qui) => ACC.vue !== 'moi' || !Sync.me || !qui || qui === 'ensemble' || qui === Sync.me;
+const pourMoi = (qui) => ACC.vue !== 'moi' || !Sync.me || quiInclut(qui, Sync.me);
 ACTIONS.accVue = (el) => { ACC.vue = el.dataset.v; ls.set('gdt-accueil-vue', ACC.vue); render(); };
 
 function renderAccueil() {
@@ -104,8 +104,7 @@ function renderAccueil() {
     return `<a class="tile t-${k}" href="#/${k}"><span class="ic">${ICONS[k] || ''}</span><b>${esc(m.titre)}</b><span class="tline${t.warn ? ' warn' : ''}${t.clamp ? ' clamp' : ''}">${t.qui ? `<strong>${esc(t.qui)}</strong> ` : ''}${esc(t.line || '')}</span>${t.badge ? `<span class="badge" aria-label="${t.badge} à voir">${t.badge > 99 ? '99+' : t.badge}</span>` : ''}</a>`;
   }).join('');
   return `<section class="hello"><div><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></div>
-    <div class="row hello-btns">${(typeof journeesEnCours === 'function' ? journeesEnCours() : []).filter((x) => x.j !== jcOuverte()).map((x) => `<button class="btn big jc-btn" type="button" data-act="jcOuvrir" data-j="${esc(x.j)}" style="--c:${esc(x.couleur)}">🧰 ${esc(x.titre)} <small>en cours</small></button>`).join('')}
-    <button class="btn primary big" type="button" data-act="mesHeures"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Enregistrer mes heures</button></div></section>
+    <div class="row hello-btns">${(typeof journeesEnCours === 'function' ? journeesEnCours() : []).filter((x) => !jcOuverte(x)).map((x) => `<button class="btn big jc-btn" type="button" data-act="jcOuvrir" data-id="${esc(x.id)}" style="--c:${esc(x.couleur)}">🧰 ${esc(x.titre)} <small>${x.d === today ? 'en cours' : esc(fmtDateCourt(x.d))}</small></button>`).join('')}</div></section>
     ${typeof journeeEnCoursHtml === 'function' ? journeeEnCoursHtml() : ''}
     <section class="tiles" aria-label="Modules">${tiles}</section>
     ${todo}

@@ -37,7 +37,8 @@ Deno.serve(async (req) => {
   const qui = (await lire('cfg:ics:')).find((r) => r.data && r.data.jeton === jeton);
   if (!qui) return new Response('Jeton inconnu', { status: 403 });
   const personne = qui.key.split(':')[2], opts = qui.data;
-  const tout = !!opts.tout, pour = (q: string) => tout || !q || q === 'ensemble' || q === personne;
+  const tout = !!opts.tout, pour = (q: string) => tout || !q || q === 'ensemble' || String(q).split('+').includes(personne);
+  const quiNoms = (q: string) => String(q).split('+').map((k) => noms[k] || k).join(' & ');
   const [evs, cul, cts, cfg] = await Promise.all([lire('ev:'), lire('cul:'), lire('ct:'), lire('cfg:reglages')]);
   const noms: Record<string, string> = {}; for (const p of (cfg[0]?.data?.personnes || [])) noms[p.k] = p.nom;
   const get = (rows: any[], k: string) => rows.find((r) => r.key === k)?.data;
@@ -47,8 +48,8 @@ Deno.serve(async (req) => {
     if (!pour(e.qui)) continue;
     const c = e.contactId && get(cts, e.contactId), cu = e.cultureId && get(cul, e.cultureId);
     let titre = e.titre || (e.type === 'livraison' ? 'Livraison' + (c ? ' ' + (c.organisation || c.nom || '') : '') : e.type === 'recolte' ? 'Récolte' + (cu ? ' ' + cu.nom : '') : TYPES[e.type] || 'Événement');
-    if (e.type === 'vacances' && e.qui && e.qui !== 'ensemble' && !e.titre) titre = 'Vacances ' + (noms[e.qui] || e.qui);
-    if (e.qui && e.qui !== 'ensemble' && tout && !titre.includes(noms[e.qui] || '§')) titre += ' · ' + (noms[e.qui] || e.qui);
+    if (e.type === 'vacances' && e.qui && e.qui !== 'ensemble' && !e.titre) titre = 'Vacances ' + quiNoms(e.qui);
+    if (e.qui && e.qui !== 'ensemble' && tout && !titre.includes(quiNoms(e.qui))) titre += ' · ' + quiNoms(e.qui);
     for (const o of occurrences(e, de, a)) {
       const d = o.date.replace(/-/g, ''), uid = `${key.replace(/[^a-zA-Z0-9]/g, '')}-${d}@gaminsdetalus`;
       L.push('BEGIN:VEVENT', 'UID:' + uid, 'DTSTAMP:' + stamp);

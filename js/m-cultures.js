@@ -458,8 +458,10 @@ function repartir(x, pour, surf) {
   if (pour && pour.admin) parts.push('admin'); if (pour && pour.ventes) parts.push('ventes');
   const cu = pour && (pour.cultures === 'toutes' ? 'toutes' : Array.isArray(pour.cultures) && pour.cultures.length ? pour.cultures : null); if (cu) parts.push('cultures');
   if (!parts.length) { out.commun = x; return out; }
-  const q = x / parts.length;
+  /* Poids éventuels (heures réparties d'après le nombre de tâches faites), sinon parts égales */
+  const pw = (pour && pour.poids) || {}, totW = parts.reduce((a, p) => a + (pw[p] || 1), 0);
   for (const p of parts) {
+    const q = x * (pw[p] || 1) / totW;
     if (p !== 'cultures') { out[p] += q; continue; }
     const keys = cu === 'toutes' ? Object.keys(surf) : cu.filter((k) => k in surf), tot = cu === 'toutes' ? keys.reduce((a, k) => a + surf[k], 0) : keys.length;
     if (!keys.length || !tot) { out.commun += q; continue; }

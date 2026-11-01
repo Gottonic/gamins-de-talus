@@ -180,19 +180,25 @@ ACTIONS.taVue = (el) => { TA.vue = el.dataset.k; render(); };
 /* Barre d'ajout de tâche (partout pareille) : « Ajouter » = ajout rapide (le titre suffit), « + d'options » = la fiche complète.
    o : { id, jour, journee, cat, resp, placeholder } — le contexte (jour, journée, catégorie) est repris dans les deux cas. */
 function ajoutTacheBarre(o) {
-  return `<form class="ajout-barre" data-form="taAjout"><input type="hidden" name="jour" value="${esc(o.jour || '')}"><input type="hidden" name="journee" value="${esc(o.journee || '')}"><input type="hidden" name="cat" value="${esc(o.cat || '')}"><input type="hidden" name="resp" value="${esc(o.resp || '')}"><input type="hidden" name="champ" value="${esc(o.id)}">
+  return `<form class="ajout-barre" data-form="taAjout"><input type="hidden" name="jour" value="${esc(o.jour || '')}"><input type="hidden" name="journee" value="${esc(o.journee || '')}"><input type="hidden" name="cat" value="${esc(o.cat || '')}"><input type="hidden" name="resp" value="${esc(o.resp || '')}"><input type="hidden" name="champ" value="${esc(o.id)}">${o.fait ? `<input type="hidden" name="fait" value="${esc(o.fait)}">` : ''}
     <input name="titre" id="${esc(o.id)}" placeholder="${esc(o.placeholder || 'Nouvelle tâche…')}" autocomplete="off" aria-label="Nouvelle tâche" enterkeyhint="done">
-    <button class="btn primary" type="submit">Ajouter</button><button class="btn" type="button" data-act="taAjoutOptions">+ d'options</button></form>`;
+    <button class="btn primary" type="submit">Ajouter</button>${o.fait ? '' : `<button class="btn" type="button" data-act="taAjoutOptions">+ d'options</button>`}</form>`;
 }
 FORMS.taAjout = (v) => {
   if (!v.titre) { toast('Tape le nom de la tâche, ou « + d\'options ».'); return; }
   const e = v.journee ? DB.get(v.journee.split('|')[0]) : null;
   const g = devinerCategorie(v.titre, (v.journee ? v.journee.split('|')[1] : v.jour || todayISO()).slice(0, 4)), cat = v.cat || g.cat, sous = v.cat ? '' : g.sous;
   const pl = v.journee || v.jour ? { ordre: ordreFin({ journee: v.journee, jour: v.journee ? '' : v.jour }) } : {};
-  DB.put('t:' + uid('t'), Object.assign({ titre: v.titre, statut: 'afaire', importance: 2, cat, sous, cultures: g.cultures, responsable: v.resp || (e && e.qui) || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cree: new Date().toISOString(), creePar: Sync.me || '' }, pl));
+  DB.put('t:' + uid('t'), Object.assign({ titre: v.titre, statut: 'afaire', importance: 2, cat, sous, cultures: g.cultures, responsable: v.resp || (e && respDeQui(e.qui)) || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cree: new Date().toISOString(), creePar: Sync.me || '' }, pl,
+    /* « Autres tâches effectuées ? » (fiche des heures) : la tâche est créée déjà faite, ce jour-là */
+    v.fait ? { statut: 'termine', termineLe: v.fait, terminePar: Sync.me || '', jour: v.fait, responsable: v.resp || Sync.me || '' } : {}));
+  if (v.fait && typeof majPourAuto === 'function') majPourAuto(v.fait);
   const classe = [cat ? catInfo(cat).icone + ' ' + catInfo(cat).nom : '', sous && sousInfo(cat, sous) ? sousInfo(cat, sous).nom : '', ...g.cultures.map((c) => (DB.get(c) || {}).nom)].filter(Boolean).join(' · ');
-  toast(`« ${v.titre} » ajoutée${v.journee || v.jour ? '' : ' dans « À planifier »'}${classe ? ' · ' + classe : ''}.`, classe ? 4500 : 3000);
+  toast(`« ${v.titre} » ${v.fait ? 'notée comme faite' : 'ajoutée'}${v.journee || v.jour || v.fait ? '' : ' dans « À planifier »'}${classe ? ' · ' + classe : ''}.`, classe ? 4500 : 3000);
   if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
+  /* Dans la page (accueil, onglet Tâches) : on ré-affiche tout de suite, sans attendre qu'on quitte la case */
+  const q0 = $(v.champ); if (q0) q0.value = '';
+  if (q0 && $('view').contains(q0)) { q0.focus(); renderGardeFocus(); return; }
   setTimeout(() => { const q = $(v.champ); if (q) { q.value = ''; q.focus(); } }, 40);
 };
 ACTIONS.taAjoutOptions = (el) => {
@@ -203,6 +209,8 @@ ACTIONS.taTick = (el) => {
   const t = DB.get(el.dataset.key); if (!t) return;
   const done = t.statut === 'termine';
   DB.put(el.dataset.key, Object.assign({}, t, done ? { statut: 'afaire', termineLe: '' } : { statut: 'termine', termineLe: todayISO(), terminePar: Sync.me || '' }));
+  /* Les heures déjà notées ce jour-là se répartissent d'après les tâches faites : on recalcule */
+  if (typeof majPourAuto === 'function') { const dj = t.journee ? t.journee.split('|')[1] : t.jour || todayISO(); majPourAuto(dj); if (dj !== todayISO()) majPourAuto(todayISO()); }
   if (!done) {
     if (t.rep) repeterSiBesoin(el.dataset.key, t); else toast('Tâche faite. 👍');
     /* Une récolte faite : on note tout de suite la quantité (sinon elle reste dans « Récoltes à noter ») */

@@ -167,6 +167,12 @@ const DEFAULT_CFG = {
 function cfg() { return Object.assign({}, DEFAULT_CFG, DB.get('cfg:reglages') || {}); }
 function personnes() { return cfg().personnes || DEFAULT_CFG.personnes; }
 function nomDe(k) { if (k === 'ensemble') return 'Ensemble'; const p = personnes().find((x) => x.k === k); return p ? p.nom : (k || '—'); }
+/* « Qui » d'un événement : '' ou 'ensemble' (tout le monde), une personne ('noe'), ou plusieurs ('noe+marc') */
+function quiListe(q) { const ks = personnes().map((p) => p.k); return !q || q === 'ensemble' ? ks : String(q).split('+').filter((k) => ks.includes(k)); }
+function quiInclut(q, p) { return !q || q === 'ensemble' || String(q).split('+').includes(p); }
+function quiDeListe(l) { const ks = personnes().map((p) => p.k), set = new Set(l); const x = ks.filter((k) => set.has(k)); return !x.length ? '' : x.length === ks.length ? 'ensemble' : x.join('+'); }
+/* Responsable d'une tâche créée depuis un événement : une seule personne, sinon personne en particulier */
+const respDeQui = (q) => (q && !String(q).includes('+') ? q : '');
 
 /* ================= Interface commune ================= */
 const ACTIONS = {};   // data-act="nom" → fonction(el, ev)

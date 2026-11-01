@@ -136,7 +136,7 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     const jour = aujourdhui(), taches = await lire('t:'), evs = await lire('ev:');
     for (const p of personnes) {
       if (!veut(p.k, 'jour') && !surDiscord(p.k, 'jour')) continue;
-      const pour = (q: string) => !q || q === 'ensemble' || q === p.k;
+      const pour = (q: string) => !q || q === 'ensemble' || String(q).split('+').includes(p.k);
       /* Tâches prévues aujourd'hui (un jour, ou une journée de travail d'aujourd'hui), ou dont l'échéance tombe aujourd'hui */
       const ts = taches.map((r) => r.data).filter((t) => t && t.statut !== 'termine' && pour(t.responsable) && (t.jour === jour || String(t.journee || '').endsWith('|' + jour) || (t.echeance === jour && !t.jour && !t.journee)));
       const es = evs.map((r) => r.data).filter((e) => e && aLieu(e, jour) && pour(e.qui));
