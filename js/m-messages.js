@@ -625,9 +625,31 @@ async function pieceDeMail(k, i) {
   const o = Uint8Array.from(atob(x.base64), (ch) => ch.charCodeAt(0));
   return new File([o], x.nom, { type: x.type || 'application/octet-stream' });
 }
+/* Pièce jointe : une fois reçue, une fenêtre propose Enregistrer / Ouvrir / Partager.
+   (Un téléchargement lancé tout seul après plusieurs secondes d'attente est souvent bloqué en silence sur téléphone :
+   il faut un vrai toucher sur le bouton.) */
+const PJ = { url: '', fichier: null };
+async function pieceDeMailSure(k, i) {
+  let f = await pieceDeMail(k, i);
+  if (/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') f = new File([f], f.name, { type: 'application/pdf' });
+  return f;
+}
 ACTIONS.mailPiece = async (el) => {
-  toast('Téléchargement…');
-  try { const f = await pieceDeMail(el.dataset.key, el.dataset.i); downloadFile(f.name, f, f.type); } catch (e) { toast('Téléchargement impossible : ' + e.message, 7000); }
+  toast('Récupération de la pièce jointe…', 15000);
+  let f; try { f = await pieceDeMailSure(el.dataset.key, el.dataset.i); } catch (e) { toast('Téléchargement impossible : ' + e.message, 7000); return; }
+  if (PJ.url) URL.revokeObjectURL(PJ.url);
+  PJ.url = URL.createObjectURL(f); PJ.fichier = f; $('toast').hidden = true;
+  const voir = /^(application\/pdf|image\/|text\/plain)/.test(f.type), partage = !!(navigator.canShare && navigator.canShare({ files: [f] }));
+  openSheet(`${sheetHead('📎 ' + trunc(f.name, 50), tailleTxt(f.size))}<div class="sbody">
+    <div class="row">
+      <a class="btn primary" href="${PJ.url}" download="${esc(nomFichierSur(f.name))}">Enregistrer sur l'appareil</a>
+      ${voir ? `<a class="btn" href="${PJ.url}" target="_blank" rel="noopener">Ouvrir</a>` : ''}
+      ${partage ? '<button class="btn" type="button" data-act="pjPartager">Partager…</button>' : ''}
+    </div>
+    <p class="hint">Le fichier va dans le dossier Téléchargements de l'appareil.${partage ? ' « Partager… » permet aussi de l\'envoyer vers Drive, Fichiers, une app de mail…' : ''}</p></div>`);
+};
+ACTIONS.pjPartager = async () => {
+  try { await navigator.share({ files: [PJ.fichier], title: PJ.fichier.name }); } catch (e) { if (e.name !== 'AbortError') toast('Partage impossible : ' + e.message, 6000); }
 };
 /* Une facture fournisseur reçue par mail → une dépense avec ce justificatif (rangé dans l'app, comme une photo de ticket) */
 ACTIONS.mailPieceDep = async (el) => {

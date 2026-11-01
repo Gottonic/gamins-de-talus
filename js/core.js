@@ -263,11 +263,12 @@ function confirmSheet(titre, texte, actOk, labelOk, data) {
 }
 
 /* Téléchargement d'un fichier généré */
+const nomFichierSur = (name) => String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w .()-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'fichier';
 function downloadFile(name, content, type) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: type || 'text/plain;charset=utf-8' });
-  const safe = String(name).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .()-]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = safe; document.body.appendChild(a); a.click();
-  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nomFichierSur(name); document.body.appendChild(a); a.click();
+  /* Le lien reste valable une minute : sur Android, le gestionnaire de téléchargements le lit parfois en retard */
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 60000);
 }
 function csv(head, rows) { const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`; return '﻿' + [head.map(q).join(';')].concat(rows.map((r) => r.map(q).join(';'))).join('\r\n'); }
 
