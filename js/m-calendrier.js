@@ -396,7 +396,9 @@ function terminerJourneeHtml(j, d) {
 function journeeEnCoursHtml() {
   /* Repliée : une barre de la même largeur ; un clic la rouvre. Ouverte : un clic sur le haut (ou ✕) la replie. */
   return journeesEnCours().map((x) => {
-    if (!jcOuverte(x)) return `<button class="btn big jc-btn" type="button" data-act="jcOuvrir" data-id="${esc(x.id)}" style="--c:${esc(x.couleur)}" aria-expanded="false"><span>🧰 ${esc(x.titre)} <small>${x.d === todayISO() ? 'en cours' : esc(fmtDateCourt(x.d))}</small></span><span class="icone-btn jc-tri" aria-hidden="true">▾</span></button>`;
+    /* Repliée : le même cadre, réduit à son titre ; le bouton triangle reste à la même place et à la même taille */
+    if (!jcOuverte(x)) return `<section class="panel jc jc-replie" style="--c:${esc(x.couleur)}"><span class="jc-coin"><button class="icone-btn jc-tri" type="button" data-act="jcOuvrir" data-id="${esc(x.id)}" title="Déplier" aria-label="Déplier la journée" aria-expanded="false">▾</button></span>
+      <h2 class="jc-tete" data-act="jcOuvrir" data-id="${esc(x.id)}" role="button" tabindex="0">🧰 ${esc(x.titre)} <small>${x.d === todayISO() ? 'en cours' : esc(fmtDateCourt(x.d))}</small></h2></section>`;
     const { j, d } = x, [ek] = j.split('|'), e = DB.get(ek); if (!e) return '';
     const tj = taches().filter((t) => t.journee === j).sort(triOrdre), faites = tj.filter((t) => t.statut === 'termine').length;
     const quand = d === todayISO() ? "aujourd'hui" : dateLongue(d);
