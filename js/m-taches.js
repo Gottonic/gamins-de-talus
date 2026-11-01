@@ -87,14 +87,19 @@ document.addEventListener('drop', (e) => {
   if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
 }, true);
 /* Une tâche qu'on ajoute à une journée (ou à un jour) se met en bas de sa liste */
-function ordreFin(o) { const l = taches().filter((t) => (o.journee ? t.journee === o.journee : !t.journee && t.jour === o.jour) && t.ordre != null); return l.length ? Math.max(...l.map((t) => num(t.ordre))) + 1 : taches().filter((t) => (o.journee ? t.journee === o.journee : !t.journee && t.jour === o.jour)).length; }
+function ordreFin(o) {
+  /* Les anciennes tâches sans ordre reçoivent d'abord leur place actuelle (sinon la nouvelle passerait devant elles) */
+  const l = taches().filter((t) => (o.journee ? t.journee === o.journee : !t.journee && t.jour === o.jour)).sort(triOrdre);
+  if (l.some((t) => t.ordre == null)) l.forEach((t, i) => { if (t.ordre !== i) DB.put(t.key, Object.assign({}, DB.get(t.key), { ordre: i })); });
+  return l.length ? Math.max(l.length - 1, ...l.map((t) => num(t.ordre))) + 1 : 0;
+}
 const pourQui = (t) => TA.qui === 'moi' ? (t.responsable === Sync.me || t.responsable === 'ensemble' || !t.responsable) : TA.qui ? t.responsable === TA.qui : true;
 const aPlanifier = () => trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t)));
 /* Ce qui presse vraiment : pas planifiée et échéance dans 2 jours ou dépassée (pour moi) */
 const tachesUrgentesPourMoi = () => { const d2 = addDays(todayISO(), 2); return taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t) && t.echeance && t.echeance <= d2 && (typeof pourMoi !== 'function' || pourMoi(t.responsable))); };
 
 /* L'ancienne adresse des tâches mène à la Planification */
-MODULES.taches = { titre: 'Planification', render(sub) { setTimeout(() => location.replace(sub === 'semaine' ? '#/calendrier/feuille' : '#/calendrier/taches'), 0); return ''; } };
+MODULES.taches = { titre: 'Planification', render(sub) { setTimeout(() => location.replace('#/calendrier/taches'), 0); return ''; } };
 
 function renderTaches() {
   const tout = taches().filter(pourQui);
@@ -115,7 +120,6 @@ function renderTaches() {
   } else corps = l.sort((a, b) => String(b.termineLe || '').localeCompare(String(a.termineLe || ''))).slice(0, 80).map((t) => tacheHtml(t)).join('') || '<p class="empty">Aucune tâche faite.</p>';
   const catQ = TA.cat && TA.cat !== '-' ? catInfo(TA.cat) : null;
   return `<div class="panel">
-    <div class="row-end"><a class="btn small" href="#/calendrier/feuille">🖨 Feuille de la semaine</a></div>
     ${ajoutTacheBarre({ id: 'ta-quick', cat: TA.cat && TA.cat !== '-' ? TA.cat : '', resp: TA.qui && TA.qui !== 'moi' ? TA.qui : '', placeholder: `Nouvelle tâche${catQ ? ' (' + catQ.nom + ')' : ''}…` })}
     <div class="chips">${vues}</div><div class="chips">${quiChips}</div>${catChips ? `<div class="chips">${catChips}</div>` : ''}
     ${corps}

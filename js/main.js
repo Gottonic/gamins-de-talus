@@ -131,7 +131,7 @@ FORMS.mdp = async (v) => {
   } catch (e) { b.disabled = false; b.textContent = 'Enregistrer'; toast('Pas changé : ' + e.message, 6000); }
 };
 
-$('scrim').addEventListener('click', (e) => { if (e.target === $('scrim')) closeSheet(); });
+$('scrim').addEventListener('click', (e) => { if (e.target === $('scrim')) ACTIONS.close(); });
 
 /* Fenêtre synchro + compte */
 ACTIONS.syncSheet = () => {

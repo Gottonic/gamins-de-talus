@@ -75,7 +75,7 @@ MODULES.calendrier = {
     const nUrg = tachesUrgentesPourMoi().length;
     const t = tabs('calendrier', [['', "Vue d'ensemble"], ['taches', `Tâches${nUrg ? ' · ' + nUrg + ' échéance proche' : ''}`, nUrg > 0], ['mois', 'Calendrier'], ['heures', 'Heures']], sub === 'feuille' ? 'taches' : sub);
     if (sub === 'taches') return t + renderTaches();
-    if (sub === 'feuille') return t + renderFeuille();
+    if (sub === 'feuille') { setTimeout(() => location.replace('#/calendrier/taches'), 0); return ''; }
     if (sub === 'mois') return t + (CAL.vue === 'semaine' ? renderSemaineCal() : renderMois());
     if (sub === 'heures') return t + `<div class="row"><button class="btn primary" type="button" data-act="mesHeures">+ Enregistrer mes heures</button></div>` + renderSemaineHeures() + renderBilanHeures();
     return t + renderVue();
@@ -376,6 +376,18 @@ ACTIONS.plAutreJourOk = () => { const d = ($('pa-d') || {}).value; if (!d) retur
 /* ---------- Vues simplifiées (fenêtres) : un jour, une journée prévue ----------
    On y coche les tâches, on en ajoute ; « Modifier » ouvre la fiche complète. */
 PL.rafraichir = null;
+/* « Fermer » sur une fenêtre ouverte depuis une journée (ou un jour) ramène à cette journée ; fermer la journée elle-même ferme tout */
+(() => {
+  const fermer = ACTIONS.close;
+  ACTIONS.close = (el) => {
+    const ouverte = document.body.classList.contains('sheet-open'), racine = !!$('sheet').querySelector('[data-vue-racine]');
+    if (ouverte && PL.rafraichir && !racine) { PL.rafraichir(); return; }
+    if (racine) PL.rafraichir = null;
+    fermer(el);
+  };
+  /* Toutes les fenêtres fermées (enregistrement, etc.) : on oublie la journée d'où l'on venait */
+  new MutationObserver(() => { if ($('scrim').hidden) setTimeout(() => { if ($('scrim').hidden) PL.rafraichir = null; }, 80); }).observe($('scrim'), { attributes: true, attributeFilter: ['hidden'] });
+})();
 const rafraichirFenetre = () => { if (PL.rafraichir && document.body.classList.contains('sheet-open')) PL.rafraichir(); };
 const ajoutTacheHtml = (o) => ajoutTacheBarre({ id: 'pl-ajout', jour: o.jour, journee: o.journee, placeholder: `Nouvelle tâche${o.journee ? ' pour cette journée' : ' ce jour-là'}…` });
 ACTIONS.plJourneeVoir = (el) => {
@@ -386,7 +398,7 @@ ACTIONS.plJourneeVoir = (el) => {
   const det = [e.heureDebut ? e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : '', e.qui ? quiLabel(e.qui) : '', c ? displayName(c) : '', cu ? cu.nom : ''].filter(Boolean).join(' · ');
   const rec = e.type === 'recolte' && d <= todayISO() && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(ek, d) && !((e.occ || {})[d] || {}).sansRecolte;
   const faites = tj.filter((t) => t.statut === 'termine').length;
-  openSheet(`<div class="shead pl-tete" style="--c:${esc(couleurEv(e, d, ek))}"><h2>${esc(iconeEv(e))} ${esc(titreEv(e))}<small>${esc(dateLongue(d))}${det ? ' · ' + esc(det) : ''}</small></h2><button type="button" class="xbtn" data-act="close" aria-label="Fermer">Fermer</button></div>
+  openSheet(`<div class="shead pl-tete" data-vue-racine style="--c:${esc(couleurEv(e, d, ek))}"><h2>${esc(iconeEv(e))} ${esc(titreEv(e))}<small>${esc(dateLongue(d))}${det ? ' · ' + esc(det) : ''}</small></h2><button type="button" class="xbtn" data-act="close" aria-label="Fermer">Fermer</button></div>
     <div class="sbody">
     ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
     ${rec ? `<div class="row"><button class="btn primary" type="button" data-act="recolteEv" data-key="${esc(ek)}" data-occ="${d}">Enregistrer la récolte</button></div>` : ''}
@@ -402,7 +414,7 @@ ACTIONS.plJourVoir = (el) => {
   const evs = xs.filter((x) => x.kind === 'ev').sort((a, b) => String(a.heure || '99').localeCompare(String(b.heure || '99')));
   const ts = xs.filter((x) => x.kind === 'tache' && !x.journee).map((x) => tacheParCle(x.key)).filter(Boolean)
     .concat(taches().filter((t) => t.statut === 'termine' && !t.journee && t.jour === d)).sort(triOrdre);
-  openSheet(`${sheetHead((d === today ? "Aujourd'hui · " : '') + dateLongue(d).replace(/^./, (c) => c.toUpperCase()))}<div class="sbody">
+  openSheet(`${sheetHead((d === today ? "Aujourd'hui · " : '') + dateLongue(d).replace(/^./, (c) => c.toUpperCase()))}<div class="sbody" data-vue-racine>
     ${evs.length ? evs.map((x) => { const nt = taches().filter((t) => t.journee === x.key + '|' + x.occ && t.statut !== 'termine').length; return `<button type="button" class="pl-ev pl-ev-btn" style="--c:${esc(x.couleur)}" data-act="plJourneeVoir" data-j="${esc(x.key + '|' + x.occ)}"><span><b>${esc(x.titre)}</b>${x.heure ? ' · ' + esc(x.heure) : ''}${x.qui ? ' · ' + esc(quiLabel(x.qui)) : ''}</span>${nt ? `<span class="hint">${nt} tâche${nt > 1 ? 's' : ''} ›</span>` : '<span class="hint">›</span>'}</button>`; }).join('') : ''}
     <h3>Tâches de ce jour</h3>
     ${ts.length ? `<div class="tri-taches">${ts.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Aucune tâche prévue ce jour-là (hors journées).</p>'}
@@ -520,7 +532,27 @@ function renderBilanHeures() {
       <div class="table-wrap"><table class="list"><thead><tr><th>Mois</th>${ps.map((p) => `<th>${esc(p.nom)}</th>`).join('')}<th class="r">Total</th></tr></thead><tbody>
       ${parMois.map(([m, t]) => { const s = Object.values(t).reduce((a, x) => a + x, 0); return `<tr><td>${m}</td>${ps.map((p, i) => `<td><div class="bar-row" style="grid-template-columns:minmax(0,1fr) 56px"><span class="bar-track"><span class="bar-fill ${i ? 'b2' : ''}" style="width:${((t[p.k] || 0) / maxM * 100).toFixed(1)}%"></span></span><span class="num">${fmtH(t[p.k] || 0)}</span></div></td>`).join('')}<td class="r num">${fmtH(s)}</td></tr>`; }).join('')}
       </tbody><tfoot><tr><td>Total</td>${ps.map((p) => `<td class="num">${fmtH(ty[p.k] || 0)} h</td>`).join('')}<td class="r num">${fmtH(total)} h</td></tr></tfoot></table></div>
-      <div class="row"><button class="btn small" type="button" data-act="hCsv" data-y="${y}">Exporter ${y} (CSV)</button></div></div>`;
+      <div class="row"><button class="btn small" type="button" data-act="hCsv" data-y="${y}">Exporter ${y} (CSV)</button></div></div>
+    ${bilanHeuresCategories(inY, ps)}`;
+}
+/* Heures de l'année par grande catégorie (selon « Pour quoi ? » noté avec les heures ; plusieurs choix : à parts égales) */
+function bilanHeuresCategories(inY, ps) {
+  const lignes = [['admin', 'Admin', catInfo('admin').couleur], ['ventes', 'Ventes & livraisons', catInfo('ventes').couleur], ['cultures', 'Cultures (champ)', catInfo('champ').couleur], ['', 'Pas précisé', '#9AA0A6']];
+  const t = {}; for (const [k] of lignes) t[k] = {};
+  for (const h of inY) {
+    const x = num(h.heures); if (!(x > 0)) continue; const pr = h.pour || {}, parts = [];
+    if (pr.admin) parts.push('admin'); if (pr.ventes) parts.push('ventes'); if (pr.cultures === 'toutes' || (Array.isArray(pr.cultures) && pr.cultures.length)) parts.push('cultures');
+    if (!parts.length) parts.push('');
+    for (const k of parts) t[k][h.personne] = (t[k][h.personne] || 0) + x / parts.length;
+  }
+  const tot = (k) => Object.values(t[k]).reduce((a, x) => a + x, 0), total = lignes.reduce((a, [k]) => a + tot(k), 0);
+  if (!total) return '';
+  return `<div class="panel"><h2>Par catégorie</h2>
+    <div class="table-wrap"><table class="list"><thead><tr><th>Catégorie</th>${ps.map((p) => `<th class="r">${esc(p.nom)}</th>`).join('')}<th class="r">Total</th><th style="width:30%"></th></tr></thead><tbody>
+    ${lignes.filter(([k]) => tot(k) > 0).map(([k, nom, c]) => `<tr><td><span class="catpill" style="--c:${esc(c)}">${esc(nom)}</span></td>${ps.map((p) => `<td class="r num">${fmtH(t[k][p.k] || 0)}</td>`).join('')}<td class="r num"><b>${fmtH(tot(k))} h</b></td>
+      <td><div class="bar-row" style="grid-template-columns:minmax(0,1fr) 44px"><span class="bar-track"><span class="bar-fill" style="width:${(tot(k) / total * 100).toFixed(1)}%;background:${esc(c)}"></span></span><span class="num">${Math.round(tot(k) / total * 100)} %</span></div></td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="hint">Selon « Pour quoi ? » coché en notant les heures (pré-coché d'après les tâches de la journée). Plusieurs choix pour une journée : les heures sont partagées à parts égales.</p></div>`;
 }
 ACTIONS.hCsv = (el) => {
   const y = el.dataset.y, ps = personnes(), days = {};

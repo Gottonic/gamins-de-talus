@@ -285,4 +285,4 @@ ACTIONS.close = () => closeSheet();
 ACTIONS.annuler = () => annuler();
 ACTIONS.go = (el) => go(el.dataset.href);
 ACTIONS.closeGo = (el) => { closeSheet(); go(el.dataset.href); };
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('scrim').hidden) closeSheet(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('scrim').hidden) ACTIONS.close(); });
