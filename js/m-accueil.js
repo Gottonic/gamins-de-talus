@@ -104,7 +104,7 @@ function renderAccueil() {
     return `<a class="tile t-${k}" href="#/${k}"><span class="ic">${ICONS[k] || ''}</span><b>${esc(m.titre)}</b><span class="tline${t.warn ? ' warn' : ''}${t.clamp ? ' clamp' : ''}">${t.qui ? `<strong>${esc(t.qui)}</strong> ` : ''}${esc(t.line || '')}</span>${t.badge ? `<span class="badge" aria-label="${t.badge} à voir">${t.badge > 99 ? '99+' : t.badge}</span>` : ''}</a>`;
   }).join('');
   return `<section class="hello"><div><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></div>
-    <div class="row hello-btns">${(typeof journeesEnCours === 'function' ? journeesEnCours() : []).filter((x) => !jcOuverte(x)).map((x) => `<button class="btn big jc-btn" type="button" data-act="jcOuvrir" data-id="${esc(x.id)}" style="--c:${esc(x.couleur)}">🧰 ${esc(x.titre)} <small>${x.d === today ? 'en cours' : esc(fmtDateCourt(x.d))}</small></button>`).join('')}</div></section>
+    </section>
     ${typeof journeeEnCoursHtml === 'function' ? journeeEnCoursHtml() : ''}
     <section class="tiles" aria-label="Modules">${tiles}</section>
     ${todo}
