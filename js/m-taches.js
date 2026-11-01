@@ -179,10 +179,12 @@ ACTIONS.taCat = (el) => { TA.cat = TA.cat === el.dataset.k ? '' : el.dataset.k; 
 ACTIONS.taVue = (el) => { TA.vue = el.dataset.k; render(); };
 /* Barre d'ajout de tâche (partout pareille) : « Ajouter » = ajout rapide (le titre suffit), « + d'options » = la fiche complète.
    o : { id, jour, journee, cat, resp, placeholder } — le contexte (jour, journée, catégorie) est repris dans les deux cas. */
+/* Barre d'ajout rapide : [champ][+], puis (dans une journée) « Choisir… » parmi les tâches à planifier et « + d'options » */
 function ajoutTacheBarre(o) {
+  const bas = [o.journee ? `<button class="btn small" type="button" data-act="plJournee" data-j="${esc(o.journee)}" title="Choisir dans « À planifier »">Choisir…</button>` : '', o.fait ? '' : `<button class="btn small" type="button" data-act="taAjoutOptions">+ d'options</button>`].filter(Boolean).join('');
   return `<form class="ajout-barre" data-form="taAjout"><input type="hidden" name="jour" value="${esc(o.jour || '')}"><input type="hidden" name="journee" value="${esc(o.journee || '')}"><input type="hidden" name="cat" value="${esc(o.cat || '')}"><input type="hidden" name="resp" value="${esc(o.resp || '')}"><input type="hidden" name="champ" value="${esc(o.id)}">${o.fait ? `<input type="hidden" name="fait" value="${esc(o.fait)}">` : ''}
-    <input name="titre" id="${esc(o.id)}" placeholder="${esc(o.placeholder || 'Nouvelle tâche…')}" autocomplete="off" aria-label="Nouvelle tâche" enterkeyhint="done">
-    <button class="btn primary" type="submit">Ajouter</button>${o.fait ? '' : `<button class="btn" type="button" data-act="taAjoutOptions">+ d'options</button>`}</form>`;
+    <div class="ab-ligne"><input name="titre" id="${esc(o.id)}" placeholder="${esc(o.placeholder || 'Nouvelle tâche…')}" autocomplete="off" aria-label="Nouvelle tâche" enterkeyhint="done"><button class="btn primary ab-plus" type="submit" title="Ajouter" aria-label="Ajouter">+</button></div>
+    ${bas ? `<div class="ab-bas">${bas}</div>` : ''}</form>`;
 }
 FORMS.taAjout = (v) => {
   if (!v.titre) { toast('Tape le nom de la tâche, ou « + d\'options ».'); return; }

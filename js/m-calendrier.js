@@ -396,17 +396,16 @@ function terminerJourneeHtml(j, d) {
 function journeeEnCoursHtml() {
   /* Repliée : une barre de la même largeur ; un clic la rouvre. Ouverte : un clic sur le haut (ou ✕) la replie. */
   return journeesEnCours().map((x) => {
-    if (!jcOuverte(x)) return `<button class="btn big jc-btn" type="button" data-act="jcOuvrir" data-id="${esc(x.id)}" style="--c:${esc(x.couleur)}" aria-expanded="false"><span>🧰 ${esc(x.titre)} <small>${x.d === todayISO() ? 'en cours' : esc(fmtDateCourt(x.d))}</small></span><span aria-hidden="true">▾</span></button>`;
+    if (!jcOuverte(x)) return `<button class="btn big jc-btn" type="button" data-act="jcOuvrir" data-id="${esc(x.id)}" style="--c:${esc(x.couleur)}" aria-expanded="false"><span>🧰 ${esc(x.titre)} <small>${x.d === todayISO() ? 'en cours' : esc(fmtDateCourt(x.d))}</small></span><span class="icone-btn jc-tri" aria-hidden="true">▾</span></button>`;
     const { j, d } = x, [ek] = j.split('|'), e = DB.get(ek); if (!e) return '';
     const tj = taches().filter((t) => t.journee === j).sort(triOrdre), faites = tj.filter((t) => t.statut === 'termine').length;
     const quand = d === todayISO() ? "aujourd'hui" : dateLongue(d);
     return `<section class="panel jc" style="--c:${esc(couleurEv(e, j.split('|')[1], ek))}">
-      <span class="jc-coin"><button class="icone-btn" type="button" data-act="evEdit" data-key="${esc(ek)}" title="Modifier la journée" aria-label="Modifier la journée">${ICONE_REGLAGES}</button><button class="icone-btn" type="button" data-act="jcFermer" data-id="${esc(x.id)}" title="Replier" aria-label="Replier la journée">✕</button></span>
+      <span class="jc-coin"><button class="icone-btn" type="button" data-act="evEdit" data-key="${esc(ek)}" title="Modifier la journée" aria-label="Modifier la journée">${ICONE_REGLAGES}</button><button class="icone-btn jc-tri" type="button" data-act="jcFermer" data-id="${esc(x.id)}" title="Replier" aria-label="Replier la journée" aria-expanded="true">▴</button></span>
       <h2 class="jc-tete" data-act="jcFermer" data-id="${esc(x.id)}" role="button" tabindex="0" aria-expanded="true" title="Replier">${esc(iconeEv(e))} ${esc(titreEv(e))} <small class="hint">${esc(quand)}${e.heureDebut ? ' · ' + esc(e.heureDebut) + (e.heureFin ? '–' + esc(e.heureFin) : '') : ''}${e.qui ? ' · ' + esc(quiLabel(e.qui)) : ''}${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</small></h2>
       ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
       ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Pas encore de tâche pour cette journée.</p>'}
       ${ajoutTacheBarre({ id: 'jc-ajout-' + x.id.replace(/[^\w-]/g, ''), journee: j, placeholder: 'Ajouter une tâche à la journée…' })}
-      <button class="btn link small jc-plan" type="button" data-act="plJournee" data-j="${esc(j)}">Choisir dans « À planifier »…</button>
       ${terminerJourneeHtml(j, d)}</section>`;
   }).join('');
 }
@@ -449,7 +448,6 @@ ACTIONS.plJourneeVoir = (el) => {
     <h3>Tâches${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</h3>
     ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Aucune tâche pour cette journée.</p>'}
     ${ajoutTacheHtml({ journee: j })}
-    <button class="btn link small" type="button" data-act="plJournee" data-j="${esc(j)}">Choisir dans « À planifier »…</button>
     ${ce.cat !== 'conge' ? terminerJourneeHtml(j, d) : ''}
     <div class="row-end"><button class="btn" type="button" data-act="evEdit" data-key="${esc(ek)}">Modifier la journée</button></div></div>`);
 };
