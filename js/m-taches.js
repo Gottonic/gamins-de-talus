@@ -70,6 +70,24 @@ document.addEventListener('pointerdown', (e) => {
   document.addEventListener('pointermove', bouge); document.addEventListener('pointerup', fin); document.addEventListener('pointercancel', fin);
 });
 document.addEventListener('mousedown', (e) => { if (e.target.closest && e.target.closest('[data-poignee]')) e.preventDefault(); });
+/* Sur ordinateur, on peut aussi glisser la ligne entière d'une tâche dans sa liste (journée, jour) pour changer l'ordre */
+const TRI = { el: null, box: null };
+document.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-tache]'), box = it && it.closest('.tri-taches'); TRI.el = box ? it : null; TRI.box = box || null; }, true);
+document.addEventListener('dragend', () => { if (TRI.el) TRI.el.classList.remove('en-tri'); TRI.el = null; TRI.box = null; }, true);
+document.addEventListener('dragover', (e) => {
+  if (!TRI.el) return; const sur = e.target.closest && e.target.closest('[data-tache]');
+  if (!sur || sur === TRI.el || sur.parentElement !== TRI.box) return;
+  e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; TRI.el.classList.add('en-tri');
+  const r = sur.getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { if (sur.previousElementSibling !== TRI.el) TRI.box.insertBefore(TRI.el, sur); } else if (sur.nextElementSibling !== TRI.el) sur.after(TRI.el);
+}, true);
+document.addEventListener('drop', (e) => {
+  if (!TRI.el || !(e.target.closest && e.target.closest('.tri-taches') === TRI.box)) return;
+  e.preventDefault(); e.stopPropagation(); const box = TRI.box; TRI.el.classList.remove('en-tri'); TRI.el = null; TRI.box = null;
+  [...box.children].filter((x) => x.dataset && x.dataset.tache).forEach((x, i) => { const t = DB.get(x.dataset.tache); if (t && t.ordre !== i) DB.put(x.dataset.tache, Object.assign({}, t, { ordre: i })); });
+  if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
+}, true);
+/* Une tâche qu'on ajoute à une journée (ou à un jour) se met en bas de sa liste */
+function ordreFin(o) { const l = taches().filter((t) => (o.journee ? t.journee === o.journee : !t.journee && t.jour === o.jour) && t.ordre != null); return l.length ? Math.max(...l.map((t) => num(t.ordre))) + 1 : taches().filter((t) => (o.journee ? t.journee === o.journee : !t.journee && t.jour === o.jour)).length; }
 const pourQui = (t) => TA.qui === 'moi' ? (t.responsable === Sync.me || t.responsable === 'ensemble' || !t.responsable) : TA.qui ? t.responsable === TA.qui : true;
 const aPlanifier = () => trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t)));
 /* Ce qui presse vraiment : pas planifiée et échéance dans 2 jours ou dépassée (pour moi) */
@@ -133,7 +151,7 @@ ACTIONS.taPlanifier = (el) => {
   const k = el.dataset.key, t = DB.get(k); if (!t) return; const today = todayISO();
   const jrs = journeesProchaines().slice(0, 8);
   const jours = Array.from({ length: 7 }, (_, i) => addDays(today, i)).map((d, i) => [d, i === 0 ? "Aujourd'hui" : i === 1 ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)]);
-  PL.rafraichir = null;
+  PL.rafraichir = null; TA.fenetre = 'taPlanifier';
   const jp = journeeDe(t), pf = pasTerminee(t);
   openSheet(`${sheetHead(t.titre, pf ? 'Pas terminée ?' : 'À planifier')}<div class="sbody">
     ${pf ? `<div class="pasfinie-box"><p>Prévue ${jp ? 'pendant « ' + esc(jp.titre) + ' » ' : ''}le ${esc(dateLongue(jourPlanifie(t)))}, mais pas cochée.</p><div class="row"><button class="btn primary" type="button" data-act="taFaiteOk" data-key="${esc(k)}">✓ En fait, c'est fait</button><span class="hint">Sinon, choisis un nouveau jour ci-dessous.</span></div></div>` : ''}
@@ -149,7 +167,7 @@ ACTIONS.taPlanOk = (el) => {
   if (el.dataset.retirer) { DB.put(k, Object.assign({}, t, { jour: '', journee: '' })); closeSheet(); toast('Remise dans « À planifier ».'); return; }
   const d = el.dataset.champ ? ($('tp-d') || {}).value : el.dataset.d, j = el.dataset.j || '';
   if (!j && !d) { toast('Choisis un jour.'); return; }
-  DB.put(k, Object.assign({}, t, j ? { journee: j, jour: '' } : { jour: d, journee: '' })); closeSheet();
+  DB.put(k, Object.assign({}, t, j ? { journee: j, jour: '', ordre: t.journee === j ? t.ordre : ordreFin({ journee: j }) } : { jour: d, journee: '', ordre: t.jour === d && !t.journee ? t.ordre : ordreFin({ jour: d }) })); closeSheet();
   toast(j ? `Rattachée à ${titreEv(DB.get(j.split('|')[0]) || {})} (${fmtDateCourt(j.split('|')[1])}).` : `Prévue le ${fmtDate(d)}.`);
 };
 ACTIONS.taQui = (el) => { TA.qui = el.dataset.k; render(); };
@@ -166,7 +184,8 @@ FORMS.taAjout = (v) => {
   if (!v.titre) { toast('Tape le nom de la tâche, ou « + d\'options ».'); return; }
   const e = v.journee ? DB.get(v.journee.split('|')[0]) : null;
   const g = devinerCategorie(v.titre, (v.journee ? v.journee.split('|')[1] : v.jour || todayISO()).slice(0, 4)), cat = v.cat || g.cat, sous = v.cat ? '' : g.sous;
-  DB.put('t:' + uid('t'), { titre: v.titre, statut: 'afaire', importance: 2, cat, sous, cultures: g.cultures, responsable: v.resp || (e && e.qui) || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cree: new Date().toISOString(), creePar: Sync.me || '' });
+  const pl = v.journee || v.jour ? { ordre: ordreFin({ journee: v.journee, jour: v.journee ? '' : v.jour }) } : {};
+  DB.put('t:' + uid('t'), Object.assign({ titre: v.titre, statut: 'afaire', importance: 2, cat, sous, cultures: g.cultures, responsable: v.resp || (e && e.qui) || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', cree: new Date().toISOString(), creePar: Sync.me || '' }, pl));
   const classe = [cat ? catInfo(cat).icone + ' ' + catInfo(cat).nom : '', sous && sousInfo(cat, sous) ? sousInfo(cat, sous).nom : '', ...g.cultures.map((c) => (DB.get(c) || {}).nom)].filter(Boolean).join(' · ');
   toast(`« ${v.titre} » ajoutée${v.journee || v.jour ? '' : ' dans « À planifier »'}${classe ? ' · ' + classe : ''}.`, classe ? 4500 : 3000);
   if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
@@ -191,17 +210,28 @@ ACTIONS.taTick = (el) => {
 ACTIONS.taVoir = (el) => { const t = DB.get(el.dataset.key); if (!t) return; if (!(el.closest && el.closest('#sheet'))) PL.rafraichir = null; if (tacheOuverte(t) && !estPlanifiee(t)) ACTIONS.taPlanifier(el); else ACTIONS.taResume(el); };
 function resumeTacheHtml(t, k) {
   const c = catTache(t), j = journeeDe(t), cus = (t.cultures || []).map((k) => DB.get(k)).filter(Boolean), imp = importanceDe(t);
-  const infos = [c.cat ? catPill(c.cat, c.sous) : '', `<span class="imp imp${imp}">${IMPORTANCES[imp - 1][2]}</span> ${IMPORTANCES[imp - 1][1]}`, t.responsable ? '👤 ' + esc(quiLabel(t.responsable)) : '',
+  const infos = [t.responsable ? '👤 ' + esc(quiLabel(t.responsable)) : '',
     t.echeance ? `<span class="ech${t.echeance < todayISO() ? ' passee' : echeanceProche(t) ? ' proche' : ''}">⏰ avant le ${fmtDate(t.echeance)}</span>` : '',
     estPlanifiee(t) ? `📅 ${j ? esc(j.titre) + ', ' : ''}${esc(dateLongue(jourPlanifie(t)))}` : ''].filter(Boolean);
-  return `<div class="ta-resume"><p class="meta">${infos.join(' <span class="sep">·</span> ')}</p>
+  /* Catégorie et importance : un clic pour changer */
+  const sous = c.cat ? catInfo(c.cat).sous || [] : [];
+  const vite = `<div class="ta-vite">
+      <div class="chips">${catsTaches().map((x) => `<button type="button" class="chip catchip${x.k === c.cat ? ' on' : ''}" style="--c:${esc(x.couleur)}" data-act="taSetCat" data-key="${esc(k)}" data-cat="${esc(x.k)}">${esc(x.icone || '')} ${esc(x.nom)}</button>`).join('')}</div>
+      ${sous.length ? `<div class="chips ta-vite-sous">${sous.map((x) => `<button type="button" class="chip${x.k === c.sous ? ' on' : ''}" data-act="taSetSous" data-key="${esc(k)}" data-sous="${esc(x.k)}">${esc(x.nom)}</button>`).join('')}</div>` : ''}
+      <div class="chips">${IMPORTANCES.map(([n, nom, pts]) => `<button type="button" class="chip${imp === n ? ' on' : ''}" data-act="taSetImp" data-key="${esc(k)}" data-imp="${n}"><span class="imp imp${n}">${pts}</span> ${nom}</button>`).join('')}</div></div>`;
+  return `<div class="ta-resume">${vite}${infos.length ? `<p class="meta">${infos.join(' <span class="sep">·</span> ')}</p>` : ''}
     ${t.contactId && DB.get(t.contactId) ? `<p>👤 ${esc(displayName(DB.get(t.contactId)))}</p>` : ''}
     ${cus.length || t.planches ? `<p>${cus.length ? '🌿 ' + esc(cus.map((x) => x.nom).join(', ')) : ''}${cus.length && t.planches ? ' · ' : ''}${t.planches ? '▦ ' + esc(t.planches) : ''}</p>` : ''}
     ${(t.liste || []).length ? `<div class="ta-res-liste">${t.liste.map((x, i) => `<label class="row ta-li"><input type="checkbox" data-li-t="${esc(k)}|${i}"${x.fait ? ' checked' : ''}> <span${x.fait ? ' class="barre"' : ''}>${esc(x.t)}</span></label>`).join('')}</div>` : ''}
     ${t.remarques ? `<p class="pl-rem">${linkify(t.remarques)}</p>` : ''}</div>`;
 }
+/* Changer en un clic depuis l'aperçu, puis réafficher la même fenêtre */
+const reouvrirTache = (k) => { const f = TA.fenetre === 'taPlanifier' ? ACTIONS.taPlanifier : ACTIONS.taResume; const r = PL.rafraichir; f({ dataset: { key: k } }); if (TA.fenetre === 'taPlanifier') PL.rafraichir = r; };
+ACTIONS.taSetCat = (el) => { const k = el.dataset.key, t = DB.get(k); if (!t) return; const meme = catTache(t).cat === el.dataset.cat; const o = Object.assign({}, t, { cat: meme ? '' : el.dataset.cat, sous: '' }); delete o.tag; DB.put(k, o); reouvrirTache(k); };
+ACTIONS.taSetSous = (el) => { const k = el.dataset.key, t = DB.get(k); if (!t) return; const c = catTache(t); const o = Object.assign({}, t, { cat: c.cat, sous: c.sous === el.dataset.sous ? '' : el.dataset.sous }); delete o.tag; DB.put(k, o); reouvrirTache(k); };
+ACTIONS.taSetImp = (el) => { const k = el.dataset.key, t = DB.get(k); if (!t) return; const o = Object.assign({}, t, { importance: Number(el.dataset.imp) }); delete o.urgent; DB.put(k, o); reouvrirTache(k); };
 ACTIONS.taResume = (el) => {
-  const k = el.dataset.key, t = DB.get(k); if (!t) return; const done = t.statut === 'termine';
+  const k = el.dataset.key, t = DB.get(k); if (!t) return; const done = t.statut === 'termine'; TA.fenetre = 'taResume';
   const retour = PL.rafraichir;
   openSheet(`${sheetHead(t.titre)}<div class="sbody">${resumeTacheHtml(t, k)}
     ${catTache(t).sous === 'livraison' && t.contactId ? `<div class="row"><button class="btn" type="button" data-act="taFacture" data-key="${esc(k)}">🧾 Créer la facture</button></div>` : ''}
@@ -287,6 +317,7 @@ FORMS.ta = (v) => {
     contactId: v.contactId != null ? v.contactId : t.contactId || '', cultures: v.cultures != null ? String(v.cultures).split(',').filter(Boolean) : (t.cultures || []), planches: v.planches != null ? String(v.planches).trim() : t.planches || '', liste: (TA.liste || []).slice(), remarques: v.remarques,
     termineLe: faite ? (was ? t.termineLe : todayISO()) : '' });
   delete o.tag; delete o.urgent;
+  if ((o.journee && o.journee !== t.journee) || (!o.journee && o.jour && (o.jour !== t.jour || t.journee))) o.ordre = ordreFin({ journee: o.journee, jour: o.jour });
   DB.put(k, o); closeSheet(); if (PL.retourEdit) { const r = PL.retourEdit; PL.retourEdit = null; setTimeout(r, 0); }
   if (faite && !was && o.rep) repeterSiBesoin(k, o); else toast(v.key ? 'Tâche enregistrée.' : 'Tâche ajoutée.');
 };

@@ -73,10 +73,10 @@ MODULES.calendrier = {
     if (sub === 'semaine') { setTimeout(() => location.replace('#/calendrier/heures'), 0); return ''; }
     if (sub === 'agenda') sub = '';
     const nUrg = tachesUrgentesPourMoi().length;
-    const t = tabs('calendrier', [['', "Vue d'ensemble"], ['taches', `Tâches${nUrg ? ' · ' + nUrg + ' échéance proche' : ''}`, nUrg > 0], ['mois', 'Mois'], ['heures', 'Heures']], sub === 'feuille' ? 'taches' : sub);
+    const t = tabs('calendrier', [['', "Vue d'ensemble"], ['taches', `Tâches${nUrg ? ' · ' + nUrg + ' échéance proche' : ''}`, nUrg > 0], ['mois', 'Calendrier'], ['heures', 'Heures']], sub === 'feuille' ? 'taches' : sub);
     if (sub === 'taches') return t + renderTaches();
     if (sub === 'feuille') return t + renderFeuille();
-    if (sub === 'mois') return t + renderMois();
+    if (sub === 'mois') return t + (CAL.vue === 'semaine' ? renderSemaineCal() : renderMois());
     if (sub === 'heures') return t + `<div class="row"><button class="btn primary" type="button" data-act="mesHeures">+ Enregistrer mes heures</button></div>` + renderSemaineHeures() + renderBilanHeures();
     return t + renderVue();
   },
@@ -141,6 +141,7 @@ function renderMois() {
   // Totaux du mois
   const tm = totalHeures(heuresToutes(), (h) => h.date.slice(0, 7) === CAL.mois);
   return `<div class="panel">
+    <div class="row">${vueCalHtml()}</div>
     <div class="between"><div class="row"><button class="btn small" type="button" data-act="calMois" data-m="${ym(prev)}" aria-label="Mois précédent">←</button>
       <h2 style="min-width:9ch">${MOIS[M - 1].replace(/^./, (c) => c.toUpperCase())} ${Y}</h2><button class="btn small" type="button" data-act="calMois" data-m="${ym(next)}" aria-label="Mois suivant">→</button>
       ${CAL.mois !== today.slice(0, 7) ? `<button class="btn small" type="button" data-act="calMois" data-m="${today.slice(0, 7)}">Aujourd'hui</button>` : ''}</div>
@@ -151,6 +152,43 @@ function renderMois() {
   </div>`;
 }
 ACTIONS.calMois = (el) => { CAL.mois = el.dataset.m; render(); };
+/* ---------- Calendrier : vue Mois ou Semaine ---------- */
+try { CAL.vue = ls.get('gdt-cal-vue') || 'mois'; } catch (e) { CAL.vue = 'mois'; }
+const vueCalHtml = () => `<div class="seg-mini" role="group" aria-label="Vue"><button type="button" class="${CAL.vue !== 'semaine' ? 'on' : ''}" data-act="calVue" data-v="mois">Mois</button><button type="button" class="${CAL.vue === 'semaine' ? 'on' : ''}" data-act="calVue" data-v="semaine">Semaine</button></div>`;
+ACTIONS.calVue = (el) => { CAL.vue = el.dataset.v; ls.set('gdt-cal-vue', CAL.vue); render(); };
+ACTIONS.calSem = (el) => { const n = Number(el.dataset.n); CAL.lundi = n === 0 ? lundiDe(todayISO()) : addDays(CAL.lundi || lundiDe(todayISO()), n); render(); };
+/* Une journée de travail s'ouvre en vue « journée » ; les autres événements, dans leur fiche */
+const evClic = (x) => evGenre(DB.get(x.key) || {}).genre === 'travail' ? `data-act="plJourneeVoir" data-j="${esc(x.key + '|' + x.occ)}"` : `data-act="evEdit" data-key="${esc(x.key)}"`;
+function renderSemaineCal() {
+  const today = todayISO(); if (!CAL.lundi) CAL.lundi = lundiDe(today);
+  const l = CAL.lundi, fin = addDays(l, 6), items = itemsPeriode(l, fin), L = CAL.calques, ps = personnes(), w = semaineISO(l);
+  const ini = (k) => (nomDe(k) || '?').slice(0, 2);
+  const jours = Array.from({ length: 7 }, (_, i) => addDays(l, i)).map((d, i) => {
+    const xs = items[d] || [];
+    const evs = L.evenements ? xs.filter((x) => x.kind === 'ev').sort((a, b) => String(a.heure || '99').localeCompare(String(b.heure || '99'))) : [];
+    const ts = L.taches ? xs.filter((x) => x.kind === 'tache' && !x.journee) : [], ech = L.taches ? xs.filter((x) => x.kind === 'echeance') : [];
+    const fac = L.factures ? xs.filter((x) => x.kind === 'facture') : [], rel = L.relances ? xs.filter((x) => x.kind === 'relance') : [];
+    const hs = L.heures ? xs.filter((x) => x.kind === 'heures' && (x.heures > 0 || x.off)) : [];
+    return `<div class="sem-j${d === today ? ' today' : ''}${i >= 5 ? ' we' : ''}">
+      <button type="button" class="sem-tete" data-act="plJourVoir" data-d="${d}"><b>${JOURS[i]}</b> ${fmtDateCourt(d)}</button>
+      ${evs.map((x) => { const nt = taches().filter((t) => t.journee === x.key + '|' + x.occ && t.statut !== 'termine').length; return `<button type="button" class="sem-ev${x.fait ? ' fait' : ''}" style="--c:${esc(x.couleur)}" ${evClic(x)}>${x.heure ? `<span class="num">${esc(x.heure)}</span> ` : ''}<b>${esc(x.titre)}</b>${x.qui ? `<span class="hint"> · ${esc(quiLabel(x.qui))}</span>` : ''}${nt ? `<span class="sem-nb">☑ ${nt}</span>` : ''}</button>`; }).join('')}
+      ${ts.map((x) => `<button type="button" class="sem-ta" data-act="taVoir" data-key="${esc(x.key)}">☐ ${esc(x.titre)}</button>`).join('')}
+      ${ech.map((x) => `<button type="button" class="sem-ta ech" data-act="taVoir" data-key="${esc(x.key)}">⏰ ${esc(x.titre)}</button>`).join('')}
+      ${fac.map((x) => `<button type="button" class="sem-ta" data-act="go" data-href="#/factures/voir/${encodeURIComponent(x.key)}">🧾 ${esc(x.titre)}</button>`).join('')}
+      ${rel.map((x) => `<button type="button" class="sem-ta" data-act="go" data-href="#/contacts/prospect/${encodeURIComponent(x.key)}">☎ ${esc(x.titre)}</button>`).join('')}
+      ${hs.length ? `<div class="sem-h">${hs.map((x) => `<span>${esc(ini(x.personne))} ${x.off ? 'off' : fmtH(x.heures) + ' h'}</span>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  const legend = [['heures', 'Heures'], ['evenements', 'Événements'], ['taches', 'Tâches et échéances'], ['factures', 'Factures'], ['relances', 'Relances']].map(([k, n]) => `<button type="button" class="chip${L[k] ? ' on' : ''}" data-act="calCalque" data-k="${k}">${n}</button>`).join('');
+  const th = totalHeures(heuresToutes(), (h) => h.date >= l && h.date <= fin);
+  return `<div class="panel"><div class="row">${vueCalHtml()}</div>
+    <div class="between"><div class="row"><button class="btn small" type="button" data-act="calSem" data-n="-7" aria-label="Semaine précédente">←</button><h2 style="min-width:9ch">Semaine ${w.semaine}</h2><button class="btn small" type="button" data-act="calSem" data-n="7" aria-label="Semaine suivante">→</button>
+      ${l !== lundiDe(today) ? '<button class="btn small" type="button" data-act="calSem" data-n="0">Cette semaine</button>' : ''}</div>
+      <div class="row"><span class="hint">${fmtDateCourt(l)} – ${fmtDate(fin)} · ${ps.map((p) => `${esc(p.nom)} ${fmtH(th[p.k] || 0)} h`).join(' · ')}</span><button class="btn primary small" type="button" data-act="evEdit" data-date="${l <= today && today <= fin ? today : l}">+ Événement</button></div></div>
+    <div class="chips">${legend}</div>
+    <div class="sem">${jours}</div>
+    <p class="hint">Touche un jour pour l'ouvrir (tâches, ajout), une journée de travail pour voir ses tâches.</p></div>`;
+}
 ACTIONS.calCalque = (el) => { CAL.calques[el.dataset.k] = !CAL.calques[el.dataset.k]; ls.set('gdt-cal-calques', JSON.stringify(CAL.calques)); render(); };
 
 /* ---------- Fiche d'un jour ---------- */
@@ -280,7 +318,7 @@ function renderVue() {
     const rec = e.type === 'recolte' && d <= today && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(x.key, x.occ) && !((e.occ || {})[x.occ] || {}).sansRecolte;
     return `<div class="pl-ev${fort ? ' fort' : ''}${x.fait ? ' fait' : ''}" style="--c:${esc(x.couleur)}" data-journee="${esc(j)}">
       <div class="pl-ev-h" data-act="plJourneeVoir" data-j="${esc(j)}" role="button" tabindex="0" title="Ouvrir la journée"><span class="pl-ev-t">${esc(iconeEv(e))} <b>${esc(x.titre)}</b>${x.multi ? ' <span class="hint">(plusieurs jours)</span>' : ''}</span>${det ? `<span class="pl-ev-d">${esc(det)}</span>` : ''}</div>
-      ${tj.length ? `<div class="pl-ev-taches tri-taches">${tj.sort(triOrdre).map((t) => tacheHtml(t, { sansDate: true, court: true, tri: true })).join('')}</div>` : ''}
+      ${tj.length ? `<div class="pl-ev-nb" data-act="plJourneeVoir" data-j="${esc(j)}" role="button" tabindex="0">☑ ${tj.filter((t) => t.statut !== 'termine').length} tâche${tj.filter((t) => t.statut !== 'termine').length > 1 ? 's' : ''} prévue${tj.filter((t) => t.statut !== 'termine').length > 1 ? 's' : ''}${tj.some((t) => t.statut === 'termine') ? ` · ${tj.filter((t) => t.statut === 'termine').length} faite${tj.filter((t) => t.statut === 'termine').length > 1 ? 's' : ''}` : ''} ›</div>` : ''}
       ${rec ? `<div class="row pl-ev-act"><button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button></div>` : ''}</div>`;
   };
   let jours = '';
@@ -389,8 +427,8 @@ function brancherGlisserTaches(root) {
   root.addEventListener('drop', (e) => {
     if (![...e.dataTransfer.types].includes(T)) return; const c = cible(e); if (!c) return; e.preventDefault();
     const k = e.dataTransfer.getData(T), t = DB.get(k); root.classList.remove('glisse-tache'); root.querySelectorAll('.drop, .glisse').forEach((x) => x.classList.remove('drop', 'glisse')); if (!t) return;
-    if (c.dataset.journee) { const [ek, d] = c.dataset.journee.split('|'); DB.put(k, Object.assign({}, t, { journee: c.dataset.journee })); toast(`« ${t.titre} » rattachée à ${titreEv(DB.get(ek) || {})} (${fmtDateCourt(d)}).`); }
-    else { const d = c.dataset.jour; DB.put(k, Object.assign({}, t, { jour: d, journee: '' })); toast(d ? `« ${t.titre} » pour le ${fmtDate(d)}.` : `« ${t.titre} » remise à planifier.`); }
+    if (c.dataset.journee) { const [ek, d] = c.dataset.journee.split('|'); if (t.journee === c.dataset.journee) return; DB.put(k, Object.assign({}, t, { journee: c.dataset.journee, jour: '', ordre: ordreFin({ journee: c.dataset.journee }) })); toast(`« ${t.titre} » rattachée à ${titreEv(DB.get(ek) || {})} (${fmtDateCourt(d)}).`); }
+    else { const d = c.dataset.jour; if (!t.journee && (t.jour || '') === (d || '')) return; DB.put(k, Object.assign({}, t, { jour: d, journee: '', ordre: d ? ordreFin({ jour: d }) : undefined })); toast(d ? `« ${t.titre} » pour le ${fmtDate(d)}.` : `« ${t.titre} » remise à planifier.`); }
   });
 }
 /* Les tâches d'une journée prévue : cocher celles à y faire (parmi les tâches ouvertes), ou en créer une */
@@ -413,7 +451,7 @@ ACTIONS.plJourneeNew = () => {
 FORMS.plJournee = (v, form) => {
   const j = v.j, coches = new Set([...form.querySelectorAll('input[name=t]:checked')].map((x) => x.value));
   for (const t of taches()) {
-    if (coches.has(t.key) && t.journee !== j) DB.put(t.key, Object.assign({}, t, { journee: j }));
+    if (coches.has(t.key) && t.journee !== j) DB.put(t.key, Object.assign({}, t, { journee: j, jour: '', ordre: ordreFin({ journee: j }) }));
     else if (!coches.has(t.key) && t.journee === j) DB.put(t.key, Object.assign({}, t, { journee: '' }));
   }
   closeSheet(); toast(`${coches.size} tâche${coches.size > 1 ? 's' : ''} pour cette journée.`);
