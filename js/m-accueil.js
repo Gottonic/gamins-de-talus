@@ -17,10 +17,9 @@ const ICONS = {
 };
 const ORDRE = ['messages', 'mails', 'contacts', 'calendrier', 'factures', 'finances', 'cultures', 'irrigation']; // par paires de couleur ; le Drive s'ouvre par le bouton en haut de l'écran
 
-/* Ce que l'accueil montre : « moi » (ce qui me concerne, par défaut) ou « tous » ; mémorisé sur l'appareil */
-const ACC = { vue: ls.get('gdt-accueil-vue') || 'moi' };
-const pourMoi = (qui) => ACC.vue !== 'moi' || !Sync.me || quiInclut(qui, Sync.me);
-ACTIONS.accVue = (el) => { ACC.vue = el.dataset.v; ls.set('gdt-accueil-vue', ACC.vue); render(); };
+/* Pastilles et chiffres de l'accueil : ce qui me concerne */
+const ACC = { vue: 'moi' };
+const pourMoi = (qui) => !Sync.me || quiInclut(qui, Sync.me);
 
 function renderAccueil() {
   const h = new Date().getHours();
@@ -36,67 +35,18 @@ function renderAccueil() {
     <a class="kpi t-factures" href="#/factures"><span class="k">À encaisser</span><span class="v">${chf(ouvertes.reduce((a, f) => a + f.total, 0))}</span>
       <span class="s ${retard.length ? 'bad' : ''}">${ouvertes.length ? `${ouvertes.length} facture${ouvertes.length > 1 ? 's' : ''} ouverte${ouvertes.length > 1 ? 's' : ''}${retard.length ? `, dont ${retard.length} en retard` : ''}` : 'Toutes les factures sont payées'}</span></a>
     <a class="kpi t-finances" href="#/finances/bilan"><span class="k">Résultat ${y}</span><span class="v">${chf(b.resultat)}</span><span class="s">Recettes ${chf(b.rec)} · charges ${chf(b.charges)}</span></a>
-    <a class="kpi t-calendrier" href="#/calendrier/heures"><span class="k">${ACC.vue === 'moi' && Sync.me ? 'Mes heures cette semaine' : 'Heures cette semaine'}</span><span class="v">${fmtH(ACC.vue === 'moi' && Sync.me ? hs[Sync.me] || 0 : hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
+    <a class="kpi t-calendrier" href="#/calendrier/heures"><span class="k">${Sync.me ? 'Mes heures cette semaine' : 'Heures cette semaine'}</span><span class="v">${fmtH(Sync.me ? hs[Sync.me] || 0 : hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
   </section>`;
 
-  /* --- Ce qui est à faire --- */
-  const groupes = [];
-  const nl = typeof nonLus === 'function' ? nonLus() : [];
-  if (nl.length) groupes.push({ mod: 'messages', titre: 'Messages non lus', n: nl.length, items: nl.slice(-4).reverse().map((m) => ({ href: '#/messages', txt: `${nomDe(m.de)} : ${trunc(apercuMsg(m), 60)}`, val: fmtDateCourt(isoDate(new Date(m.cree))) })),
-    plus: { href: '#/messages', txt: 'Ouvrir la messagerie' } });
-  const ml = typeof mailsATraiter === 'function' ? mailsATraiter().filter((m) => ACC.vue !== 'moi' || !m.par || m.par === Sync.me) : [];
-  if (ml.length) groupes.push({ mod: 'mails', titre: 'Mails à traiter', n: ml.length, items: ml.slice(0, 4).map((m) => ({ href: '#/mails', txt: `${(m.de && (m.de.nom || m.de.adresse)) || '?'} : ${trunc(m.objet || '(sans objet)', 50)}`, val: m.par ? (m.par === Sync.me ? 'pour toi' : 'pour ' + nomDe(m.par)) : fmtDateCourt(String(m.date || '').slice(0, 10)), bad: !m.par, fort: !!Sync.me && m.par === Sync.me })), plus: { href: '#/mails', txt: 'Voir les mails' } });
-  /* Factures échues : la personne à qui appartient le compte vérifie si le virement est arrivé */
-  const tit = typeof titulaireCompte === 'function' ? titulaireCompte() : '';
-  const verif = typeof virementsAVerifier === 'function' && (ACC.vue !== 'moi' || !Sync.me || !tit || tit === Sync.me) ? virementsAVerifier() : [];
-  if (verif.length) groupes.push({ mod: 'factures', titre: tit && tit === Sync.me ? 'Virements à vérifier sur ton compte' : `Virements à vérifier${tit ? ' (compte de ' + nomDe(tit) + ')' : ''}`, n: verif.length,
-    items: verif.slice(0, 6).map((f) => ({ act: 'facVerif', data: { key: f.key }, txt: `${f.numero || 'Vente'} · ${f.client.nom}`, val: `${chf(f.total)} · ${f.echeance === today ? "échue aujourd'hui" : 'échue le ' + fmtDateCourt(f.echeance)}`, fort: true })) });
-  const pasEchues = ACC.vue === 'moi' ? ouvertes.filter((f) => !verif.includes(f) && !(f.echeance && f.echeance <= today && f.paiement !== 'especes')) : ouvertes.filter((f) => !verif.includes(f));
-  if (pasEchues.length) groupes.push({ mod: 'factures', titre: 'Ventes pas encore payées', n: pasEchues.length, items: pasEchues.sort((a, c) => String(a.echeance).localeCompare(String(c.echeance))).slice(0, 6)
-    .map((f) => ({ href: '#/factures/voir/' + encodeURIComponent(f.key), txt: `${f.numero || f.blNumero || 'Vente'} · ${f.client.nom}`, val: `${chf(f.total)} · ${facStatut(f) === 'retard' ? 'en retard depuis le ' : 'échéance '}${fmtDateCourt(f.echeance)}`, bad: facStatut(f) === 'retard' })) });
-  /* Tâches : celles prévues aujourd'hui hors d'une journée (celles d'une journée sont avec la journée, plus bas),
-     puis celles pas planifiées dont l'échéance approche */
-  const demain = addDays(today, 1);
-  const tAuj = taches().filter((t) => tacheOuverte(t) && !t.journee && t.jour === today && pourMoi(t.responsable));
-  const tEch = trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t) && echeanceProche(t) && pourMoi(t.responsable)));
-  const tch = tAuj.concat(tEch), ouvT = tch;
-  if (tch.length) groupes.push({ mod: 'calendrier', titre: "Tâches du jour et échéances proches", n: tch.length,
-    items: tch.slice(0, 7).map((t) => ({ act: 'taVoir', data: { key: t.key }, txt: t.titre + (t.responsable ? ' · ' + nomDe(t.responsable) : ''),
-      val: t.jour === today && !t.journee ? "aujourd'hui" : t.echeance < today ? 'échéance dépassée' : t.echeance === today ? "échéance aujourd'hui" : 'avant le ' + fmtDateCourt(t.echeance),
-      bad: !!t.echeance && t.echeance < today, fort: !(t.jour === today) && !!t.echeance && t.echeance <= demain })),
-    plus: { href: '#/calendrier/taches', txt: 'Voir les tâches à planifier' } });
-  /* Calendrier des 7 prochains jours */
-  const prochains = []; const it7 = itemsPeriode(today, addDays(today, 6));
-  for (const d of Object.keys(it7).sort()) for (const x of it7[d]) if (x.kind === 'ev' && (x.debut || d === today) && pourMoi(x.qui)) prochains.push({ act: 'evEdit', data: { key: x.key }, txt: x.titre + (x.qui && !x.titre.includes(quiLabel(x.qui)) ? ' · ' + quiLabel(x.qui) : ''), val: (d === today ? "aujourd'hui" : d === addDays(today, 1) ? 'demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3) + ' ' + fmtDateCourt(d)) + (x.heure ? ' ' + x.heure : ''), fort: d === today });
-  groupes.push({ mod: 'calendrier', titre: 'Ces 7 prochains jours', n: prochains.length, vide: 'Rien de prévu.', items: prochains.slice(0, 7), plus: { href: '#/calendrier', txt: "Voir la planification" } });
-  /* Récoltes prévues au calendrier, pas encore enregistrées */
-  const rae = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().filter((r) => pourMoi(r.qui)) : [];
-  if (rae.length) groupes.push({ mod: 'cultures', titre: 'Récoltes à enregistrer', n: rae.length, items: rae.slice(0, 5).map((r) => ({ act: 'recolteEv', data: { key: r.key, occ: r.occ }, txt: r.titre, val: r.occ === today ? "aujourd'hui" : 'depuis le ' + fmtDateCourt(r.occ), fort: r.occ === today, bad: r.occ < today })) });
-  /* Garanties qui se terminent dans le mois : c'est le moment de signaler un défaut */
-  const gFin = typeof garanties === 'function' ? garanties().filter((d) => d.garantie <= addDays(today, 30)) : [];
-  if (gFin.length) groupes.push({ mod: 'finances', titre: 'Garanties qui se terminent', n: gFin.length, items: gFin.slice(0, 4).map((d) => ({ act: 'depEdit', data: { key: d.key }, txt: `🛡️ ${d.objet}`, val: `jusqu'au ${fmtDateCourt(d.garantie)}`, bad: true })) });
-  const sansJ = depenses().filter((x) => sansJustificatif(x) && pourMoi(x.par)).sort((a, c) => String(c.date).localeCompare(String(a.date)));
-  if (sansJ.length) groupes.push({ mod: 'finances', titre: 'Justificatifs manquants', n: sansJ.length, items: sansJ.slice(0, 4).map((d) => ({ href: '#/finances/depenses', txt: `${d.objet} · payé par ${nomDe(d.par)}`, val: `${chf(d.montant)} · ${fmtDateCourt(d.date)}`, bad: true })),
-    plus: sansJ.length > 4 ? { href: '#/finances/depenses', txt: `Voir les ${sansJ.length} dépenses sans justificatif` } : null, avant: () => { FIN.sansJ = true; } });
-  /* Sauvegarde du mois : un rappel pour tous tant que personne n'a exporté depuis un mois */
+  /* --- « À traiter » a laissé la place aux pastilles des tuiles. Restent deux rappels rares, en bandeau --- */
+  const rappels = [];
   const sv = DB.get('cfg:sauvegarde') || {};
-  if (Object.keys(DB.data).length > 30 && (!sv.le || sv.le.slice(0, 10) < addDays(today, -31))) groupes.push({ mod: 'reglages', titre: 'Sauvegarde du mois', items: [{ href: '#/reglages/donnees', txt: 'Télécharger une copie des données', val: sv.le ? 'dernière le ' + fmtDateCourt(sv.le.slice(0, 10)) : 'jamais faite' }] });
-  /* Archive de l'année passée : le rappel reste tant que chaque associé ne l'a pas téléchargée une fois */
+  if (Object.keys(DB.data).length > 30 && (!sv.le || sv.le.slice(0, 10) < addDays(today, -31))) rappels.push(`<a class="banner rappel" href="#/reglages/donnees">💾 <span><b>Sauvegarde du mois</b> · télécharger une copie des données${sv.le ? ` (dernière le ${fmtDateCourt(sv.le.slice(0, 10))})` : ''}</span></a>`);
   const yb = String(Number(y) - 1);
   if (typeof archiveManquePour === 'function' && (depenses().some((x) => yearOf(x.date) === yb) || recettesToutes().some((x) => yearOf(x.date) === yb))) {
-    const manque = archiveManquePour(yb), moi = manque.some((p) => p.k === Sync.me);
-    if (manque.length) groupes.push({ mod: 'finances', titre: "Fin d'année " + yb, items: [moi
-      ? { href: '#/finances/annee', txt: `Télécharger l'archive des comptes ${yb}`, val: 'impôts', bad: Number(today.slice(5, 7)) >= 3 }
-      : { href: '#/finances/annee', txt: `Archive ${yb} pas encore téléchargée par ${manque.map((p) => p.nom).join(', ')}`, val: '' }] });
+    const manque = archiveManquePour(yb);
+    if (manque.some((p) => p.k === Sync.me)) rappels.push(`<a class="banner rappel" href="#/finances/annee">📦 <span><b>Fin d'année ${yb}</b> · télécharger l'archive des comptes (impôts)</span></a>`);
   }
-  const d = decompteActuel();
-  const trs = d.transferts.filter((t) => ACC.vue !== 'moi' || !Sync.me || t.de === Sync.me || t.a === Sync.me);
-  if (trs.length) groupes.push({ mod: 'finances', titre: 'Entre associés', items: trs.map((t) => ({ href: '#/finances/associes', txt: `${nomDe(t.de)} doit à ${nomDe(t.a)}`, val: chf(t.montant) })) });
-
-  const vue = Sync.me ? `<div class="seg-mini" role="group" aria-label="Afficher"><button type="button" class="${ACC.vue === 'moi' ? 'on' : ''}" data-act="accVue" data-v="moi">Pour moi</button><button type="button" class="${ACC.vue !== 'moi' ? 'on' : ''}" data-act="accVue" data-v="tous">Tout le monde</button></div>` : '';
-  const todo = `<section class="panel"><div class="between"><h2>À traiter</h2>${vue}</div><div class="todo">${groupes.map((g) => `<div class="grp t-${g.mod}"><h3>${esc(g.titre)}${g.n ? `<span class="n">${g.n}</span>` : ''}</h3>
-      ${g.items.length ? g.items.map((it) => `<a class="it${it.fort ? ' fort' : it.bad ? ' bad' : ''}" href="${it.href || '#'}"${it.act ? ` data-act="${it.act}"${Object.entries(it.data || {}).map(([k, v]) => ` data-${k}="${esc(v)}"`).join('')}` : g.avant ? ' data-act="goSansJ"' : ''}><span>${esc(it.txt)}</span><span class="num">${esc(it.val)}</span></a>`).join('') : `<p class="none">${esc(g.vide || 'Rien.')}</p>`}
-      ${g.plus ? `<a class="btn link" href="${g.plus.href}"${g.avant ? ' data-act="goSansJ"' : ''}>${esc(g.plus.txt)}</a>` : ''}</div>`).join('')}</div></section>`;
 
   const tiles = ORDRE.filter((k) => MODULES[k]).map((k) => {
     const m = MODULES[k]; let t = { line: '' };
@@ -107,7 +57,7 @@ function renderAccueil() {
     </section>
     ${typeof journeeEnCoursHtml === 'function' ? journeeEnCoursHtml() : ''}
     <section class="tiles" aria-label="Modules">${tiles}</section>
-    ${todo}
+    ${rappels.join('')}
     ${kpis}`;
 }
 ACTIONS.goSansJ = () => { FIN.sansJ = true; FIN.annee = ''; FIN.type = ''; FIN.par = ''; FIN.q = ''; go('#/finances/depenses'); };

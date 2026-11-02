@@ -65,7 +65,8 @@ MODULES.calendrier = {
   titre: 'Planification',
   tuile() {
     /* Événements du jour pour moi, sauf ceux déjà bouclés : marqués faits, ou journée de travail dont mes heures sont notées */
-    const finie = (x) => x.fait || (Sync.me && heuresNotees(todayISO(), Sync.me) && evGenre(DB.get(x.key) || {}).genre === 'travail');
+    /* Une journée de travail est déjà bien visible sur l'accueil (journée en cours) : pas de pastille pour elle */
+    const finie = (x) => x.fait || evGenre(DB.get(x.key) || {}).genre === 'travail';
     const auj = (itemsPeriode(todayISO(), todayISO())[todayISO()] || []).filter((x) => x.kind === 'ev' && (typeof pourMoi !== 'function' || pourMoi(x.qui)) && !finie(x)).length;
     const aP = aPlanifier().length, presse = tachesUrgentesPourMoi().length;
     const ev7 = Object.entries(itemsPeriode(todayISO(), addDays(todayISO(), 6))).reduce((a, [, xs]) => a + xs.filter((x) => x.kind === 'ev' && x.debut).length, 0);

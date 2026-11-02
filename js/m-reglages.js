@@ -24,7 +24,7 @@ MODULES.reglages = {
 };
 
 /* Apparence : thème choisi par appareil (clair par défaut). L'application réelle se fait dans index.html (appliquerTheme). */
-const THEMES = [['clair', 'Clair'], ['sombre', 'Sombre'], ['systeme', 'Système'], ['crazy', 'Crazy']];
+const THEMES = [['clair', 'Clair'], ['sombre', 'Sombre'], ['systeme', 'Système'], ['crazy', '🦄']];
 function themeChoisi() { try { return localStorage.getItem('gdt-theme') || 'clair'; } catch (e) { return 'clair'; } }
 function renderApparence() {
   const c = themeChoisi();

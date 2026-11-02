@@ -120,7 +120,8 @@ MODULES.factures = {
   titre: 'Ventes',
   tuile() {
     const f = factures(); const open = f.filter((x) => ['ouverte', 'retard'].includes(facStatut(x)));
-    const late = f.filter((x) => facStatut(x) === 'retard');
+    const late = f.filter((x) => facStatut(x) === 'retard'), verif = mesVirementsAVerifier();
+    if (verif.length) return { line: `${verif.length} virement${verif.length > 1 ? 's' : ''} à vérifier sur ${titulaireCompte() === Sync.me ? 'ton' : 'le'} compte`, warn: true, badge: verif.length + late.filter((x) => !verif.includes(x)).length };
     if (late.length) return { line: `${late.length} facture${late.length > 1 ? 's' : ''} en retard · ${chf(late.reduce((a, x) => a + x.total, 0))}`, warn: true, badge: late.length };
     if (open.length) return { line: `À encaisser : ${chf(open.reduce((a, x) => a + x.total, 0))}` };
     return { line: f.length ? `${f.length} vente${f.length > 1 ? 's' : ''}, tout est payé` : 'Ventes, stock et prix' };
@@ -150,7 +151,7 @@ function renderListeFactures(selKey) {
     return `<tr class="click${f.key === selKey ? ' sel' : ''}" data-act="go" data-href="#/factures/voir/${encodeURIComponent(f.key)}"><td class="num">${f.numero ? esc(f.numero) : `<span class="hint">${esc(f.blNumero || 'vente')}</span>`}${f.numero && dbl[f.numero] > 1 && s !== 'annulee' ? ' <span class="pill retard">double</span>' : ''}</td><td>${esc(trunc(f.client && f.client.nom, 28))}</td><td class="num">${fmtDate(f.date)}</td><td class="r num">${money(f.total)}</td><td><span class="pill ${s}">${esc(facLabel(f))}</span></td></tr>`;
   }).join('')}</tbody></table></div>` : `<p class="empty">Aucune vente pour l'instant. <a href="#/factures/nouvelle">Enregistrer la première</a></p>`;
   const sel = DB.get(selKey);
-  return `${setup}<div class="stats">
+  return `${setup}${virementsAVerifierHtml()}<div class="stats">
       <div class="stat good"><span class="k">À encaisser</span><span class="v">${chf(open)}</span></div>
       <div class="stat bad"><span class="k">En retard</span><span class="v">${nLate ? `${nLate} · ${chf(late)}` : 'Aucune'}</span></div>
       <div class="stat"><span class="k">Vendu en ${y}</span><span class="v">${chf(year)}</span></div></div>
@@ -450,6 +451,13 @@ FORMS.facPaid = (v) => {
 const titulaireCompte = () => cfg().compteDe || '';
 const aVerifier = (f, today) => f.paiement !== 'especes' && ['ouverte', 'retard'].includes(facStatut(f)) && f.echeance && f.echeance <= today && !(f.verifierApres && f.verifierApres > today);
 const virementsAVerifier = () => { const t = todayISO(); return factures().filter((f) => aVerifier(f, t)).sort((a, b) => String(a.echeance).localeCompare(String(b.echeance))); };
+/* Ceux que je dois vérifier : je suis titulaire du compte (ou aucun titulaire n'est indiqué) */
+const mesVirementsAVerifier = () => { const tit = titulaireCompte(); return !Sync.me || !tit || tit === Sync.me ? virementsAVerifier() : []; };
+function virementsAVerifierHtml() {
+  const l = mesVirementsAVerifier(), today = todayISO(); if (!l.length) return '';
+  return `<div class="panel verif-panel"><h2>Virements à vérifier${titulaireCompte() === Sync.me ? ' sur ton compte' : ''} · ${l.length}</h2><p class="hint">Échéance passée : le paiement est-il arrivé ?</p>
+    <div class="items">${l.map((f) => `<button type="button" class="item" data-act="facVerif" data-key="${esc(f.key)}"><span class="who"><strong>${esc(f.numero || 'Vente')} · ${esc(f.client.nom)}</strong><span class="meta">${f.echeance === today ? "échue aujourd'hui" : 'échue le ' + fmtDateCourt(f.echeance)}</span></span><span class="amt">${chf(f.total)}</span></button>`).join('')}</div></div>`;
+}
 ACTIONS.facVerif = (el) => {
   const k = el.dataset.key, f = DB.get(k); if (!f) return; const s = cfg(), c = f.client && f.client.id ? DB.get(f.client.id) : null;
   const rappels = (f.envois || []).filter((e) => e.rappel);

@@ -37,7 +37,7 @@ function phraseDecompte(d) {
 
 MODULES.finances = {
   titre: 'Finances',
-  tuile() { const d = decompteActuel(); return { line: phraseDecompte(d), badge: depenses().filter((x) => sansJustificatif(x) && (typeof pourMoi !== 'function' || pourMoi(x.par))).length }; },
+  tuile() { const d = decompteActuel(), gFin = garanties().filter((x) => x.garantie <= addDays(todayISO(), 30)).length; return { line: gFin ? `🛡️ ${gFin} garantie${gFin > 1 ? 's' : ''} se termine${gFin > 1 ? 'nt' : ''} bientôt` : phraseDecompte(d), badge: gFin + depenses().filter((x) => sansJustificatif(x) && (typeof pourMoi !== 'function' || pourMoi(x.par))).length }; },
   render(sub) {
     /* Trois onglets : l'argent qui entre et sort, les comptes entre associés, la fin d'année (comptes, inventaire, archive) */
     const FINA = ['annee', 'bilan', 'inventaire', 'achats'];

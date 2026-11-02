@@ -6,6 +6,8 @@
 <title>Gamins de Talus</title>
 <meta name="description" content="L'app de Gamins de Talus : factures, finances, heures, tâches, cultures, inventaire et contacts.">
 <meta name="theme-color" content="#2E6A3D">
+<meta name="apple-mobile-web-app-title" content="GDT">
+<meta name="application-name" content="GDT">
 <script>/* Thème avant l'affichage (évite un éclair blanc) : clair / sombre / systeme / crazy, choisi par appareil */
 (function () { var mq = matchMedia('(prefers-color-scheme: dark)');
   function choix() { try { return localStorage.getItem('gdt-theme') || 'clair'; } catch (e) { return 'clair'; } }
@@ -963,6 +965,18 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
   .crazy-boum { display: none; }
 }
 @media print { [data-theme] body::before, [data-theme] body::after { display: none; } }
+
+/* Contacts et prospection : la fiche devant la liste sur téléphone */
+.ct-fen { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.ct-fen-h { display: none; }
+.ct-fen-h .xbtn { text-decoration: none; color: var(--ink); }
+@media (max-width: 900px) {
+  #ct-right.ct-ouvert { position: fixed; inset: 0; z-index: 30; background: rgba(10, 16, 12, .45); display: flex; align-items: flex-end; }
+  #ct-right.ct-ouvert .ct-fen { background: var(--bg); width: 100%; max-height: 92vh; overflow: auto; border-radius: 16px 16px 0 0; padding: 0 12px calc(16px + env(safe-area-inset-bottom, 0px)); gap: 12px; box-shadow: 0 -8px 30px rgba(0,0,0,.2); }
+  .ct-fen-h { display: flex; justify-content: flex-end; position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 12px 0 4px; }
+  body:has(#ct-right.ct-ouvert) { overflow: hidden; }
+}
+.banner.rappel { text-decoration: none; margin-top: 4px; }
 
 /* Choix du thème (Réglages → Apparence) */
 .themes { display: flex; flex-wrap: wrap; gap: 8px; }

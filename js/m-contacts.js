@@ -73,7 +73,7 @@ function afterContactsProspection(sub) {
   liveSearch('pr-search', (v) => { PR.search = v; });
   const cat = $('pr-cat'); if (cat) cat.addEventListener('change', () => { PR.categorie = cat.value; render(); });
   const pb = $('pitchbox'); if (pb) pb.addEventListener('toggle', () => { ls.set('gdt-pitch-ouvert', pb.open ? '1' : '0'); const h = pb.querySelector('summary .hint'); if (h) h.textContent = pb.open ? 'fermer' : 'ouvrir'; });
-  if (['voir', 'nouveau', 'modifier', 'pmodifier', 'prospect', 'convertir'].includes(sub) && innerWidth < 900) { const r = $('ct-right'); if (r) r.scrollIntoView({ block: 'start' }); }
+  /* Sur téléphone, la fiche s'ouvre devant la liste (voir ctDroite) */
 }
 
 /* ================= Clients et contacts ================= */
@@ -95,12 +95,19 @@ function renderContacts(sub, id) {
   else if (sub === 'modifier' && DB.get(id)) right = contactForm(Object.assign({ key: id }, DB.get(id)));
   else if (sub === 'voir' && DB.get(id)) right = contactFiche(Object.assign({ key: id }, DB.get(id)));
   else if (all.length) right = '<div class="panel"><p class="hint">Choisis un contact pour voir sa fiche, ses factures et le facturer.</p></div>';
+  const ouvert = sub === 'nouveau' || (['modifier', 'voir'].includes(sub) && !!DB.get(id));
   return `<div class="split"><div class="panel">
       <div class="between"><h2>Clients et contacts</h2><a class="btn primary small" href="#/contacts/nouveau">+ Nouveau</a></div>
       ${fld('ct-search', 'Rechercher', `<input id="ct-search" type="search" value="${esc(CT.search)}" placeholder="Nom, organisation, localité, téléphone, note…" autocomplete="off">`)}
       <div class="chips">${chips}</div><div class="items">${list}</div></div>
-    <div id="ct-right">${right}</div></div>`;
+    ${ctDroite(right, ouvert, '#/contacts')}</div>`;
 }
+/* La fiche (à droite sur ordinateur) : sur téléphone, elle s'ouvre devant la liste, comme une fenêtre */
+function ctDroite(right, ouvert, retour) {
+  return ouvert ? `<div id="ct-right" class="ct-ouvert" data-retour="${esc(retour)}"><div class="ct-fen"><div class="ct-fen-h"><a class="xbtn" href="${esc(retour)}">Fermer</a></div>${right}</div></div>` : `<div id="ct-right">${right}</div>`;
+}
+document.addEventListener('click', (e) => { const r = e.target.id === 'ct-right' && e.target.classList.contains('ct-ouvert') ? e.target : null; if (r) go(r.dataset.retour); });
+document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || !$('scrim').hidden) return; const r = document.querySelector('#ct-right.ct-ouvert'); if (r && innerWidth <= 900) go(r.dataset.retour); });
 ACTIONS.ctType = (el) => { CT.type = el.dataset.t; render(); };
 ACTIONS.ctFavori = (el) => { const c = DB.get(el.dataset.key); if (c) DB.put(el.dataset.key, Object.assign({}, c, { favori: !c.favori })); };
 
@@ -230,6 +237,7 @@ function renderProspection(sub, id) {
   else if (sub === 'convertir' && DB.get(id)) right = formConversion(Object.assign({ key: id }, DB.get(id)));
   else if (sub === 'modifier' && DB.get(id)) right = contactForm(Object.assign({ key: id }, DB.get(id)));
   else right = '<div class="panel"><p class="hint">Choisis un prospect pour voir sa fiche et noter un appel.</p></div>';
+  const ouvert = (sub === 'prospect' && (id === 'nouveau' || !!DB.get(id))) || (['convertir', 'modifier'].includes(sub) && !!DB.get(id));
   return `${pitchBox()}<div class="stats">
       <div class="stat good"><span class="k">À contacter</span><span class="v">${cnt.afaire}</span></div>
       <div class="stat blue"><span class="k">À relancer</span><span class="v">${cnt.relance}</span><span class="s ${dus.length ? 'err' : ''}">${dus.length ? `${dus.length} relance${dus.length > 1 ? 's' : ''} prévue${dus.length > 1 ? 's' : ''} aujourd'hui ou avant` : 'pas joignable, à rappeler, mail envoyé'}</span></div>
@@ -242,7 +250,7 @@ function renderProspection(sub, id) {
         ${sel('pr-cat', 'Catégorie', PR.categorie, [['', 'Toutes']].concat(cats.map((x) => [x, x])))}</div>
       <div class="chips">${chips}</div><div class="chips">${prios}</div>
       <div class="items">${list}</div></div>
-      <div id="ct-right">${right}</div></div>`;
+      ${ctDroite(right, ouvert, '#/contacts/prospection')}</div>`;
 }
 ACTIONS.prGroupe = (el) => { PR.groupe = el.dataset.k; render(); };
 ACTIONS.prPrio = (el) => { PR.prio = PR.prio === el.dataset.k ? '' : el.dataset.k; render(); };
