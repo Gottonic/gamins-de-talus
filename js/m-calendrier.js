@@ -198,7 +198,10 @@ ACTIONS.calDay = (el) => ouvrirJour(el.dataset.d);
 function ouvrirJour(d) {
   const xs = itemsPeriode(d, d)[d] || [], ps = personnes(), j = DB.get('jour:' + d) || {};
   const evs = xs.filter((x) => x.kind === 'ev'), tch = xs.filter((x) => x.kind === 'tache'), fac = xs.filter((x) => x.kind === 'facture'), rel = xs.filter((x) => x.kind === 'relance');
-  const heures = heuresGrilleHtml(d, '', true);
+  const hs = ps.map((p) => [p, DB.get(hKey(d, p.k)) || {}]), notees = hs.filter(([, h]) => num(h.heures) > 0);
+  const heures = `<p>${notees.length ? notees.map(([p, h]) => `<b>${esc(p.nom)}</b> ${fmtH(h.heures)} h${h.debut ? ` <span class="hint">(${esc(h.debut)}–${esc(h.fin)}${num(h.pause) ? ', pause ' + num(h.pause) + ' min' : ''})</span>` : ''}`).join(' · ') : '<span class="hint">Pas encore notées.</span>'}</p>
+    <div class="row"><button class="btn small primary" type="button" data-act="heuresJour" data-d="${d}">Noter les heures</button></div>
+    <div class="row off-l"><span class="hint">Jour off :</span>${hs.map(([p, h]) => `<button type="button" class="chip${h.off ? ' on' : ''}" data-act="hOff" data-d="${d}" data-p="${p.k}" data-sheet="1" aria-pressed="${!!h.off}">${esc(p.nom)}</button>`).join('')}</div>`;
   const evHtml = evs.map((x) => {
     const e = DB.get(x.key) || {}, st = (e.occ || {})[x.occ] || {}, rec = e.rec && e.rec.freq;
     const c = e.contactId && DB.get(e.contactId), cu = e.cultureId && DB.get(e.cultureId);
@@ -254,7 +257,7 @@ ACTIONS.hOff = _hOff;
    Un événement, c'est du travail, un congé, ou autre chose. Ce qu'on fait pendant une journée de travail (récolte,
    livraison…) et sa catégorie, ce sont ses tâches. Les anciens événements « récolte », « livraison », « marché »
    gardent leur type (et leur culture / client) tant qu'on ne les passe pas en Congé ou Autre. */
-const EVF = { genre: 'travail', type: 'travail', ancien: '', sondage: '', qui: [] };
+const EVF = { genre: 'travail', type: 'travail', ancien: '', sondage: '', qui: [], taches: [] };
 const EV_CHAMPS = { titre: ['travail', 'recolte', 'livraison', 'vente', 'autre'], heures: ['travail', 'recolte', 'livraison', 'vente', 'autre'], contact: [], culture: [], rep: ['travail', 'recolte', 'livraison', 'vente', 'autre'] };
 function evFormHtml() {
   return `<div class="seg ev-genre">${[['travail', '🧰 Travail'], ['conge', '🏖️ Congé'], ['autre', '📌 Autre']].map(([k, n]) => `<button type="button" class="${EVF.genre === k ? 'on' : ''}" data-act="evGenre" data-g="${k}">${n}</button>`).join('')}</div>`;
@@ -291,6 +294,7 @@ ACTIONS.evGenre = (el) => { EVF.genre = el.dataset.g; EVF.type = EVF.genre === '
 ACTIONS.evEdit = (el) => {
   const k = el.dataset.key || '', e = k ? DB.get(k) : { type: 'travail', titre: el.dataset.titre || '', date: el.dataset.date || todayISO(), qui: 'ensemble', rec: { freq: '' } };
   if (!el.dataset.titre) EVF.sondage = '';
+  EVF.taches = el.dataset.taches ? el.dataset.taches.split(',') : [];   /* tâches à y mettre dès sa création (tâches pas faites d'une autre journée) */
   EVF.type = EV_GENRES[e.type] ? e.type : 'autre'; EVF.genre = evGenre(e).genre; EVF.qui = quiListe(e.qui || (k ? '' : 'ensemble'));
   if (k && !e.qui) EVF.qui = []; EVF.ancien = ['recolte', 'livraison', 'vente'].includes(e.type) ? e.type : '';
   openSheet(`${sheetHead(k ? 'Modifier l\'événement' : 'Nouvel événement', k && e.rec && e.rec.freq ? 'Modifie toute la série' : '')}<form class="sbody form" data-form="ev" id="ev-form"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="type" value="${esc(EVF.type)}">
@@ -315,6 +319,8 @@ FORMS.ev = (v) => {
     contactId: EVF.ancien && t === EVF.ancien ? old.contactId || '' : '', cultureId: EVF.ancien && t === EVF.ancien ? old.cultureId || '' : '', remarque: v.remarque, rec: champ('rep') ? { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } : { freq: '' } });
   delete o.cat; delete o.sous;
   DB.put(k, o); closeSheet();
+  if (!v.key && EVF.taches.length && evGenre(o).genre === 'travail') { deplacerTaches(EVF.taches, k + '|' + v.date); toast(`Journée créée avec ${EVF.taches.length} tâche${EVF.taches.length > 1 ? 's' : ''}.`); EVF.taches = []; return; }
+  EVF.taches = [];
   if (EVF.sondage && !v.key) { const m = DB.get(EVF.sondage); if (m) DB.put(EVF.sondage, Object.assign({}, m, { evenement: k })); EVF.sondage = ''; } toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
 };
 
@@ -529,7 +535,7 @@ function renderSemaineHeures() {
       const h = DB.get(hKey(d, p.k)) || {}; tot[p.k] += num(h.heures);
       const enVac = vac.some((x) => quiInclut(x.qui, p.k));
       const mien = p.k === Sync.me;
-      const contenu = h.heures ? `<b>${fmtH(h.heures)} h</b>${h.note ? `<small>${esc(trunc(h.note, 34))}</small>` : ''}`
+      const contenu = h.heures ? `<b>${fmtH(h.heures)} h</b>${h.debut ? `<small>${esc(h.debut)}–${esc(h.fin)}</small>` : h.note ? `<small>${esc(trunc(h.note, 34))}</small>` : ''}`
         : h.off ? '<span class="tag-off">off</span>' : enVac ? '<span class="tag-vac">vacances</span>' : `<span class="plus">${mien ? '+ noter' : '+'}</span>`;
       return `<td><button type="button" class="hbtn${h.heures ? ' full' : ''}${mien ? ' mien' : ''}" data-act="mesHeures" data-d="${d}" data-p="${p.k}" aria-label="Heures de ${esc(p.nom)} le ${fmtDate(d)}">${contenu}</button></td>`;
     }).join('');
@@ -589,7 +595,7 @@ function bilanHeuresCategories(inY, ps) {
   for (const h of inY) {
     const x = num(h.heures); if (!(x > 0)) continue; const pr = h.pour || {}, parts = [];
     if (pr.admin) parts.push('admin'); if (pr.ventes) parts.push('ventes'); if (pr.cultures === 'toutes' || (Array.isArray(pr.cultures) && pr.cultures.length)) parts.push('cultures');
-    if (!parts.length) parts.push('');
+    if (!parts.length) parts.push('cultures');   /* rien de précisé : journée au champ */
     const pw = pr.poids || {}, tot = parts.reduce((a, k) => a + (k && pw[k] ? pw[k] : 1), 0);
     for (const k of parts) t[k][h.personne] = (t[k][h.personne] || 0) + x * ((k && pw[k] ? pw[k] : 1) / tot);
   }
@@ -600,7 +606,7 @@ function bilanHeuresCategories(inY, ps) {
     ${lignes.filter(([k]) => tot(k) > 0).map(([k, nom, c]) => `<tr><td><span class="catpill" style="--c:${esc(c)}">${esc(nom)}</span></td>${ps.map((p) => `<td class="r num">${fmtH(t[k][p.k] || 0)}</td>`).join('')}<td class="r num"><b>${fmtH(tot(k))} h</b></td>
       <td><div class="bar-row" style="grid-template-columns:minmax(0,1fr) 44px"><span class="bar-track"><span class="bar-fill" style="width:${(tot(k) / total * 100).toFixed(1)}%;background:${esc(c)}"></span></span><span class="num">${Math.round(tot(k) / total * 100)} %</span></div></td></tr>`).join('')}
     </tbody></table></div>
-    <p class="hint">D'après les tâches faites chaque jour où des heures sont notées : 3 tâches au champ et 1 d'admin, c'est ¾ du temps aux cultures et ¼ à l'admin. Un jour sans tâche faite reste « Pas précisé ».</p></div>`;
+    <p class="hint">D'après les tâches faites chaque jour où des heures sont notées. Une tâche d'admin compte pour une demi-tâche : 1 tâche au champ et 1 d'admin, c'est ⅔ du temps aux cultures et ⅓ à l'admin. Un jour sans tâche compte comme une journée au champ.</p></div>`;
 }
 ACTIONS.hCsv = (el) => {
   const y = el.dataset.y, ps = personnes(), days = {};
@@ -610,22 +616,17 @@ ACTIONS.hCsv = (el) => {
   downloadFile(`Heures Gamins de Talus ${y}.csv`, csv(['Date', 'Jour'].concat(ps.map((p) => 'Heures ' + p.nom), ps.map((p) => 'Off ' + p.nom), ['Remarque']), rows), 'text/csv;charset=utf-8');
 };
 
-/* ---------- Noter les heures : une seule fiche, au style de « Heures et détails du jour » ----------
-   Ne propose que les personnes inscrites à la journée (ou aux journées de travail du jour ; personne d'inscrit : tout le monde),
-   les autres sont repliées sous « Quelqu'un d'autre ? ». En dessous, les tâches faites ce jour-là, et « Autres tâches effectuées ? »
-   pour noter ce qu'on a fait sous forme de tâches. Le temps se répartit ensuite tout seul d'après ces tâches (voir majPourAuto). */
+/* ---------- Noter les heures : une seule fiche ----------
+   Une ligne par personne : début, fin, pause → heures. Ma ligne d'abord ; les autres inscrits à la journée sont des boutons :
+   un clic ajoute leur ligne, avec le même horaire que la mienne (elle suit la mienne tant qu'on ne la modifie pas).
+   En dessous, les tâches du jour, et « Autres tâches effectuées ? ». Le temps se répartit d'après ces tâches (majPourAuto).
+   Après l'enregistrement d'une journée, s'il reste des tâches pas faites : que faire de ces tâches ? */
+const HJ = { brouillon: null, cle: '' };
 function inscritsDuJour(d, j) {
   if (j) { const e = DB.get(j.split('|')[0]); return e ? quiListe(e.qui) : personnes().map((p) => p.k); }
   const evs = ((itemsPeriode(d, d)[d]) || []).filter((x) => x.kind === 'ev' && evGenre(DB.get(x.key) || {}).genre === 'travail');
   if (!evs.length) return personnes().map((p) => p.k);
   return [...new Set(evs.flatMap((x) => quiListe(x.qui)))];
-}
-function heuresGrilleHtml(d, j, avecOff) {
-  const ins = new Set(inscritsDuJour(d, j)), ps = personnes();
-  const cellule = (p) => { const h = DB.get(hKey(d, p.k)) || {}; return `<div class="field"><label for="jh-${p.k}">${esc(p.nom)}</label><div class="hcell"><input id="jh-${p.k}" type="text" inputmode="decimal" autocomplete="off" data-h="${d}|${p.k}" value="${h.heures ? esc(fmtH(h.heures)) : ''}" placeholder="heures">${avecOff || h.off ? `<button type="button" class="off${h.off ? ' on' : ''}" data-act="hOff" data-d="${d}" data-p="${p.k}" data-sheet="1" aria-pressed="${!!h.off}" title="Jour off : pas travaillé ce jour-là">off</button>` : ''}</div></div>`; };
-  const deja = (p) => { const h = DB.get(hKey(d, p.k)); return h && (num(h.heures) > 0 || h.off); };
-  const vus = ps.filter((p) => ins.has(p.k) || deja(p)), autres = ps.filter((p) => !vus.includes(p));
-  return `<div class="grid2">${vus.map(cellule).join('')}</div>${autres.length ? `<details class="hj-autres"><summary class="hint">Quelqu'un d'autre a travaillé ?</summary><div class="grid2">${autres.map(cellule).join('')}</div></details>` : ''}`;
 }
 function tachesDuJour(d, j) {
   const ins = inscritsDuJour(d, j);
@@ -633,27 +634,109 @@ function tachesDuJour(d, j) {
   const faiteCeJour = (t) => !t.journee && t.statut === 'termine' && t.termineLe === d && (!t.terminePar || ins.includes(t.terminePar));
   return taches().filter((t) => t.statut !== 'suspendu' && (prevue(t) || faiteCeJour(t))).sort(triOrdre);
 }
+const minDe = (hm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hm || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+/* Heures d'après début, fin, pause (minutes) ; null si incomplet ou impossible */
+function dureeH(debut, fin, pause) { const a = minDe(debut), b = minDe(fin); if (a == null || b == null || b <= a) return null; const m = b - a - (num(pause) || 0); return m > 0 ? Math.round(m / 60 * 100) / 100 : null; }
+function ligneHeuresHtml(p, v, suit) {
+  const tot = dureeH(v.debut, v.fin, v.pause);
+  return `<div class="hl" data-hl="${esc(p.k)}"${suit ? ' data-suit="1"' : ''}>
+    <div class="hl-tete"><b>${esc(p.k === Sync.me ? p.nom + ' (moi)' : p.nom)}</b><span class="hl-tot num">${tot != null ? fmtH(tot) + ' h' : v.ancien ? fmtH(v.ancien) + ' h notées' : ''}</span>${v.retirable ? `<button type="button" class="btn link small" data-act="hlRetirer" data-p="${esc(p.k)}">Retirer</button>` : ''}</div>
+    <div class="hl-champs"><label>Début<input type="time" data-hc="debut" value="${esc(v.debut || '')}"></label><label>Fin<input type="time" data-hc="fin" value="${esc(v.fin || '')}"></label><label>Pause<input type="number" inputmode="numeric" min="0" step="5" data-hc="pause" value="${esc(v.pause || '')}" placeholder="min" aria-label="Pause en minutes"></label></div></div>`;
+}
+const lireLigne = (row) => { const g = (c) => (row.querySelector(`[data-hc="${c}"]`) || {}).value || ''; return { debut: g('debut'), fin: g('fin'), pause: g('pause') }; };
+function lireLignes() { const o = {}; document.querySelectorAll('#hj-sheet [data-hl]').forEach((r) => { o[r.dataset.hl] = Object.assign(lireLigne(r), { suit: !!r.dataset.suit }); }); return o; }
+function heuresLignesHtml(d, j, premier) {
+  const e = j ? DB.get(j.split('|')[0]) : null, ps = personnes(), ins = inscritsDuJour(d, j), br = HJ.cle === d + '|' + j ? HJ.brouillon : null;
+  const valeurs = (k) => { if (br && br[k]) return br[k]; const h = DB.get(hKey(d, k)) || {}; return h.debut ? { debut: h.debut, fin: h.fin, pause: h.pause || '' } : { ancien: num(h.heures) > 0 ? h.heures : 0 }; };
+  const p0 = ps.find((p) => p.k === premier) || ps[0], v0 = valeurs(p0.k);
+  if (!v0.debut && !v0.ancien && e && e.heureDebut && e.heureFin) { v0.debut = e.heureDebut; v0.fin = e.heureFin; }
+  const deja = (k) => (br ? !!br[k] : (() => { const h = DB.get(hKey(d, k)); return !!(h && num(h.heures) > 0); })());
+  const autres = ps.filter((p) => p !== p0), lignes = autres.filter((p) => deja(p.k));
+  const boutons = (l) => l.map((p) => `<button type="button" class="chip" data-act="hlAjout" data-p="${esc(p.k)}">+ ${esc(p.nom)}</button>`).join('');
+  const insB = autres.filter((p) => ins.includes(p.k) && !lignes.includes(p)), horsB = autres.filter((p) => !ins.includes(p.k) && !lignes.includes(p));
+  return `<div id="hl-lignes">${ligneHeuresHtml(p0, v0)}${lignes.map((p) => ligneHeuresHtml(p, Object.assign({ retirable: true }, valeurs(p.k)), br && br[p.k] && br[p.k].suit)).join('')}</div>
+    <div class="row hl-qui" id="hl-qui">${insB.length ? `<span class="hint">Remplir aussi pour :</span>${boutons(insB)}` : ''}${horsB.length ? `<details class="hj-autres"><summary class="hint">Quelqu'un d'autre a travaillé ?</summary><div class="row">${boutons(horsB)}</div></details>` : ''}</div>`;
+}
+function brancherLignes(root) {
+  root.addEventListener('input', (ev) => {
+    const row = ev.target.closest && ev.target.closest('[data-hl]'); if (!row) return;
+    const premier = root.querySelector('[data-hl]');
+    if (row === premier) { const v = lireLigne(row); root.querySelectorAll('[data-hl][data-suit]').forEach((r) => { for (const c of ['debut', 'fin', 'pause']) r.querySelector(`[data-hc="${c}"]`).value = v[c]; majTotal(r); }); }
+    else delete row.dataset.suit;
+    majTotal(row);
+  });
+}
+function majTotal(row) { const v = lireLigne(row), t = dureeH(v.debut, v.fin, v.pause); row.querySelector('.hl-tot').textContent = t != null ? fmtH(t) + ' h' : v.debut && v.fin ? 'horaire à vérifier' : ''; }
+ACTIONS.hlAjout = (el) => {
+  const p = personnes().find((x) => x.k === el.dataset.p), premier = document.querySelector('#hj-sheet [data-hl]'); if (!p || !premier) return;
+  $('hl-lignes').insertAdjacentHTML('beforeend', ligneHeuresHtml(p, Object.assign({ retirable: true }, lireLigne(premier)), true));
+  el.remove(); const q = $('hl-qui'); if (q && !q.querySelector('[data-act=hlAjout]')) q.innerHTML = '';
+};
+ACTIONS.hlRetirer = (el) => { const r = document.querySelector(`#hj-sheet [data-hl="${el.dataset.p}"]`); if (r) { r.querySelectorAll('input').forEach((i) => { i.value = ''; }); r.hidden = true; r.dataset.retire = '1'; } };
 ACTIONS.heuresJour = (el) => {
-  const d = el.dataset.d || todayISO(), j = el.dataset.j || '', e = j ? DB.get(j.split('|')[0]) : null;
-  PL.rafraichir = () => ACTIONS.heuresJour({ dataset: { d, j } });
+  const d = el.dataset.d || todayISO(), j = el.dataset.j || '', e = j ? DB.get(j.split('|')[0]) : null, premier = el.dataset.p || Sync.me || personnes()[0].k;
+  if (HJ.cle !== d + '|' + j) HJ.brouillon = null; HJ.cle = d + '|' + j;
+  /* Cocher une tâche ou en ajouter une ré-affiche la fiche : on garde ce qui est tapé */
+  PL.rafraichir = () => { HJ.brouillon = lireLignes(); ACTIONS.heuresJour({ dataset: { d, j, p: premier } }); };
   const ts = tachesDuJour(d, j), faites = ts.filter((t) => t.statut === 'termine').length;
   const titre = e ? `${iconeEv(e)} ${titreEv(e)}` : (d === todayISO() ? "Aujourd'hui" : dateLongue(d).replace(/^./, (c) => c.toUpperCase()));
-  openSheet(`${sheetHead(titre, e ? dateLongue(d) : '')}<div class="sbody" id="hj-sheet" data-vue-racine>
-    <h3>Heures travaillées</h3>${heuresGrilleHtml(d, j)}
+  openSheet(`${sheetHead(titre, e ? dateLongue(d) : d === todayISO() ? '' : '')}<div class="sbody" id="hj-sheet" data-vue-racine>
+    <h3>Heures travaillées</h3>${heuresLignesHtml(d, j, premier)}
     <h3>Tâches${e ? ' de la journée' : ' du jour'}${ts.length ? ` · ${faites}/${ts.length} faites` : ''}</h3>
     ${ts.length ? `<div class="tri-taches">${ts.map((t) => tacheHtml(t, { court: true, sansDate: true })).join('')}</div>` : '<p class="hint">Aucune tâche cochée ce jour-là.</p>'}
     <details class="hj-plus"${ts.length ? '' : ' open'}><summary>Autres tâches effectuées ?</summary>${ajoutTacheBarre({ id: 'hj-ajout', fait: d, placeholder: 'Ex. désherbé les carottes' })}</details>
-    <p class="hint">Les heures se répartissent d'elles-mêmes entre admin, ventes et cultures d'après les tâches faites.</p>
-    <div class="row-end"><button class="btn primary" type="button" data-act="hjOk" data-d="${d}">Terminé</button></div></div>`);
-  brancherHeures($('hj-sheet'));
-  const moi = $('jh-' + Sync.me); if (moi && !moi.value && matchMedia('(pointer: fine)').matches) setTimeout(() => moi.focus(), 60);
+    <div class="row-end"><button class="btn primary" type="button" data-act="hjOk" data-d="${d}" data-j="${esc(j)}">Enregistrer les heures</button></div></div>`);
+  const sh = $('hj-sheet'); brancherLignes(sh); sh.querySelectorAll('[data-hl]').forEach(majTotal);
 };
 ACTIONS.hjOk = (el) => {
-  const d = el.dataset.d; majPourAuto(d); PL.rafraichir = null; closeSheet();
-  toast(heuresNotees(d, Sync.me) ? `Heures notées pour le ${fmtDate(d)}. Merci !` : 'Fermé (pas d\'heures à ton nom ce jour-là).');
+  const d = el.dataset.d, j = el.dataset.j || '', notes = [];
+  for (const r of document.querySelectorAll('#hj-sheet [data-hl]')) {
+    const k = hKey(d, r.dataset.hl), old = DB.get(k) || {}, v = lireLigne(r), nom = nomDe(r.dataset.hl);
+    if (!v.debut && !v.fin) { if (r.dataset.retire && old.debut) { const o = Object.assign({}, old); delete o.heures; delete o.debut; delete o.fin; delete o.pause; delete o.pour; delete o.pourAuto; if (!o.off && !o.note) DB.del(k); else DB.put(k, o); } continue; }
+    const h = dureeH(v.debut, v.fin, v.pause);
+    if (h == null || h > 24) { toast(`${nom} : vérifie le début, la fin et la pause.`); r.querySelector('[data-hc="debut"]').focus(); return; }
+    const o = Object.assign({}, old, { date: d, personne: r.dataset.hl, heures: h, debut: v.debut, fin: v.fin, pause: num(v.pause) || 0 }); delete o.off;
+    DB.put(k, o); notes.push(`${nom} ${fmtH(h)} h`);
+  }
+  const reste = j ? taches().filter((t) => t.journee === j && tacheOuverte(t)) : [];
+  majPourAuto(d); viderJourneesFinies(d); HJ.brouillon = null; PL.rafraichir = null;
+  if (notes.length) toast('Heures notées : ' + notes.join(', ') + '.'); else toast('Rien de noté (indique le début et la fin).');
+  if (notes.length && reste.length) tachesRestantes(j, reste, reste.every((t) => !(DB.get(t.key) || {}).journee)); else closeSheet();
 };
 /* Les anciens boutons « Enregistrer mes heures » (tableau de la semaine…) ouvrent la même fiche */
-ACTIONS.mesHeures = (el) => ACTIONS.heuresJour({ dataset: { d: (el && el.dataset && el.dataset.d) || todayISO() } });
+ACTIONS.mesHeures = (el) => ACTIONS.heuresJour({ dataset: { d: (el && el.dataset && el.dataset.d) || todayISO(), p: (el && el.dataset && el.dataset.p) || '' } });
+
+/* ---------- Tâches pas faites d'une journée terminée ---------- */
+function journeesAVenir(sauf) {
+  const today = todayISO(), it = itemsPeriode(today, addDays(today, 45)), out = [];
+  for (const d of Object.keys(it).sort()) for (const x of it[d]) if (x.kind === 'ev' && x.debut && x.key + '|' + x.occ !== sauf && evGenre(DB.get(x.key) || {}).genre === 'travail') out.push([x.key + '|' + x.occ, `${JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7].slice(0, 3)} ${fmtDateCourt(d)} · ${x.titre}${x.qui ? ' · ' + quiLabel(x.qui) : ''}`]);
+  return out;
+}
+function tachesRestantes(j, reste, dejaSorties) {
+  const e = DB.get(j.split('|')[0]) || {}, jv = journeesAVenir(j);
+  openSheet(`${sheetHead('Et les tâches pas faites ?', `${titreEv(e)} · ${dateLongue(j.split('|')[1])}`)}<div class="sbody form" id="tr-sheet">
+    <p>${dejaSorties ? `Tout le monde a noté ses heures : ${reste.length > 1 ? 'ces tâches pas faites sont remises' : 'cette tâche pas faite est remise'} dans « À planifier ». Tu peux aussi les mettre tout de suite dans une autre journée.` : `Il reste ${reste.length} tâche${reste.length > 1 ? 's' : ''} pas faite${reste.length > 1 ? 's' : ''} dans cette journée :`}</p>
+    <div class="pj-liste">${reste.map((t) => `<label class="row pj-it" style="--c:${esc(couleurCat(catTache(t).cat))}"><input type="checkbox" name="tr" value="${esc(t.key)}" checked> <b>${esc(t.titre)}</b></label>`).join('')}</div>
+    ${jv.length ? `<div class="field"><label for="tr-j">Les mettre dans une autre journée</label><div class="row"><select id="tr-j" style="flex:1">${jv.map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join('')}</select><button class="btn primary" type="button" data-act="trDeplacer">Déplacer</button></div></div>` : ''}
+    <div class="row"><button class="btn${jv.length ? '' : ' primary'}" type="button" data-act="trNouvelle">Créer une journée de travail…</button>${dejaSorties ? '' : '<button class="btn" type="button" data-act="trAPlanifier">Remettre « À planifier »</button>'}</div>
+    ${dejaSorties ? '' : '<p class="hint">Sinon, elles partent d\'elles-mêmes dans « À planifier » quand tout le monde aura noté ses heures.</p>'}
+    <div class="row-end"><button class="btn link" type="button" data-act="close">${dejaSorties ? 'Les laisser à planifier' : 'Plus tard'}</button></div></div>`);
+}
+const trCoches = () => [...document.querySelectorAll('#tr-sheet input[name=tr]:checked')].map((x) => x.value);
+function deplacerTaches(keys, j) { for (const k of keys) { const t = DB.get(k); if (t) DB.put(k, Object.assign({}, t, j ? { journee: j, jour: '', ordre: ordreFin({ journee: j }) } : { journee: '', jour: '' })); } }
+ACTIONS.trDeplacer = () => { const ks = trCoches(), j = ($('tr-j') || {}).value; if (!ks.length || !j) return; deplacerTaches(ks, j); closeSheet(); toast(`${ks.length} tâche${ks.length > 1 ? 's' : ''} déplacée${ks.length > 1 ? 's' : ''} dans ${titreEv(DB.get(j.split('|')[0]) || {})} (${fmtDateCourt(j.split('|')[1])}).`); };
+ACTIONS.trAPlanifier = () => { const ks = trCoches(); if (!ks.length) return; deplacerTaches(ks, ''); closeSheet(); toast(`${ks.length} tâche${ks.length > 1 ? 's' : ''} remise${ks.length > 1 ? 's' : ''} dans « À planifier ».`); };
+ACTIONS.trNouvelle = () => { const ks = trCoches(); if (!ks.length) return; ACTIONS.evEdit({ dataset: { date: addDays(todayISO(), 1), taches: ks.join(',') } }); };
+/* Dès que tous les inscrits ont noté leurs heures (ou « off ») le dernier jour d'une journée, ses tâches pas faites la quittent */
+function viderJourneesFinies(d) {
+  for (const x of (itemsPeriode(d, d)[d] || [])) {
+    if (x.kind !== 'ev') continue; const e = DB.get(x.key); if (!e || evGenre(e).genre !== 'travail') continue;
+    const dernier = addDays(x.occ, Math.round((new Date((e.fin || e.date) + 'T12:00') - new Date(e.date + 'T12:00')) / 864e5));
+    if (dernier !== d || !quiListe(e.qui).every((p) => heuresNotees(d, p))) continue;
+    const j = x.key + '|' + x.occ, reste = taches().filter((t) => t.journee === j && tacheOuverte(t)).map((t) => t.key);
+    if (reste.length) deplacerTaches(reste, '');
+  }
+}
 /* Répartition automatique : pour chaque personne qui a des heures ce jour-là (sauf « Pour quoi ? » choisi à la main autrefois) */
 function majPourAuto(d) {
   if (!d) return;
@@ -665,6 +748,8 @@ function majPourAuto(d) {
   }
 }
 /* Ce qu'une journée prévue dit des heures : catégories des événements et tâches du jour (de cette personne) → « Pour quoi ? » */
+/* Une tâche d'admin prend souvent moins de temps : elle compte pour une demi-tâche */
+const POIDS_HEURES = { admin: 0.5 };
 function pourSuggere(d, p) {
   if (!d || !p) return null;
   const pourP = (q) => quiInclut(q, p);
@@ -673,14 +758,15 @@ function pourSuggere(d, p) {
   const js = new Set(evs.map((e) => e.key));
   const ts = taches().filter((t) => t.statut !== 'suspendu' && (pourP(t.responsable) || t.terminePar === p) && (dateTache(t) === d || (t.statut === 'termine' && t.termineLe === d && t.terminePar === p) || (t.journee && js.has(t.journee.split('|')[0]) && t.journee.endsWith('|' + d))));
   const o = {}, cus = new Set(), poids = {};
-  const ajoute = (cat, cultures) => { const h = cat && catInfo(cat).heures; if (!h) return; poids[h] = (poids[h] || 0) + 1; if (h === 'admin') o.admin = true; else if (h === 'ventes') o.ventes = true; else if (h === 'cultures') { o.cultures = o.cultures || []; for (const c of cultures || []) cus.add(c); } };
+  const ajoute = (cat, cultures) => { const h = cat && catInfo(cat).heures; if (!h) return; poids[h] = (poids[h] || 0) + (POIDS_HEURES[h] || 1); if (h === 'admin') o.admin = true; else if (h === 'ventes') o.ventes = true; else if (h === 'cultures') { o.cultures = o.cultures || []; for (const c of cultures || []) cus.add(c); } };
   /* Les tâches faites d'abord ; s'il n'y en a pas encore, celles prévues ce jour-là ; sinon les événements */
   const faitesT = ts.filter((t) => t.statut === 'termine');
   for (const t of faitesT.length ? faitesT : ts) ajoute(catTache(t).cat, t.cultures);
   if (!Object.keys(o).length) for (const e of evs) ajoute(catEv(e).cat, e.cultureId ? [e.cultureId] : []);
-  if (!Object.keys(o).length) return null;
+  /* Rien de précisé : une journée de travail compte comme une journée au champ */
+  if (!Object.keys(o).length) return { pour: { cultures: 'toutes' }, d: evs.map(titreEv).join(', ') };
   if (o.cultures) { const l = [...cus].filter((k) => { const c = DB.get(k); return c && String(c.saison) === d.slice(0, 4); }); o.cultures = l.length ? l : 'toutes'; }
-  const parts = Object.keys(poids); if (parts.length > 1 && new Set(Object.values(poids)).size > 1) o.poids = poids;
+  if (Object.keys(poids).length > 1 && new Set(Object.values(poids)).size > 1) o.poids = poids;
   return { pour: o, d: [...evs.map(titreEv), ...(ts.length ? [`${ts.length} tâche${ts.length > 1 ? 's' : ''}`] : [])].join(', ') };
 }
 /* ---------- S'abonner au calendrier depuis Google Agenda, Proton Calendar… (fonction Supabase « calendrier ») ---------- */

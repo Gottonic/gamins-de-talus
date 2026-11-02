@@ -646,6 +646,16 @@ table.matrix td.neg { color: var(--muted); }
 .jc-fin { width: 100%; justify-content: center; }
 .jc-fait { justify-content: space-between; font-size: 14px; color: var(--muted); }
 .hj-autres summary, .hj-plus summary { cursor: pointer; }
+.hl { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.hl[data-suit] { border-style: dashed; }
+.hl-tete { display: flex; align-items: center; gap: 10px; }
+.hl-tete b { flex: 1; }
+.hl-tot { font-weight: 700; color: var(--accent); }
+.hl-champs { display: grid; grid-template-columns: 1fr 1fr 0.8fr; gap: 8px; }
+.hl-champs label { font-size: 12.5px; font-weight: 700; color: var(--muted); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.hl-champs input { min-width: 0; padding: 6px 8px; }
+.hl-qui { gap: 6px; align-items: center; }
+.off-l { gap: 6px; align-items: center; margin-top: 4px; }
 .hj-plus summary { color: var(--accent); font-weight: 700; font-size: 14px; margin: 4px 0 8px; }
 .ev-sous { margin-top: 8px; }
 [data-bloc][hidden] { display: none; }
