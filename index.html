@@ -215,6 +215,12 @@ table.irr input.cell-in { width: 84px; }
 .msg.mine .mention { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
 .mention.moi { background: color-mix(in srgb, var(--c-messages) 18%, transparent); border-radius: 4px; padding: 0 2px; }
 .msg.pour-moi:not(.mine) .bubble { border-color: var(--c-messages); box-shadow: inset 3px 0 0 var(--c-messages); }
+.emoji-btn { font-size: 20px; }
+@media (pointer: coarse) { .emoji-btn { display: none !important; } }
+.emoji-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 2px; margin-top: 10px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); max-width: 440px; }
+.emoji-pick[hidden] { display: none; }
+.emoji-pick button { font-size: 22px; line-height: 1; border: 0; background: none; cursor: pointer; padding: 6px 0; border-radius: 8px; }
+.emoji-pick button:hover { background: var(--bg); }
 .mention-sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .msg .bubble { -webkit-user-select: text; user-select: text; -webkit-touch-callout: none; }
 .msg-menu { border: 0; background: none; color: inherit; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 3px; opacity: .75; }

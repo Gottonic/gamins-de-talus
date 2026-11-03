@@ -118,9 +118,11 @@ function renderMessages() {
     ${MSG.photo ? `<div class="msg-prev"><img src="${MSG.photo.apercu}" alt="Photo à envoyer"><span>Photo prête à envoyer${MSG.envoi ? ' : envoi…' : ' · ajoute une légende si tu veux'}</span><button type="button" class="btn small" data-act="msgPhotoOff"${MSG.envoi ? ' disabled' : ''}>Retirer</button></div>` : ''}
     ${MSG.fichier ? `<div class="msg-prev"><span>📎 <b>${esc(trunc(MSG.fichier.name, 40))}</b> · ${tailleTxt(MSG.fichier.size)}${MSG.envoi ? ' : envoi…' : ' · prêt à envoyer'}</span><button type="button" class="btn small" data-act="msgFichierOff"${MSG.envoi ? ' disabled' : ''}>Retirer</button></div>` : ''}
     <div class="mention-sugg" id="msg-mention" hidden></div>
+    <div class="emoji-pick" id="msg-emojis" hidden role="group" aria-label="Émojis">${EMOJIS.map((e) => `<button type="button" data-act="msgEmoji" data-e="${e}" aria-label="${e}">${e}</button>`).join('')}</div>
     <form class="composer" data-form="msg">
       <button type="button" class="btn photo-btn" data-act="msgPlus" title="Fichier, sondage…" aria-label="Ajouter un fichier ou un sondage">＋</button>
       <button type="button" class="btn photo-btn" data-act="msgPhoto" title="Photo" aria-label="Ajouter une photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg></button>
+      <button type="button" class="btn photo-btn emoji-btn" data-act="msgEmojis" title="Émoji" aria-label="Ajouter un émoji" aria-controls="msg-emojis">🙂</button>
       <input id="msg-file" type="file" accept="image/*" hidden><input id="msg-cam" type="file" accept="image/*" capture="environment" hidden><input id="msg-doc" type="file" hidden>
       <textarea id="msg-txt" name="texte" rows="1" placeholder="Écrire un message…" aria-label="Message">${esc(MSG.draft)}</textarea>
       <button class="btn primary" type="submit"${MSG.envoi ? ' disabled' : ''}>${MSG.envoi ? 'Envoi…' : 'Envoyer'}</button>
@@ -238,6 +240,17 @@ ACTIONS.msgMention = (el) => {
   const pos = t.selectionStart, avant = t.value.slice(0, pos).replace(/@[\p{L}]*$/u, '@' + el.dataset.nom + ' '), apres = t.value.slice(pos);
   t.value = avant + apres; MSG.draft = t.value; t.focus(); t.setSelectionRange(avant.length, avant.length); majSuggestionsMention(t);
 };
+
+/* ---------- Émojis (ordinateur : le clavier n'en a pas) ---------- */
+const EMOJIS = ['😀', '😂', '😅', '😊', '😍', '😎', '🤔', '😮', '😢', '😡', '😴', '🤗', '👍', '👎', '👌', '👏', '🙏', '💪', '🤝', '✌️', '❤️', '🔥', '🎉', '✅', '❌', '⚠️', '☀️', '🌧️', '❄️', '🌱', '🥕', '🥬', '🥔', '🍅', '🧅', '🎃', '🍓', '🚜', '🧰', '💧'];
+ACTIONS.msgEmojis = () => { const b = $('msg-emojis'); if (b) b.hidden = !b.hidden; };
+ACTIONS.msgEmoji = (el) => {
+  const t = $('msg-txt'); if (!t) return;
+  const a = t.selectionStart ?? t.value.length, z = t.selectionEnd ?? a;
+  t.value = t.value.slice(0, a) + el.dataset.e + t.value.slice(z); MSG.draft = t.value;
+  const pos = a + el.dataset.e.length; t.focus(); t.setSelectionRange(pos, pos);
+};
+document.addEventListener('click', (e) => { const b = $('msg-emojis'); if (b && !b.hidden && !e.target.closest('#msg-emojis, .emoji-btn')) b.hidden = true; });
 
 /* ---------- Photo, fichier, sondage : les boutons du bas ---------- */
 ACTIONS.msgPhoto = () => {
