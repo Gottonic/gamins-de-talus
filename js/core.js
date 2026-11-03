@@ -223,7 +223,10 @@ function render() {
   $('title').textContent = m ? m.titre : cfg().nom;
   $('home-btn').hidden = !m;
   $('drive').classList.toggle('on', ROUTE.mod === 'drive');
-  const sy = window.scrollY, same = render._last === location.hash; render._last = location.hash;
+  /* Même adresse, ou un module qui demande de garder la position (ouvrir une fiche depuis une liste) : on ne remonte pas en haut */
+  const sy = window.scrollY, prev = String(render._last || '').replace(/^#\/?/, '').split('/');
+  const same = render._last === location.hash || (!!m && !!m.garderDefilement && prev[0] === ROUTE.mod && m.garderDefilement(ROUTE.sub, prev[1] || ''));
+  render._last = location.hash;
   try { view.innerHTML = m ? m.render(ROUTE.sub, ROUTE.id) : renderAccueil(); }
   catch (e) { console.error(e); view.innerHTML = `<div class="panel"><p class="err">Cette page n'a pas pu s'afficher : ${esc(e.message)}. Tes données ne sont pas touchées.</p></div>`; }
   if (same) window.scrollTo(0, sy); else window.scrollTo(0, 0);

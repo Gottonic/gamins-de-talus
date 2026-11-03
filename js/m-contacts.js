@@ -66,6 +66,8 @@ MODULES.contacts = {
     return t + renderContacts(sub, id);
   },
   after(sub) { afterContactsProspection(sub); },
+  /* Ouvrir ou fermer une fiche garde la liste là où on l'avait fait défiler (dans le même onglet) */
+  garderDefilement(sub, avant) { const pr = (x) => ['prospection', 'prospect', 'convertir', 'pmodifier'].includes(x) || (x === 'modifier' && !!(DB.get(ROUTE.id) || {}).prospect); return pr(sub) === pr(avant); },
 };
 
 function afterContactsProspection(sub) {
