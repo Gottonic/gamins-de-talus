@@ -125,7 +125,9 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
   }
   else if (String(corps.key || '').startsWith('msg:')) {
     const m = corps.data || {};
-    for (const p of personnes) if (p.k !== m.de && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } });
+    /* Un message avec des @mentions ne prévient que les personnes mentionnées */
+    const vises: string[] = Array.isArray(m.mentions) ? m.mentions : [];
+    for (const p of personnes) if (p.k !== m.de && (!vises.length || vises.includes(p.k)) && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de) + (vises.includes(p.k) ? ' te mentionne' : ''), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } });
   } else if (String(corps.key || '').startsWith('mail:')) {
     const m = corps.data || {}, de = (m.de && (m.de.nom || m.de.adresse)) || '?';
     for (const p of personnes) {

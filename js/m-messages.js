@@ -49,7 +49,8 @@ MODULES.messages = {
     const t = $('msg-txt');
     if (t) {
       const grow = () => { t.style.height = 'auto'; t.style.height = Math.min(220, t.scrollHeight + 2) + 'px'; };
-      t.addEventListener('input', () => { MSG.draft = t.value; grow(); }); grow();
+      t.addEventListener('input', () => { MSG.draft = t.value; grow(); majSuggestionsMention(t); }); grow();
+      t.addEventListener('click', () => majSuggestionsMention(t));
       const f = $('msg-file'); if (f) f.addEventListener('change', () => { closeSheet(); choisirPhoto(f.files[0]); });
       const cam = $('msg-cam'); if (cam) cam.addEventListener('change', () => { closeSheet(); choisirPhoto(cam.files[0]); });
       const doc = $('msg-doc'); if (doc) doc.addEventListener('change', () => { closeSheet(); choisirFichierMsg(doc.files[0]); doc.value = ''; });
@@ -91,10 +92,10 @@ function renderMessages() {
     if (j !== jour) { jour = j; html += `<div class="msg-day">${esc(jourMsg(m.cree))}</div>`; }
     const mien = m.de === me, suite = i > 0 && ms[i - 1].de === m.de && isoDate(new Date(ms[i - 1].cree)) === j;
     const cite = m.repond ? DB.get(m.repond) || DB.trash[m.repond] : null;
-    html += `<div class="msg${mien ? ' mine' : ''}${suite && !m.repond ? ' suite' : ''}${m.epingle ? ' pinned' : ''}" id="m-${esc(m.key.slice(4))}">
+    html += `<div class="msg${mien ? ' mine' : ''}${suite && !m.repond ? ' suite' : ''}${m.epingle ? ' pinned' : ''}${me && (m.mentions || []).includes(me) ? ' pour-moi' : ''}" data-msg="${esc(m.key)}" id="m-${esc(m.key.slice(4))}">
       ${!mien && (!suite || m.repond) ? `<span class="msg-who">${esc(nomDe(m.de))}</span>` : ''}
       ${m.repond ? `<button type="button" class="msg-cite" data-act="msgVoir" data-key="${esc(m.repond)}">↪ ${cite ? `<b>${esc(nomDe(cite.de))}</b> ${esc(trunc(apercuMsg(cite), 70))}` : 'message supprimé'}</button>` : ''}
-      <div class="bubble${m.photo && !m.photo.expire ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${taillePhoto(m.photo)}></button>` : ''}${m.sondage ? sondageHtml(m) : ''}${m.fichier ? fichierMsgHtml(m.fichier) : ''}${m.sondage ? '' : texteMsg(m.texte || '')}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div></div>`;
+      <div class="bubble${m.photo && !m.photo.expire ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${taillePhoto(m.photo)}></button>` : ''}${m.sondage ? sondageHtml(m) : ''}${m.fichier ? fichierMsgHtml(m.fichier) : ''}${m.sondage ? '' : surlignerMentions(texteMsg(m.texte || ''), m.mentions)}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div>${reactionsHtml(m)}</div>`;
   });
   /* « Vu par » sous le dernier message */
   const der = ms[ms.length - 1];
@@ -116,6 +117,7 @@ function renderMessages() {
     ${bandeau}
     ${MSG.photo ? `<div class="msg-prev"><img src="${MSG.photo.apercu}" alt="Photo à envoyer"><span>Photo prête à envoyer${MSG.envoi ? ' : envoi…' : ' · ajoute une légende si tu veux'}</span><button type="button" class="btn small" data-act="msgPhotoOff"${MSG.envoi ? ' disabled' : ''}>Retirer</button></div>` : ''}
     ${MSG.fichier ? `<div class="msg-prev"><span>📎 <b>${esc(trunc(MSG.fichier.name, 40))}</b> · ${tailleTxt(MSG.fichier.size)}${MSG.envoi ? ' : envoi…' : ' · prêt à envoyer'}</span><button type="button" class="btn small" data-act="msgFichierOff"${MSG.envoi ? ' disabled' : ''}>Retirer</button></div>` : ''}
+    <div class="mention-sugg" id="msg-mention" hidden></div>
     <form class="composer" data-form="msg">
       <button type="button" class="btn photo-btn" data-act="msgPlus" title="Fichier, sondage…" aria-label="Ajouter un fichier ou un sondage">＋</button>
       <button type="button" class="btn photo-btn" data-act="msgPhoto" title="Photo" aria-label="Ajouter une photo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg></button>
@@ -123,7 +125,7 @@ function renderMessages() {
       <textarea id="msg-txt" name="texte" rows="1" placeholder="Écrire un message…" aria-label="Message">${esc(MSG.draft)}</textarea>
       <button class="btn primary" type="submit"${MSG.envoi ? ' disabled' : ''}>${MSG.envoi ? 'Envoi…' : 'Envoyer'}</button>
     </form>
-    <p class="hint chat-aide">${matchMedia('(pointer: fine)').matches ? 'Entrée pour envoyer, Maj + Entrée pour aller à la ligne. ' : ''}⋯ sur un message : répondre, épingler (${MAX_EPINGLES} au plus), modifier, supprimer, en faire une tâche. Les messages partent à la corbeille au bout de 3 mois, sauf ceux épinglés.</p></div>`;
+    <p class="hint chat-aide">${matchMedia('(pointer: fine)').matches ? 'Entrée pour envoyer, Maj + Entrée pour aller à la ligne. ' : ''}⋯ (ou appui long) sur un message : réagir, répondre, épingler (${MAX_EPINGLES} au plus), modifier, supprimer, en faire une tâche. @Prénom : seule cette personne est notifiée. Les messages partent à la corbeille au bout de 3 mois, sauf ceux épinglés.</p></div>`;
 }
 
 const ICON_DISCORD = '<svg class="ic-d" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8.5c4-2 8-2 12 0l1.5 7c-1.5 1.3-3 2-4.5 2.3l-1-1.6m-4 0-1 1.6C7.5 17.5 6 16.8 4.5 15.5z"/><circle cx="9.5" cy="12.5" r="1.1"/><circle cx="14.5" cy="12.5" r="1.1"/></svg>';
@@ -147,7 +149,7 @@ async function envoyerMessage() {
   if (!Sync.me) { toast('Connecte-toi pour envoyer un message.'); return; }
   if (MSG.edition) {
     const k = MSG.edition, o = DB.get(k); MSG.edition = ''; MSG.draft = ''; if (t) t.value = '';
-    if (o && texte) DB.put(k, Object.assign({}, o, { texte, modifieLe: new Date().toISOString() }));
+    if (o && texte) DB.put(k, Object.assign({}, o, { texte, mentions: mentionsDe(texte), modifieLe: new Date().toISOString() }));
     render(); return;
   }
   let photo = null; const ph = MSG.photo;
@@ -172,15 +174,71 @@ async function envoyerMessage() {
   const cree = new Date().toISOString();
   MSG.draft = ''; MSG.photo = null; MSG.fichier = null; const tt = $('msg-txt'); if (tt) tt.value = '';
   const msg = { de: Sync.me, texte, cree }; if (photo) msg.photo = photo; if (fichier) msg.fichier = fichier;
+  const mentions = mentionsDe(texte); if (mentions.length) msg.mentions = mentions;
   const cite = MSG.repondA && DB.get(MSG.repondA); if (cite) msg.repond = MSG.repondA; MSG.repondA = '';
   DB.put('msg:' + uid('m'), msg);
   DB.put('lu:' + Sync.me, { jusqua: cree });
   Sync.schedule(0);
-  notifierDiscord(Sync.me, (cite ? `↪ (réponse à ${nomDe(cite.de)} : « ${trunc(apercuMsg(cite), 50)} ») ` : '') + (texte || (fichier ? '📎 ' + fichier.nom : '')), ph && ph.blob);
+  notifierDiscord(Sync.me, (mentions.length ? mentions.map((k) => '@' + nomDe(k)).join(' ') + ' · ' : '') + (cite ? `↪ (réponse à ${nomDe(cite.de)} : « ${trunc(apercuMsg(cite), 50)} ») ` : '') + (texte || (fichier ? '📎 ' + fichier.nom : '')), ph && ph.blob, mentions);
   if (ph) Fichiers.local[photo.chemin] = Fichiers.local[photo.chemin] || ph.apercu;
   if (ph && !LOCAL_MODE) Fichiers.liens[photo.chemin] = { url: ph.apercu, exp: Date.now() + 50 * 60000 };
   render(); const n = $('msg-txt'); if (n && matchMedia('(pointer: fine)').matches) n.focus();
 }
+/* ---------- Réactions : une par personne et par message, dans sa propre ligne reac:<message>:<personne>
+   (deux personnes qui réagissent en même temps ne s'écrasent pas) ---------- */
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🎉', '🥕'];
+const reacKey = (k, p) => `reac:${String(k).slice(4)}:${p}`;
+const maReaction = (k) => (Sync.me && (DB.get(reacKey(k, Sync.me)) || {}).e) || '';
+function reactionsHtml(m) {
+  const par = {}; for (const p of personnes()) { const r = DB.get(reacKey(m.key, p.k)); if (r && r.e) (par[r.e] = par[r.e] || []).push(p); }
+  const l = Object.entries(par); if (!l.length) return '';
+  return `<div class="reacs">${l.map(([e, ps]) => `<button type="button" class="reac${ps.some((p) => p.k === Sync.me) ? ' moi' : ''}" data-act="msgReagir" data-key="${esc(m.key)}" data-e="${e}" title="${esc(ps.map((p) => p.nom).join(', '))}">${e}${ps.length > 1 ? ` <b>${ps.length}</b>` : ''}</button>`).join('')}</div>`;
+}
+ACTIONS.msgReagir = (el) => {
+  if (!Sync.me) return; const k = el.dataset.key, rk = reacKey(k, Sync.me), e = el.dataset.e;
+  if (maReaction(k) === e) DB.del(rk); else DB.put(rk, { e, le: new Date().toISOString() });
+  if (document.body.classList.contains('sheet-open')) closeSheet();
+};
+/* Appui long sur une bulle (téléphone) : le même menu que ⋯ */
+(() => {
+  let t = null, x0 = 0, y0 = 0;
+  const stop = () => { clearTimeout(t); t = null; };
+  document.addEventListener('pointerdown', (e) => {
+    const b = e.target.closest && e.target.closest('.msg .bubble'); if (!b || e.pointerType === 'mouse' || e.target.closest('button, a, input')) return;
+    const m = b.closest('[data-msg]'); x0 = e.clientX; y0 = e.clientY; stop();
+    t = setTimeout(() => { t = null; if (navigator.vibrate) navigator.vibrate(15); ACTIONS.msgMenu({ dataset: { key: m.dataset.msg } }); }, 480);
+  }, { passive: true });
+  document.addEventListener('pointermove', (e) => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) stop(); }, { passive: true });
+  ['pointerup', 'pointercancel', 'scroll'].forEach((ev) => document.addEventListener(ev, stop, { passive: true, capture: true }));
+  document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.msg .bubble') && !e.target.closest('a, img')) e.preventDefault(); });
+})();
+
+/* ---------- @mentions : « @Noé » dans le texte → seul Noé est notifié ---------- */
+function mentionsDe(texte) {
+  const t = normMot(texte);
+  return personnes().filter((p) => p.k !== Sync.me && new RegExp('(^|[^\\p{L}\\d])@' + normMot(p.nom).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\d])', 'u').test(t)).map((p) => p.k);
+}
+function surlignerMentions(html, mentions) {
+  for (const k of mentions || []) for (const n of new Set([nomDe(k), normMot(nomDe(k))])) {
+    const nom = esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    html = html.replace(new RegExp('@' + nom + '(?![\\p{L}\\d<])', 'giu'), (x) => `<span class="mention${k === Sync.me ? ' moi' : ''}">${x}</span>`);
+  }
+  return html;
+}
+/* Pendant qu'on tape « @… » : les prénoms à choisir au-dessus du champ */
+function majSuggestionsMention(t) {
+  const box = $('msg-mention'); if (!box) return;
+  const avant = t.value.slice(0, t.selectionStart), m = /(^|\s)@([\p{L}]*)$/u.exec(avant);
+  const ps = m ? personnes().filter((p) => p.k !== Sync.me && normMot(p.nom).startsWith(normMot(m[2]))) : [];
+  box.hidden = !ps.length;
+  box.innerHTML = ps.map((p) => `<button type="button" class="chip" data-act="msgMention" data-nom="${esc(p.nom)}">@${esc(p.nom)}</button>`).join('');
+}
+ACTIONS.msgMention = (el) => {
+  const t = $('msg-txt'); if (!t) return;
+  const pos = t.selectionStart, avant = t.value.slice(0, pos).replace(/@[\p{L}]*$/u, '@' + el.dataset.nom + ' '), apres = t.value.slice(pos);
+  t.value = avant + apres; MSG.draft = t.value; t.focus(); t.setSelectionRange(avant.length, avant.length); majSuggestionsMention(t);
+};
+
 /* ---------- Photo, fichier, sondage : les boutons du bas ---------- */
 ACTIONS.msgPhoto = () => {
   /* Sur ordinateur : directement le choix du fichier ; sur téléphone : prendre une photo ou en choisir une */
@@ -290,6 +348,7 @@ ACTIONS.msgMenu = (el) => {
   const b = (act, txt, extra = '') => `<button type="button" class="menu-it${extra}" data-act="${act}" data-key="${esc(k)}">${txt}</button>`;
   openSheet(`${sheetHead(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}<div class="sbody">
     <p class="hint" style="margin-top:0">${esc(trunc(apercuMsg(m), 160))}</p>
+    <div class="reac-choix" role="group" aria-label="Réagir">${REACTIONS.map((e) => `<button type="button" class="${maReaction(k) === e ? 'on' : ''}" data-act="msgReagir" data-key="${esc(k)}" data-e="${e}" aria-label="Réagir ${e}">${e}</button>`).join('')}</div>
     <div class="menu-list">
       ${b('msgRepondre', '↪ Répondre à ce message')}
       ${m.epingle ? b('msgEpingle', '📌 Désépingler') : b('msgEpingle', `📌 Épingler${nPins >= MAX_EPINGLES ? ` (déjà ${MAX_EPINGLES} : il faudra en retirer un)` : ''}`)}
@@ -324,6 +383,7 @@ function rangerVieuxMessages() {
   if (!Sync.me || ls.get('gdt-menage-msg') === todayISO()) return; ls.set('gdt-menage-msg', todayISO());
   const d = new Date(); d.setMonth(d.getMonth() - 3); const lim = d.toISOString();
   for (const m of messages()) if (!m.epingle && String(m.cree) < lim) DB.del(m.key);
+  for (const r of DB.all('reac:')) { const id = r.key.split(':')[1]; if (!DB.get('msg:' + id)) DB.del(r.key); }
 }
 setTimeout(() => sansAnnuler(rangerVieuxMessages), 10000);
 
@@ -337,18 +397,20 @@ function posterDiscord(webhook, contenu, image) {
   if (image) fd.append('files[0]', image, 'photo.jpg');
   return fetch(webhook, { method: 'POST', mode: 'no-cors', body: fd });
 }
-function notifierDiscord(de, texte, image) {
+function notifierDiscord(de, texte, image, mentions) {
   if (LOCAL_MODE) return;
+  /* Un message avec des @mentions ne prévient que les personnes mentionnées */
+  const vise = (k) => !mentions || !mentions.length || mentions.includes(k);
   /* Avec une photo : envoi direct (une photo ne se garde pas dans la file d'attente) */
   if (image) {
     for (const p of personnes()) {
-      const d = discordDe(p.k); if (p.k === de || !discordMessages(p.k)) continue;
+      const d = discordDe(p.k); if (p.k === de || !discordMessages(p.k) || !vise(p.k)) continue;
       const c = d.texte === false ? `${LIEN_MSG} 📷 Nouvelle photo de **${nomDe(de)}**` : `${LIEN_MSG} 📷 **${nomDe(de)}**${texte ? ' : ' + trunc(texte, 1500) : ''}`;
       posterDiscord(d.webhook, c, d.texte === false ? null : image).catch(() => {});
     }
     return;
   }
-  const envois = personnes().filter((p) => p.k !== de && discordMessages(p.k)).map((p) => {
+  const envois = personnes().filter((p) => p.k !== de && discordMessages(p.k) && vise(p.k)).map((p) => {
     const d = discordDe(p.k);
     return { webhook: d.webhook, contenu: d.texte === false ? `${LIEN_MSG} Nouveau message de **${nomDe(de)}**` : `${LIEN_MSG} **${nomDe(de)}** : ${trunc(texte, 1500)}` };
   });

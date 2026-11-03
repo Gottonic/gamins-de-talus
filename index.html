@@ -204,6 +204,19 @@ table.irr input.cell-in { width: 84px; }
 .seg-mini { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--bg); }
 .seg-mini button { border: 0; background: none; border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .seg-mini button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.reacs { display: flex; gap: 4px; flex-wrap: wrap; margin: -6px 8px 0; position: relative; z-index: 1; }
+.reac { font: inherit; font-size: 14px; line-height: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 7px; cursor: pointer; color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.reac b { font-size: 12px; margin-left: 2px; }
+.reac.moi { border-color: var(--c-messages); background: color-mix(in srgb, var(--c-messages) 14%, var(--surface)); }
+.reac-choix { display: flex; justify-content: space-between; gap: 4px; margin: 0 0 12px; padding: 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); }
+.reac-choix button { font-size: 24px; line-height: 1; border: 0; background: none; cursor: pointer; padding: 6px; border-radius: 50%; }
+.reac-choix button:hover, .reac-choix button.on { background: color-mix(in srgb, var(--c-messages) 20%, transparent); }
+.mention { font-weight: 700; color: var(--c-messages); }
+.msg.mine .mention { color: #fff; text-decoration: underline; text-underline-offset: 2px; }
+.mention.moi { background: color-mix(in srgb, var(--c-messages) 18%, transparent); border-radius: 4px; padding: 0 2px; }
+.msg.pour-moi:not(.mine) .bubble { border-color: var(--c-messages); box-shadow: inset 3px 0 0 var(--c-messages); }
+.mention-sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.msg .bubble { -webkit-user-select: text; user-select: text; -webkit-touch-callout: none; }
 .msg-menu { border: 0; background: none; color: inherit; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 3px; opacity: .75; }
 .msg-menu:hover { opacity: 1; }
 .msg-cite { display: block; border: 0; border-left: 3px solid var(--c-messages); background: color-mix(in srgb, var(--c-messages) 8%, var(--surface)); border-radius: 6px; padding: 4px 8px; margin: 0 0 3px; font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; text-align: left; max-width: 100%; }
