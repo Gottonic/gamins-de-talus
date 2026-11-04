@@ -732,7 +732,11 @@ ACTIONS.hjOk = (el) => {
     }
     if (deja.length) {
       const txt = deja.map(([p, h]) => (p === Sync.me ? `Vous avez déjà ${fmtH(r2(h))} heure${h > 1 ? 's' : ''}` : `${esc(nomDe(p))} a déjà ${fmtH(r2(h))} heure${h > 1 ? 's' : ''}`) + ` enregistrée${h > 1 ? 's' : ''} ${d === todayISO() ? "aujourd'hui" : 'le ' + fmtDate(d)}`).join('. ') + '.';
-      const z = $('hj-conf'); if (z) { z.innerHTML = `<div class="banner hj-conf"><p>${txt}</p><div class="row"><button class="btn primary" type="button" data-act="hjOk" data-force="1" data-d="${esc(d)}" data-j="${esc(j)}">Ajouter quand même</button><button class="btn" type="button" data-act="hjAnnuler">Annuler l'enregistrement</button></div></div>`; z.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+      /* Une étape à part : la fiche se cache (ce qui est tapé reste), seule la question s'affiche */
+      const sh = $('hj-sheet'), z = $('hj-conf'); if (!sh || !z) return;
+      [...sh.children].forEach((c) => { if (c !== z) c.hidden = true; });
+      z.innerHTML = `<div class="hj-conf"><p class="pl-q">${txt}</p><div class="row-end"><button class="btn" type="button" data-act="hjAnnuler">Annuler l'enregistrement</button><button class="btn primary" type="button" data-act="hjOk" data-force="1" data-d="${esc(d)}" data-j="${esc(j)}">Ajouter quand même</button></div></div>`;
+      sh.scrollTop = 0; z.scrollIntoView({ block: 'start' });
       return;
     }
   }
