@@ -141,12 +141,13 @@ function renderPlan(vue) {
         <div class="stat"><span class="k">Cultures</span><span class="v">${list.length}</span><span class="s">${f0(T.plantons)} plants</span></div>
         <div class="stat blue"><span class="k">Chiffre d'affaires prévu</span><span class="v">${caT.max ? fmtFourchette(caT) : '—'}</span><span class="s">selon les prix des produits, du plus bas au plus haut</span></div>
       </div>
+      ${friseHtml(s)}
       <div class="panel"><h2>Plan ${s}</h2><div class="table-wrap"><table class="list plan-l"><thead><tr><th>Culture</th><th class="r">Planches</th><th class="r">Surface</th><th>Plantation</th><th>Récolte</th><th class="r">Plants</th><th class="r">Récolte prévue</th><th class="r">CA prévu CHF</th></tr></thead><tbody>
         ${list.map(ligne).join('')}</tbody>
         <tfoot><tr><td>Total</td><td class="r num">${f0(nPl)}</td><td class="r num">${f0(T.surface)} m²</td><td></td><td></td><td class="r num">${f0(T.plantons)}</td><td class="r num">${f0(list.reduce((a, c, i) => a + (uniteRecolte(c) === 'kg' ? os[i].recolte : 0), 0))} kg</td><td class="r num">${caT.max ? fmtFourchette(caT) : ''}</td></tr></tfoot></table></div>
         <p class="hint">Touche une culture pour la saison (remarque, retirer du plan) et sa fiche : rendement, semaines, espacements et fumure se règlent dans la fiche (Nos cultures). Planches : celles placées sur la carte ; tant que rien n'est placé, le nombre prévu. Surface = planches × longueur du secteur × ${fmtNum(P.facteurSurface, 2)} m (largeur avec passe-pied). CA prévu : récolte prévue × prix du produit lié (Ventes → Stock et prix), du plus bas au plus haut de ses prix ; une culture à la pièce compte une pièce par plant.</p></div>
-      ${friseHtml(s)}
-      <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Placer</a></div>${cartePlanches}<div class="legend">${legend}</div></div>`;
+      <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Placer</a></div>${cartePlanches}<div class="legend">${legend}</div></div>
+      ${chargeHtml(s)}`;
   }
 }
 /* Fourchette de prix d'une culture (CHF par kg, ou par pièce) : du plus bas au plus haut des prix de son produit (fourchette, prix par type de client).

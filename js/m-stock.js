@@ -231,28 +231,28 @@ function renderSelfService() {
     const o = agg.get(k) || { nom, u, q: 0, v: 0 }, q = Math.max(0, num(l.qte) - num((m.retours || {})[i])); o.q += q; o.v += q * num(l.prix); agg.set(k, o); });
   const aggL = [...agg.values()].sort((a, b) => b.v - a.v);
   return `${articlesHtml()}
-    <div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Remplir le stand</button><button class="btn" type="button" data-act="selfEnc">+ Encaissement</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button><button class="btn" type="button" data-act="standPoint">Faire le point</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button>${DB.all('tw:').length ? `<button class="btn" type="button" data-act="twListe">Paiements TWINT (${DB.all('tw:').length})</button>` : ''}</div>
+    <div class="row"><button class="btn primary" type="button" data-act="selfNouveau">Remplir le stand</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button></div>
     ${rat ? `<div class="panel between"><span>🌱 ${rat} produit${rat > 1 ? 's' : ''} d'anciennes mises en vente : à compter comme récolte, ou pas.</span><button class="btn primary small" type="button" data-act="selfRattrapage">Voir et compter</button></div>` : ''}
     <div class="panel stand${E.aRemplir ? ' a-remplir' : ''}"><div class="between"><h2>Sur le stand</h2><span class="v-stand">≈ ${chf(Math.max(0, E.estime))}</span></div>
       ${E.aRemplir ? `<p class="banner">🧺 Le stand est presque vide (moins de ${chf(R.seuil)} de marchandise) : il est temps de le remplir.</p>` : ''}
-      <p class="hint">${E.p ? `Compté le ${fmtDate(E.p.date)} : ${chf(E.base)}` : 'Pas encore de point'} + mis depuis ${chf(E.mis)} − encaissé ${chf(E.enc)}${E.msg ? ` − payé par message ${chf(E.msg)}` : ''}. Les paiements TWINT reçus par mail comptent dès qu'on les enregistre. Un vol ou une perte n'est pas visible : « Faire le point » remet le compteur juste.</p>
+      <p class="hint">${E.p ? `Compté le ${fmtDate(E.p.date)} : ${chf(E.base)}` : 'Pas encore de point'} + mis depuis ${chf(E.mis)} − encaissé ${chf(E.enc)}${E.msg ? ` − payé par message ${chf(E.msg)}` : ''}. Les paiements TWINT reçus par mail comptent dès qu'on les enregistre. Un vol ou une perte n'est pas visible : « Remplir le stand » commence par compter ce qui reste, ce qui remet le compteur juste.</p>
       <form class="row stand-seuil" data-form="standSeuil"><label for="st-seuil" class="hint">Prévenir sous</label><input id="st-seuil" name="seuil" class="cell-in" inputmode="decimal" value="${esc(String(R.seuil))}" style="width:80px"><span class="hint">CHF</span><button class="btn small" type="submit">OK</button></form></div>
     ${tl.length ? `<div class="banner">💳 ${tl.length} paiement${tl.length > 1 ? 's' : ''} TWINT importé${tl.length > 1 ? 's' : ''} pas encore compté${tl.length > 1 ? 's' : ''} (${chf(tl.reduce((a, t) => a + t.montant, 0))}). <button class="btn small primary" type="button" data-act="twLibresVD">Voir et compter</button></div>` : ''}
-    <div class="panel"><div class="between"><h2>Vente directe ${y}</h2>${ys.length > 1 ? `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="sdAn" data-y="${x}">${x}</button>`).join('')}</div>` : ''}</div>
+    <div class="panel"><div class="between"><h2>Self-service ${y}</h2>${ys.length > 1 ? `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="sdAn" data-y="${x}">${x}</button>`).join('')}</div>` : ''}</div>
       <div class="stats"><div class="stat"><span class="k">Mis en vente</span><span class="v">${chf(tMis)}</span><span class="s">${misY.length} remplissage${misY.length > 1 ? 's' : ''}</span></div>
         <div class="stat blue"><span class="k">Encaissé (TWINT, espèces)</span><span class="v">${chf(tEnc)}</span><span class="s">${encY.length} paiement${encY.length > 1 ? 's' : ''}</span></div>
         <div class="stat good"><span class="k">Vendu</span><span class="v">${chf(tEnc + tMsg)}</span><span class="s">${tMsg ? `dont ${chf(tMsg)} payés par message` : 'encaissé + payé par message'}</span></div>
-        <div class="stat ${tEnc + tMsg && manque / (tEnc + tMsg) > 0.1 ? 'bad' : ''}"><span class="k">Manque (vol, pertes)</span><span class="v">${ptsY.length ? chf(manque) : '—'}</span><span class="s">${ptsY.length ? `relevé à ${ptsY.length} point${ptsY.length > 1 ? 's' : ''}` : 'connu en faisant le point'}</span></div></div>
+        <div class="stat ${tEnc + tMsg && manque / (tEnc + tMsg) > 0.1 ? 'bad' : ''}"><span class="k">Manque (vol, pertes)</span><span class="v">${ptsY.length ? chf(manque) : '—'}</span><span class="s">${ptsY.length ? `relevé à ${ptsY.length} comptage${ptsY.length > 1 ? 's' : ''}` : 'connu en comptant ce qui reste'}</span></div></div>
       ${aggL.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th class="r">Mis en vente</th><th class="r">Valeur</th></tr></thead><tbody>
         ${aggL.map((o) => `<tr><td>${esc(o.nom)}</td><td class="r num">${esc(fmtQ(r2(o.q), o.u === 'pièce' ? 'pc' : o.u))}</td><td class="r num">${money(o.v)}</td></tr>`).join('')}
         </tbody><tfoot><tr><td>Total</td><td></td><td class="r num">${money(tMis)}</td></tr></tfoot></table></div>` : '<p class="empty">Rien mis en vente cette année.</p>'}
-      <details class="sd-hist"><summary class="hint">Historique : remplissages, points et encaissements</summary>${historiqueStandHtml(y)}</details></div>
+      <details class="sd-hist"><summary class="hint">Historique : remplissages, comptages et encaissements</summary>${historiqueStandHtml(y)}</details></div>
     ${paiementsMessageHtml()}`;
 }
 function historiqueStandHtml(y) {
   const ev = [].concat(
     misesEnVente().filter((x) => yearOf(x.date) === y).map((x) => ({ date: x.date, cree: x.cree, t: `Remplissage${x.lieu && x.lieu !== 'Self-service' ? ' · ' + x.lieu : ''}`, d: (x.lignes || []).map((l) => `${fmtNum(num(l.qte), 0)} ${l.nom || (DB.get(l.prod) || {}).nom || '?'}`).join(', '), v: valeurMise(x), key: x.key, what: 'ce remplissage' })),
-    pointsStand().filter((p) => yearOf(p.date) === y).map((p) => ({ date: p.date, cree: p.cree, t: 'Point du stand', d: `restait ${chf(p.valeur)}${num(p.manque) > 0.05 ? ` · manque ${chf(p.manque)}` : ''}`, v: null, key: p.key, what: 'ce point' })),
+    pointsStand().filter((p) => yearOf(p.date) === y).map((p) => ({ date: p.date, cree: p.cree, t: 'Comptage du stand', d: `restait ${chf(p.valeur)}${num(p.manque) > 0.05 ? ` · manque ${chf(p.manque)}` : ''}`, v: null, key: p.key, what: 'ce point' })),
     encaissementsVD().filter((r) => yearOf(r.date) === y).map((r) => ({ date: r.date, cree: r.cree, t: `Encaissement ${r.moyen || ''}`, d: r.libelle || '', v: -num(r.montant), key: r.key, rec: true })),
   ).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || '')));
   return ev.length ? `<div class="table-wrap"><table class="list"><tbody>${ev.slice(0, 200).map((e) => `<tr><td class="num">${fmtDate(e.date)}</td><td><b>${esc(e.t)}</b><br><span class="hint">${esc(trunc(e.d, 120))}</span></td><td class="r num">${e.v == null ? '' : money(e.v)}</td><td class="r">${e.rec ? `<button class="btn link small" type="button" data-act="recEdit" data-key="${esc(e.key)}">modifier</button>` : `<button class="btn link small" type="button" data-act="delItem" data-key="${esc(e.key)}" data-what="${esc(e.what)}">supprimer</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Rien cette année.</p>';
@@ -270,16 +270,16 @@ function lignesStand() {
   const E = etatStand(), mis = new Set(misesEnVente().filter((x) => apresPoint(x, E.p)).flatMap((x) => (x.lignes || []).map((l) => l.art || l.prod)));
   return out.sort((a, b) => (mis.has(b.art || b.prod) ? 1 : 0) - (mis.has(a.art || a.prod) ? 1 : 0));
 }
-ACTIONS.standPoint = () => {
-  const ls = lignesStand(), E = etatStand();
+ACTIONS.standPoint = (el) => {
+  const ls = lignesStand(), E = etatStand(), suite = !!(el && el.dataset && el.dataset.suite);
   if (!ls.length) { toast('Crée d\'abord un article de vente directe.'); return; }
-  openSheet(`${sheetHead('Faire le point du stand', `Estimé : ${chf(Math.max(0, E.estime))}`)}<form class="sbody form" data-form="standPoint">
+  openSheet(`${sheetHead(suite ? 'Remplir le stand' : 'Compter le stand', `${suite ? '1 / 2 · Ce qui reste · ' : ''}estimé : ${chf(Math.max(0, E.estime))}`)}<form class="sbody form" data-form="standPoint"><input type="hidden" name="suite" value="${suite ? '1' : ''}">
     ${inp('sp-d', 'Date', todayISO(), { name: 'date', type: 'date' })}
     <div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Il en reste</th><th>Dont repris au stock</th><th class="r">Prix</th></tr></thead><tbody>
     ${ls.map((l) => `<tr><td>${esc(l.nom)}</td><td><input class="cell-in" name="r_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px"> <span class="hint">${esc(l.unite === 'pièce' ? 'pc' : l.unite)}</span></td><td><input class="cell-in" name="k_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px"></td><td class="r num">${money(l.prix)}</td></tr>`).join('')}
     </tbody></table></div>
-    <p class="hint">Note d'abord les derniers encaissements. L'app compare ce qui reste à ce qui devrait rester : la différence est le manque (vol, pertes, erreurs). Ce qui est repris au stock quitte le stand.</p>
-    <div class="row-end"><button class="btn primary" type="submit">Enregistrer le point</button></div></form>`);
+    <p class="hint">Comptez ce qui reste sur le stand (vide = il n'en reste pas). L'app compare à ce qui devrait rester : la différence est le manque (vol, pertes, erreurs). Ce qui est repris au stock quitte le stand.${suite ? ' Pas le temps de compter ? « Passer ».' : ''}</p>
+    <div class="row-end">${suite ? '<button class="btn" type="button" data-act="selfRemplir">Passer</button>' : ''}<button class="btn primary" type="submit">${suite ? 'Suivant' : 'Enregistrer'}</button></div></form>`);
 };
 FORMS.standPoint = (v) => {
   const ls = lignesStand(), lignes = [];
@@ -290,7 +290,8 @@ FORMS.standPoint = (v) => {
   DB.put(k, o);
   lignes.forEach((l, i) => { if (!(l.repris > 0)) return; const p = DB.get(l.prod); if (!p || stockDe(l.prod) == null) return; const q = enUniteDeStock(p, l.repris, l.unite, l.poids); if (q == null) return;
     DB.put(`mvt:stpr:${k.slice(4)}:${i}`, { date, prod: l.prod, qte: q, type: 'retour', ref: k, par: Sync.me || '', note: 'Repris du stand' }); });
-  closeSheet(); toast(o.manque > 0.05 ? `Point enregistré : il manque ${chf(o.manque)} par rapport à l'estimation.` : o.manque < -0.05 ? `Point enregistré : ${chf(-o.manque)} de plus que l'estimation (un encaissement noté en trop ?).` : 'Point enregistré : tout correspond.', 6000);
+  closeSheet(); toast(o.manque > 0.05 ? `Compté : il manque ${chf(o.manque)} par rapport à l'estimation.` : o.manque < -0.05 ? `Compté : ${chf(-o.manque)} de plus que l'estimation (un paiement noté en trop ?).` : 'Compté : tout correspond.', 6000);
+  if (v.suite) setTimeout(() => ACTIONS.selfRemplir(), 60);
 };
 ACTIONS.twLibresVD = () => {
   const l = twLibresVD(); if (!l.length) return;
@@ -307,12 +308,14 @@ FORMS.twLibresVD = (v) => {
     DB.put(t.key, Object.assign({}, DB.get(t.key), { utilise: rk })); n++; tot += t.montant; }
   closeSheet(); toast(n ? `${chf(tot)} comptés (${n} paiement${n > 1 ? 's' : ''}).` : 'Rien de compté.');
 };
-ACTIONS.selfNouveau = () => {
+/* Remplir le stand : 1. compter ce qui reste (ou passer), 2. ce qu'on ajoute */
+ACTIONS.selfNouveau = () => { if (misesEnVente().length && articles().length + produits().length) ACTIONS.standPoint({ dataset: { suite: '1' } }); else ACTIONS.selfRemplir(); };
+ACTIONS.selfRemplir = () => {
   /* Prix de vente directe = prix « Particuliers & vente directe » du produit (haut de la fourchette, ou fixé à la main) */
   const ps = produits().filter((p) => num(prixNiveau(p, 'part')) > 0), arts = articles().filter((a) => a.actif !== false);
   if (!ps.length && !arts.length) { toast('Crée d\'abord un article de vente directe, ou mets une fourchette de prix sur un produit.', 5000); return; }
   const lgnArt = arts.map((a) => { const p = DB.get(a.prod) || {}, q = stockDe(a.prod); return `<tr><td><b>${esc(a.nom)}</b> <span class="hint">${esc(descArticle(a))}</span></td><td><input class="cell-in" name="qa_${esc(a.key)}" inputmode="numeric" placeholder="0" style="width:70px"> <span class="hint">${a.mode === 'lot' ? 'lots' : 'pièces'}</span></td><td><input class="cell-in" name="pa_${esc(a.key)}" inputmode="decimal" value="${esc(String(prixArticle(a)).replace('.', ','))}" style="width:70px"></td><td class="r hint">${p.auChamp ? '🌱 au champ' : q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('');
-  openSheet(`${sheetHead('Mise en vente directe')}<form class="sbody form" data-form="self">
+  openSheet(`${sheetHead('Remplir le stand', misesEnVente().length ? '2 / 2 · Ce que vous ajoutez' : '')}<form class="sbody form" data-form="self">
     <div class="grid2">${inp('sf-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('sf-lieu', 'Où', 'Self-service', { name: 'lieu' })}</div>
     ${arts.length ? `<h3>Articles</h3><div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>${lgnArt}</tbody></table></div>` : ''}
     ${ps.length ? `<details${arts.length ? '' : ' open'}><summary class="hint" style="cursor:pointer">${arts.length ? 'Autres produits (au kg ou par calibre)' : 'Produits'}</summary>` : ''}
@@ -324,7 +327,7 @@ ACTIONS.selfNouveau = () => {
     </tbody></table></div>${ps.length ? '</details>' : ''}
     ${inp('sf-note', 'Note', '', { name: 'note' })}
     <p class="hint">Prix proposé : le prix « Particuliers & vente directe » du produit, modifiable ici pour cette fois. Le stock baisse de ces quantités. Ce qui est 🌱 au champ est récolté pour l'occasion : c'est compté comme récolte du jour (pour la culture du plan).</p>
-    <div class="row-end"><button class="btn primary" type="submit">Mettre en vente</button></div></form>`);
+    <div class="row-end"><button class="btn primary" type="submit">Mettre sur le stand</button></div></form>`);
 };
 FORMS.self = (v) => {
   const lignes = [];
@@ -361,6 +364,21 @@ function stockPourSelf(k, s) {
     if (s.statut === 'close' && r > 0) DB.put(kr, { date: s.closeLe || todayISO(), prod: l.prod, qte: enUniteDeStock(p, r, l.unite, l.poids) ?? r, type: 'retour', ref: k, par: Sync.me || '' }); else if (DB.get(kr)) DB.del(kr);
   });
 }
+/* Vente spontanée : vendu sur place sans facture, payé cash (une recette, compte 3200 Vente directe) */
+ACTIONS.venteSpontanee = (el) => {
+  const k = (el && el.dataset && el.dataset.key) || '', r = k ? DB.get(k) : { date: todayISO(), par: Sync.me || '' };
+  openSheet(`${sheetHead(k ? 'Vente spontanée' : 'Nouvelle vente spontanée', 'Sans facture, payée cash')}<form class="sbody form" data-form="venteSpontanee"><input type="hidden" name="key" value="${esc(k)}">
+    <div class="grid2">${inp('vs-m', 'Montant CHF', r.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { autofocus: k ? undefined : '', step: '0.05', inputmode: 'decimal' } })}${inp('vs-d', 'Date', r.date, { name: 'date', type: 'date' })}
+      ${sel('vs-par', 'Encaissé par', r.par || Sync.me, persOptions(), { name: 'par', sub: 'Qui a pris l\'argent.' })}${inp('vs-c', 'Client (facultatif)', r.client === 'Vente spontanée' ? '' : r.client || '', { name: 'client' })}</div>
+    ${inp('vs-q', 'Ce qui a été vendu (facultatif)', r.quoi || '', { name: 'quoi', attrs: { placeholder: 'ex. 3 kg de carottes, 2 courges' } })}
+    <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette vente">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+};
+FORMS.venteSpontanee = (v) => {
+  const m = num(v.montant); if (!(m > 0)) { toast('Indique le montant.'); return; }
+  const k = v.key || 'rec:' + uid('r'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '' };
+  DB.put(k, Object.assign({}, old, { date: v.date || todayISO(), montant: r2(m), moyen: 'Espèces', par: v.par, client: v.client || 'Vente spontanée', quoi: v.quoi || '', libelle: 'Vente spontanée' + (v.quoi ? ' · ' + v.quoi : ''), compte: '3200', spontanee: true }));
+  closeSheet(); toast(`Vente spontanée de ${chf(m)} enregistrée dans les recettes.`);
+};
 ACTIONS.selfEnc = () => {
   openSheet(`${sheetHead('Encaissement', 'Vente directe')}<form class="sbody form" data-form="selfEnc">
     <div class="grid2">${inp('se-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('se-m', 'Montant CHF', '', { name: 'montant', type: 'number', attrs: { autofocus: '', step: '0.05', inputmode: 'decimal' } })}

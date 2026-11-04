@@ -163,8 +163,7 @@ function chargePrevue(s) {
   return { sem, src };
 }
 
-/* ---------- Onglet Frise : l'année de chaque culture, puis la charge de travail ---------- */
-/* Frise de la saison et charge de travail : dans « Plan de cultures » */
+/* ---------- Frise de la saison et charge de travail : dans « Plan de cultures » ---------- */
 function friseHtml(s) {
   const list = cultures(s), y = Number(s), today = todayISO();
   const deb = `${y}-01-01`, fin = `${y}-12-31`, tot = jours0(deb, fin) + 1, pc = (d) => Math.max(0, Math.min(100, jours0(deb, d) / tot * 100));
@@ -179,15 +178,18 @@ function friseHtml(s) {
     const ets = etapesCulture(c).filter((e) => e.src !== 'standard').map((e) => `<span class="fr-e" style="left:${pc(e.date)}%" title="${esc(e.t + ' · ' + fmtDate(e.date))}"></span>`).join('');
     return `<div class="fr-l" style="--c:${coul}"><a class="fr-n" href="#/cultures/fiches/${encodeURIComponent(ficheDe(c))}"><span class="sw" style="background:${coul}"></span>${esc(c.nom)}</a><span class="fr-t">${pep}${sol}${rec}${ets}${auj}</span></div>`;
   }).join('');
-  /* Charge : prévue (apprise) et réelle, par semaine */
+  return `<div class="panel"><div class="between"><h2>Frise ${s}</h2><button class="btn small" type="button" data-act="cuTaches">Créer / mettre à jour les tâches</button></div>
+      ${list.length ? `<div class="frise"><div class="fr-l fr-mois"><span class="fr-n"></span><span class="fr-t">${mois}</span></div>${lignes}</div>
+      <p class="hint fr-leg"><span class="fr-b pep"></span> pépinière <span class="fr-b sol"></span> en terre <span class="fr-b rec"></span> récolte <span class="fr-e"></span> étape d'un itinéraire · Les dates viennent des semaines de la fiche de chaque culture.</p>` : '<p class="empty">Aucune culture dans ce plan.</p>'}</div>`;
+}
+/* Charge de travail prévue (apprise) et réelle, par semaine */
+function chargeHtml(s) {
+  const list = cultures(s), today = todayISO();
   const C = chargePrevue(s), R = heuresCulturesParSemaine(s), reel = {}; for (const m of Object.values(R.o)) for (const [w, x] of Object.entries(m)) reel[w] = (reel[w] || 0) + x;
   const max = Math.max(1, ...Object.values(C.sem), ...Object.values(reel)), wNow = today.slice(0, 4) === s ? semaineISO(today).semaine : 0;
   const barres = Array.from({ length: 52 }, (_, i) => i + 1).map((w) => `<span class="ch-w${w === wNow ? ' now' : ''}" title="Semaine ${w} : prévu ${fmtH(r2(C.sem[w] || 0))} h${reel[w] ? ', réel ' + fmtH(r2(reel[w])) + ' h' : ''}"><i class="p" style="height:${(C.sem[w] || 0) / max * 100}%"></i><i class="r" style="height:${(reel[w] || 0) / max * 100}%"></i></span>`).join('');
   const totP = Object.values(C.sem).reduce((a, x) => a + x, 0);
-  return `<div class="panel"><div class="between"><h2>Frise ${s}</h2><button class="btn small" type="button" data-act="cuTaches">Créer / mettre à jour les tâches</button></div>
-      ${list.length ? `<div class="frise"><div class="fr-l fr-mois"><span class="fr-n"></span><span class="fr-t">${mois}</span></div>${lignes}</div>
-      <p class="hint fr-leg"><span class="fr-b pep"></span> pépinière <span class="fr-b sol"></span> en terre <span class="fr-b rec"></span> récolte <span class="fr-e"></span> étape d'un itinéraire · Les dates viennent des semaines de la fiche de chaque culture.</p>` : '<p class="empty">Aucune culture dans ce plan.</p>'}</div>
-    <div class="panel"><h2>Charge de travail prévue · cultures</h2>
+  return `<div class="panel"><h2>Charge de travail prévue · cultures</h2>
       <div class="charge">${barres}</div><div class="charge-ax">${[0, 3, 6, 9].map((m) => `<span style="left:${m / 12 * 100}%">${MOIS_COURT[m]}</span>`).join('')}</div>
       <p class="hint"><span class="lg p"></span> prévu (${fmtH(r2(totP))} h sur la saison) <span class="lg r"></span> réel. Le prévu apprend des heures notées les saisons passées, semaine par semaine depuis la plantation, et à la surface de cette année ; les heures « champ » sans culture précise sont réparties selon la surface. Sans historique, il prend les heures estimées des étapes (h par planche).</p>
       ${list.length ? `<p class="hint">${list.map((c) => `${esc(c.nom)} : ${esc(C.src[c.key] || '—')}`).join(' · ')}</p>` : ''}</div>`;
