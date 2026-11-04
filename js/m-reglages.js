@@ -9,7 +9,7 @@ MODULES.reglages = {
     if (sub === 'notifications') sub = '';
     const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise'], ['categories', 'Catégories'], ['apparence', 'Apparence']], sub);
     if (sub === 'apparence') return t + renderApparence();
-    if (sub === 'categories') return t + renderCategories();
+    if (sub === 'categories') return t + renderCategories() + renderComptesReglages();
     if (sub === 'associes') return t + renderRegAssocies();
     if (sub === 'donnees') return t + renderDonnees();
     if (sub === 'entreprise') return t + renderEntreprise();
@@ -263,6 +263,36 @@ function renderCategories() {
     <div class="row"><input id="cat-new" placeholder="Nouvelle catégorie (ex. Formation)" maxlength="30"><button class="btn" type="button" data-act="catAjout">+ Catégorie</button></div>
     <p class="hint">Une tâche ou un événement d'une catégorie supprimée passe dans « Autre ».</p></div>`;
 }
+/* ---------- Plan de comptes (dépenses) ---------- */
+const POUR_CHOIX = [['', '—'], ['cultures', 'Cultures'], ['ventes', 'Ventes'], ['admin', 'Admin']];
+function renderComptesReglages() {
+  const l = comptesTous(), nDep = {}; for (const d of depenses()) { const c = compteDe(d); nDep[c] = (nDep[c] || 0) + 1; }
+  const ligne = (c, i) => `<div class="cpt-it${c.cache ? ' cache' : ''}"><input class="num cpt-n" value="${esc(c.n)}" data-cpt="${i}" data-f="n" maxlength="6" inputmode="numeric" aria-label="Numéro">
+    <input value="${esc(c.nom)}" data-cpt="${i}" data-f="nom" maxlength="60" aria-label="Nom" style="flex:1;min-width:140px">
+    ${estInvest(c.n) ? `<label class="hint cpt-lab">Taux <input type="number" value="${esc(c.taux || '')}" data-cpt="${i}" data-f="taux" min="0" max="100" style="width:64px"> %</label>` : `<label class="hint cpt-lab">Pour <select data-cpt="${i}" data-f="pour">${POUR_CHOIX.map(([k, n]) => `<option value="${k}"${(c.pour || '') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`}
+    <span class="hint">${nDep[c.n] ? nDep[c.n] + ' dép.' : ''}</span>
+    <button class="btn small" type="button" data-act="cptCacher" data-i="${i}" title="${c.cache ? 'Remettre dans la liste' : 'Ne plus proposer'}">${c.cache ? 'Remettre' : 'Masquer'}</button></div>`;
+  return `<div class="panel"><h2>Comptes des dépenses</h2>
+    <p class="hint">Numéros du plan comptable suisse des PME, gardés au minimum. <b>1xxx</b> = investissements (inventaire, amortis ; le taux est proposé pour un nouvel objet), <b>4xxx</b> = charges directes (matériel, ce qui part dans les cultures), <b>6xxx</b> = autres charges. « Pour » pré-coche à quoi sert la dépense (marges par culture). Un compte masqué n'est plus proposé mais garde ses dépenses.</p>
+    <div class="cpt-l">${l.map(ligne).join('')}</div>
+    <div class="row"><input id="cpt-new-n" class="num" placeholder="N° (ex. 4050)" maxlength="6" inputmode="numeric" style="width:120px"><input id="cpt-new-nom" placeholder="Nom (ex. Location de matériel)" maxlength="60" style="flex:1"><button class="btn" type="button" data-act="cptAjout">+ Compte</button></div></div>`;
+}
+const sauverComptes = (l) => DB.put('cfg:comptes', { liste: l });
+document.addEventListener('change', (e) => {
+  const el = e.target; if (!el.dataset || el.dataset.cpt == null) return;
+  const l = comptesTous(), c = l[Number(el.dataset.cpt)]; if (!c) return; const f = el.dataset.f, v = el.value.trim();
+  if (f === 'n') { if (!/^\d{3,6}$/.test(v)) { toast('Un numéro de 3 à 6 chiffres.'); render(); return; } if (l.some((x) => x !== c && x.n === v)) { toast('Ce numéro existe déjà.'); render(); return; }
+    const ancien = c.n; c.n = v; for (const d of depenses()) if (d.compte === ancien) DB.put(d.key, Object.assign({}, d, { compte: v })); }
+  else if (f === 'taux') c.taux = Math.min(100, Math.max(0, num(v))); else if (f === 'nom') c.nom = v || c.nom; else c[f] = v;
+  sauverComptes(l); toast('Comptes enregistrés.');
+});
+ACTIONS.cptCacher = (el) => { const l = comptesTous(), c = l[Number(el.dataset.i)]; if (!c) return; c.cache = !c.cache; sauverComptes(l); };
+ACTIONS.cptAjout = () => {
+  const n = ($('cpt-new-n') || {}).value || '', nom = (($('cpt-new-nom') || {}).value || '').trim(), l = comptesTous();
+  if (!/^\d{3,6}$/.test(n.trim()) || !nom) { toast('Indique un numéro (3 à 6 chiffres) et un nom.'); return; }
+  if (l.some((x) => x.n === n.trim())) { toast('Ce numéro existe déjà.'); return; }
+  l.push(Object.assign({ n: n.trim(), nom }, estInvest(n) ? { taux: 30 } : {})); sauverComptes(l); toast('Compte ajouté.');
+};
 const sauverCats = (cs) => { DB.put('cfg:categories', { liste: cs }); };
 document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset && (e.target.dataset.sousNew != null || e.target.id === 'cat-new' || e.target.dataset.cat != null)) { e.preventDefault(); if (e.target.id === 'cat-new') ACTIONS.catAjout(); else e.target.blur(); } });
 document.addEventListener('change', (e) => {

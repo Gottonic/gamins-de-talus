@@ -1,8 +1,7 @@
 /* Gamins de Talus — finances : dépenses, recettes, résultat et décompte entre associés. */
 'use strict';
 
-const CATEGORIES = ['Charges spécifiques', 'Outil', 'Machine', 'Carburant', 'Frais', 'Autres'];
-const CAT_AIDE = 'Charges spécifiques : semences, plants, engrais, protection des cultures.';
+/* Les comptes des dépenses : voir comptes.js (l'ancienne « catégorie » donne le compte des vieilles dépenses) */
 const MOYENS = ['TWINT', 'Espèces', 'Virement', 'Autre'];
 const depenses = () => DB.all('dep:');
 const recettesDirectes = () => DB.all('rec:');
@@ -69,7 +68,7 @@ function bilanAnnee(y) {
   const invest = deps.filter((d) => d.type === 'investissement').reduce((a, d) => a + num(d.montant), 0);
   const rec = recs.reduce((a, r) => a + num(r.montant), 0);
   const amort = DB.all('inv:').reduce((a, i) => a + amortissementAnnee(i, Number(y), !!cfg().amortirDesAchat), 0);
-  const cat = {}; for (const d of deps) { const k = d.categorie || 'Sans catégorie'; cat[k] = (cat[k] || 0) + num(d.montant); }
+  const cat = {}; for (const d of deps) { if (d.type === 'investissement') continue; const k = libCompte(compteDe(d)); cat[k] = (cat[k] || 0) + num(d.montant); }
   return { charges, invest, rec, amort, resultat: rec - charges - amort, cat, nDep: deps.length, nRec: recs.length };
 }
 function renderBilan() {
@@ -92,7 +91,7 @@ function renderBilan() {
         <p class="hint">Calculé sur toutes les dépenses, recettes et remboursements depuis le début, avec un partage selon la date de chaque montant. Aujourd'hui : ${phrasePartage()}.</p>
         ${d.transferts.length ? `<div class="row"><button class="btn primary" type="button" data-act="regEdit" data-de="${d.transferts[0].de}" data-a="${d.transferts[0].a}" data-m="${d.transferts[0].montant}">Enregistrer le remboursement</button></div>` : ''}
       </div>
-      <div class="panel"><h2>Dépenses ${y} par catégorie</h2>${Object.keys(b.cat).length ? `<div class="bars">${Object.entries(b.cat).sort((a, c) => c[1] - a[1]).map(([k, v]) => `<div class="bar-row"><span>${esc(k)}</span><span class="bar-track"><span class="bar-fill b3" style="width:${(v / maxCat * 100).toFixed(1)}%"></span></span><span class="num">${money(v)}</span></div>`).join('')}</div>` : '<p class="empty">Aucune dépense cette année.</p>'}</div>
+      <div class="panel"><h2>Charges ${y} par compte</h2>${Object.keys(b.cat).length ? `<div class="bars">${Object.entries(b.cat).sort((a, c) => a[0].localeCompare(c[0])).map(([k, v]) => `<div class="bar-row"><span>${esc(k)}</span><span class="bar-track"><span class="bar-fill b3" style="width:${(v / maxCat * 100).toFixed(1)}%"></span></span><span class="num">${money(v)}</span></div>`).join('')}</div>` : '<p class="empty">Aucune dépense cette année.</p>'}</div>
     </div>
     <div class="row"><a class="btn primary" href="#" data-act="depEdit">+ Dépense</a><a class="btn" href="#" data-act="recEdit">+ Recette</a></div>`;
 }
@@ -105,7 +104,7 @@ function renderDepenses() {
   if (FIN.annee) list = list.filter((d) => yearOf(d.date) === FIN.annee);
   if (FIN.type) list = list.filter((d) => (d.type || 'charge') === FIN.type);
   if (FIN.par) list = list.filter((d) => d.par === FIN.par);
-  if (FIN.q) { const q = FIN.q.toLowerCase(); list = list.filter((d) => [d.objet, d.categorie, d.justificatif, d.remarque, money(d.montant)].join(' ').toLowerCase().includes(q)); }
+  if (FIN.q) { const q = FIN.q.toLowerCase(); list = list.filter((d) => [d.objet, libCompte(compteDe(d)), d.justificatif, d.remarque, money(d.montant)].join(' ').toLowerCase().includes(q)); }
   const nSansJ = depenses().filter(sansJustificatif), gs = garanties();
   if (FIN.sansJ) list = list.filter(sansJustificatif);
   const tot = list.reduce((a, d) => a + num(d.montant), 0);
@@ -120,24 +119,27 @@ function renderDepenses() {
     </div>
     ${banner}
     ${gs.length ? `<details class="garanties"${gs.some((d) => d.garantie <= addDays(todayISO(), 60)) ? ' open' : ''}><summary>🛡️ <b>${gs.length} achat${gs.length > 1 ? 's' : ''} sous garantie</b></summary><div class="items">${gs.map((d) => `<button type="button" class="item" data-act="depEdit" data-key="${esc(d.key)}"><span class="who"><strong>${esc(d.objet)}</strong><span class="meta">acheté le ${fmtDate(d.date)} · ${chf(d.montant)}${d.garantieNote ? ' · ' + esc(d.garantieNote) : ''}${(d.fichiers || []).length ? ' · 📎 preuve d\'achat' : ' · ⚠️ pas de ticket joint'}</span></span><span class="num${d.garantie <= addDays(todayISO(), 60) ? ' bad' : ''}">jusqu'au ${fmtDate(d.garantie)}<br><span class="hint">${esc(finGarantieTxt(d.garantie))}</span></span></button>`).join('')}</div></details>` : ''}
-    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Objet</th><th>Catégorie</th><th>Payé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}" data-depot="ligne"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}${sousGarantie(d) ? ` <span class="clip" title="Garantie jusqu'au ${fmtDate(d.garantie)}">🛡️</span>` : ''}</td><td>${esc(d.categorie || '—')}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
+    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Objet</th><th>Compte</th><th>Payé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}" data-depot="ligne"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}${sousGarantie(d) ? ` <span class="clip" title="Garantie jusqu'au ${fmtDate(d.garantie)}">🛡️</span>` : ''}</td><td title="${esc(libCompte(compteDe(d)))}"><span class="num">${esc(compteDe(d))}</span> ${esc(trunc(compteInfo(compteDe(d)).nom, 26))}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="4">${list.length} dépense${list.length > 1 ? 's' : ''}</td><td class="r num">${money(tot)}</td></tr></tfoot></table></div>` : '<p class="empty">Aucune dépense ne correspond.</p>'}
     <p class="hint depot-aide">Depuis un dossier de l'ordinateur : glisse un ticket ou une facture (photo ou PDF) sur une ligne pour l'y joindre, ou ailleurs dans ce cadre pour créer une nouvelle dépense avec.</p>
   </div>`;
 }
 ACTIONS.finSansJ = () => { FIN.sansJ = !FIN.sansJ; render(); };
 ACTIONS.depEdit = (el) => {
-  const k = el.dataset.key || '', d = k ? DB.get(k) : Object.assign({ date: todayISO(), type: 'charge', par: Sync.me || 'nicolas', categorie: '' }, el._pre || {});
-  const inInv = k && DB.all('inv:').some((i) => i.depenseId === k);
+  const k = el.dataset.key || '', d = k ? DB.get(k) : Object.assign({ date: todayISO(), par: Sync.me || 'nicolas', compte: '' }, el._pre || {});
+  const cpt = d.compte || (k || d.categorie || d.type ? compteDe(d) : ''), obj = k ? objetDeDepense(k) : null;
   DEP.key = k; DEP.fichiers = (d.fichiers || []).slice();
   openSheet(`${sheetHead(k ? 'Modifier la dépense' : 'Nouvelle dépense', k && d.n ? 'N° ' + d.n : '')}<form class="sbody form" data-form="dep" data-depot="dep"><input type="hidden" name="key" value="${esc(k)}">
     <div class="grid2">${inp('dp-date', 'Date', d.date, { name: 'date', type: 'date', req: true })}${inp('dp-montant', 'Montant CHF', d.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}</div>
     ${inp('dp-objet', 'Objet', d.objet, { name: 'objet', req: true, attrs: { maxlength: 90 } })}
-    <div class="field"><span class="flabel">Type</span><div class="seg">
-      <label><input type="radio" name="type" value="charge"${d.type !== 'investissement' ? ' checked' : ''}> Charge</label>
-      <label><input type="radio" name="type" value="investissement"${d.type === 'investissement' ? ' checked' : ''}> Investissement</label></div>
-      <span class="sub">Investissement : un achat qui dure plusieurs années (machine, outil, irrigation). Il est amorti dans l'inventaire.</span></div>
-    <div class="grid2">${sel('dp-cat', 'Catégorie', d.categorie, [['', '—']].concat(CATEGORIES.map((c) => [c, c])), { name: 'categorie', sub: CAT_AIDE })}${sel('dp-par', 'Payé par', d.par, persOptions(), { name: 'par' })}</div>
+    <div class="grid2"><div class="field"><label for="dp-compte">Compte</label><select id="dp-compte" name="compte" required><option value="">Choisir…</option>${optionsComptes(cpt)}</select>
+      <span class="sub" id="dp-compte-aide">${esc(compteInfo(cpt).aide || '')}</span></div>${sel('dp-par', 'Payé par', d.par, persOptions(), { name: 'par' })}</div>
+    ${AIDE_COMPTES}
+    <div class="field dp-inv" id="dp-inv"${estInvest(cpt) ? '' : ' hidden'}><span class="flabel">📦 Dans l'inventaire</span>
+      <select id="dp-invsel" name="invId"><option value="">➕ Nouvel objet</option>${inventaire().filter((i) => !i.sortieLe || (obj && obj.key === i.key)).map((i) => `<option value="${esc(i.key)}"${obj && obj.key === i.key ? ' selected' : ''}>${esc(i.nom)} · ${chf(i.valeur)}</option>`).join('')}</select>
+      <span class="sub">Un investissement va dans un objet de l'inventaire pour être amorti. Plusieurs achats peuvent former un seul objet (ex. « Système d'irrigation »).</span>
+      <div id="dp-invnew"${obj ? ' hidden' : ''}>${inp('dp-invnom', "Nom de l'objet", d.objet || '', { name: 'invNom', attrs: { placeholder: "Ex. Système d'irrigation" } })}
+        ${methodeAmortHtml('dp', 'degressif', compteInfo(cpt).taux || 40, 5)}</div></div>
     ${typeof choixPourHtml === 'function' ? choixPourHtml('dp-pour', d.pour, String(d.date || todayISO()).slice(0, 4)) : ''}
     <div class="field"><span class="flabel">Justificatif (important)</span>
       <div id="dp-fichiers">${fichiersDep()}</div>
@@ -150,9 +152,18 @@ ACTIONS.depEdit = (el) => {
       <div class="row">${['1', '2', '3', '5'].map((n) => `<button type="button" class="chip" data-act="depGarantie" data-ans="${n}">${n} an${n > 1 ? 's' : ''}</button>`).join('')}<button type="button" class="chip" data-act="depGarantie" data-ans="0">Aucune</button></div>
       <div class="grid2">${inp('dp-gar', "Garantie jusqu'au", d.garantie || '', { name: 'garantie', type: 'date' })}${inp('dp-garn', 'Pour la garantie (facultatif)', d.garantieNote || '', { name: 'garantieNote', attrs: { placeholder: 'n° de série, vendeur, conditions…', maxlength: 120 } })}</div>
       <span class="sub">Le ticket ou la facture joints ci-dessus servent de preuve d'achat : ils restent dans l'app tant que la garantie court. Tu peux aussi y joindre le certificat de garantie.</span></div>
-    ${!inInv ? `<label class="row" style="font-size:14px"><input type="checkbox" name="versInventaire"${el._pre && el._pre.type === 'investissement' ? ' checked' : ''}> Ajouter à l'inventaire (pour l'amortir)</label>` : '<p class="hint">Cet achat est dans l\'inventaire.</p>'}
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette dépense">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const f = $('dp-file'); if (f) f.addEventListener('change', async () => { const l = [...f.files]; f.value = ''; for (const x of l) await joindreDep(x); });
+  /* Le compte choisi : aide, « Pour quoi ? » par défaut, et l'inventaire pour un investissement */
+  const sc = $('dp-compte'), so = $('dp-invsel');
+  if (sc) sc.addEventListener('change', () => {
+    const c = sc.value, info = compteInfo(c); $('dp-compte-aide').textContent = info.aide || '';
+    $('dp-inv').hidden = !estInvest(c);
+    const t = $('dp-taux'); if (t && estInvest(c) && !so.value) t.value = info.taux || 40;
+    const pb = $('dp-pour'), def = pourDuCompte(c); if (pb && def && typeof choixPourHtml === 'function') pb.outerHTML = choixPourHtml('dp-pour', def, String(($('dp-date') || {}).value || todayISO()).slice(0, 4));
+  });
+  if (so) so.addEventListener('change', () => { $('dp-invnew').hidden = !!so.value; });
+  const ob = $('dp-objet'), nn = $('dp-invnom'); if (ob && nn) ob.addEventListener('input', () => { if (!nn.dataset.touche) nn.value = ob.value; }); if (nn) nn.addEventListener('input', () => { nn.dataset.touche = '1'; });
 };
 /* Justificatifs joints : envoyés tout de suite ; sur une dépense existante, enregistrés aussitôt (rien ne se perd si on ferme) */
 function fichiersDep() {
@@ -203,14 +214,18 @@ document.addEventListener('drop', async (e) => {
 ACTIONS.depFichierOff = (el) => { DEP.fichiers.splice(Number(el.dataset.i), 1); majFichiersDep(); };
 FORMS.dep = (v) => {
   const m = num(v.montant); if (!(m > 0) || !v.date || !v.objet) { toast('Date, montant et objet sont obligatoires.'); return; }
+  if (!v.compte) { toast('Choisis le compte (« Comment choisir » t\'aide).'); $('dp-compte').focus(); return; }
+  const inv = estInvest(v.compte), pour = (typeof lirePour === 'function' ? lirePour(v.pour) : null) || pourDuCompte(v.compte);
   const k = v.key || 'dep:' + uid('d'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '', n: 1 + Math.max(0, ...depenses().map((x) => x.n || 0)) };
-  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), objet: v.objet, type: v.type || 'charge', categorie: v.categorie, par: v.par, justificatif: v.justificatif, fichiers: DEP.fichiers.slice(), remarque: v.remarque, garantie: v.garantie || '', garantieNote: v.garantie ? String(v.garantieNote || '').trim() : '', pour: typeof lirePour === 'function' ? lirePour(v.pour) : old.pour || null }));
-  if (v.versInventaire) ajouterInventaireDepuis(k);
+  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), objet: v.objet, type: inv ? 'investissement' : 'charge', compte: v.compte, par: v.par, justificatif: v.justificatif, fichiers: DEP.fichiers.slice(), remarque: v.remarque, garantie: v.garantie || '', garantieNote: v.garantie ? String(v.garantieNote || '').trim() : '', pour }));
+  /* Un investissement va dans un objet de l'inventaire (existant ou nouveau) ; une charge n'y est pas */
+  if (inv) lierDepenseInventaire(k, v.invId || '', v.invId ? null : { nom: v.invNom || v.objet, methode: v.methode, taux: Math.min(1, Math.max(0, num(v.taux) / 100)), duree: num(v.duree) || 5 });
+  else detacherDepense(k);
   closeSheet(); toast((v.key ? 'Dépense mise à jour.' : 'Dépense ajoutée.') + (sansJustificatif({ justificatif: v.justificatif, fichiers: DEP.fichiers }) ? ' Attention : justificatif manquant.' : ''), 4500);
 };
 ACTIONS.depCsv = () => {
-  const rows = depenses().sort((a, b) => String(a.date).localeCompare(b.date)).map((d) => [d.n || '', fmtDate(d.date), r2(d.montant).toFixed(2), d.objet, d.type === 'investissement' ? 'Investissement' : 'Charges', d.categorie, nomDe(d.par), [d.justificatif].concat((d.fichiers || []).map((x) => x.nom)).filter(Boolean).join(' · '), d.remarque]);
-  downloadFile(`Dépenses Gamins de Talus ${todayISO()}.csv`, csv(['N°', 'Date', 'Montant', 'Objet', 'Type', 'Catégorie', 'Payé par', 'Justificatif', 'Remarque'], rows), 'text/csv;charset=utf-8');
+  const rows = depenses().sort((a, b) => String(a.date).localeCompare(b.date)).map((d) => [d.n || '', fmtDate(d.date), r2(d.montant).toFixed(2), d.objet, d.type === 'investissement' ? 'Investissement' : 'Charges', libCompte(compteDe(d)), nomDe(d.par), [d.justificatif].concat((d.fichiers || []).map((x) => x.nom)).filter(Boolean).join(' · '), d.remarque]);
+  downloadFile(`Dépenses Gamins de Talus ${todayISO()}.csv`, csv(['N°', 'Date', 'Montant', 'Objet', 'Type', 'Compte', 'Payé par', 'Justificatif', 'Remarque'], rows), 'text/csv;charset=utf-8');
 };
 
 /* ---------- Recettes ---------- */

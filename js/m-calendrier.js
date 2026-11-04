@@ -357,7 +357,7 @@ function renderVue() {
   const aPlan = trierAPlanifier(taches().filter((t) => tacheOuverte(t) && !estPlanifiee(t) && pour(t.responsable)));
   const ev = (x, d) => {
     const e = DB.get(x.key) || {}, ce = catEv(e), j = x.key + '|' + x.occ, tj = taches().filter((t) => t.journee === j && t.statut !== 'suspendu');
-    const fort = d === today && concerneMoi(x.qui) && !x.fait && !(Sync.me && heuresNotees(d, Sync.me));
+    const fort = d === today && concerneMoi(x.qui) && !x.fait && !(Sync.me && heuresNoteesEv(j, d, Sync.me));
     const cu = e.cultureId && DB.get(e.cultureId), c = e.contactId && DB.get(e.contactId);
     const det = [x.heure ? x.heure + (e.heureFin ? '–' + e.heureFin : '') : '', x.qui ? quiLabel(x.qui) : '', c && !x.titre.includes(displayName(c)) ? displayName(c) : '', cu && !x.titre.includes(cu.nom) ? cu.nom : ''].filter(Boolean).join(' · ');
     const rec = e.type === 'recolte' && d <= today && typeof recolteDeLEvenement === 'function' && !recolteDeLEvenement(x.key, x.occ) && !((e.occ || {})[x.occ] || {}).sansRecolte;
@@ -397,13 +397,18 @@ function renderVue() {
    « Terminer la journée et enregistrer mes heures ». Une journée passée reste tant que mes heures ne sont pas notées
    (par moi ou par quelqu'un d'autre), au plus 7 jours. ✕ la replie en bouton. */
 const heuresNotees = (d, p) => { const h = p && DB.get(hKey(d, p)); return !!(h && (num(h.heures) > 0 || h.off)); };
+/* Les heures d'un jour se notent par événement : h.segments = { '<événement>|<date>': { debut, fin, pause, heures }, '': hors événement }.
+   h.heures = la somme (c'est elle que comptent le tableau de la semaine et les bilans). Ancien format : debut/fin/heures directement. */
+function segmentsDe(h) { if (!h) return {}; if (h.segments) return h.segments; return h.debut || num(h.heures) > 0 ? { '': { debut: h.debut || '', fin: h.fin || '', pause: h.pause || 0, heures: num(h.heures) } } : {}; }
+/* Mes heures sont-elles notées pour cet événement ? (un « off » vaut pour la journée ; l'ancien format vaut pour tout le jour) */
+const heuresNoteesEv = (j, d, p) => { const h = p && DB.get(hKey(d, p)); if (!h) return false; if (h.off) return true; if (h.segments) return !!h.segments[j || '']; return num(h.heures) > 0; };
 function journeesEnCours() {
   const today = todayISO(), de = addDays(today, -6), it = itemsPeriode(de, today), out = [], vus = new Set();
   for (let d = today; d >= de; d = addDays(d, -1)) for (const x of it[d] || []) {
     if (x.kind !== 'ev' || !concerneMoi(x.qui) || evGenre(DB.get(x.key) || {}).genre !== 'travail') continue;
     const j = x.key + '|' + x.occ, id = j + '@' + d; if (vus.has(id)) continue; vus.add(id);
     /* Mes heures notées : la journée est terminée, elle n'est plus mise en avant */
-    if (Sync.me ? heuresNotees(d, Sync.me) : d < today) continue;
+    if (Sync.me ? heuresNoteesEv(j, d, Sync.me) : d < today) continue;
     out.push({ j, d, id, titre: x.titre, couleur: x.couleur, heure: x.heure });
   }
   return out;
@@ -417,8 +422,8 @@ ACTIONS.jcFermer = (el) => { const ids = new Set(journeesEnCours().map((x) => x.
 function terminerJourneeHtml(j, d) {
   if (d > todayISO()) return '';
   const e = DB.get(j.split('|')[0]) || {}, moi = Sync.me && quiInclut(e.qui, Sync.me);
-  if (moi && !heuresNotees(d, Sync.me)) return `<div class="row"><button class="btn primary big jc-fin" type="button" data-act="heuresJour" data-d="${d}" data-j="${esc(j)}">Terminer la journée et enregistrer mes heures</button></div>`;
-  const notes = quiListe(e.qui).map((p) => [p, DB.get(hKey(d, p)) || {}]).filter(([, h]) => num(h.heures) > 0 || h.off);
+  if (moi && !heuresNoteesEv(j, d, Sync.me)) return `<div class="row"><button class="btn primary big jc-fin" type="button" data-act="heuresJour" data-d="${d}" data-j="${esc(j)}">Terminer l'événement et enregistrer mes heures</button></div>`;
+  const notes = quiListe(e.qui).map((p) => { const h = DB.get(hKey(d, p)) || {}, sg = h.segments ? h.segments[j] : null; return [p, h.off ? { off: true } : sg || (h.segments ? {} : h)]; }).filter(([, h]) => num(h.heures) > 0 || h.off);
   return `<div class="row jc-fait"><span>${notes.length ? '✓ ' + notes.map(([p, h]) => `${esc(p === Sync.me ? 'Toi' : nomDe(p))} ${h.off ? 'off' : fmtH(h.heures) + ' h'}`).join(' · ') : 'Heures pas encore notées.'}</span>
     <button class="btn link small" type="button" data-act="heuresJour" data-d="${d}" data-j="${esc(j)}">${notes.length ? 'Modifier les heures' : 'Noter les heures'}</button></div>`;
 }
@@ -666,16 +671,20 @@ function ligneHeuresHtml(p, v, suit) {
 }
 const lireLigne = (row) => { const g = (c) => (row.querySelector(`[data-hc="${c}"]`) || {}).value || ''; return { debut: g('debut'), fin: g('fin'), pause: g('pause') }; };
 function lireLignes() { const o = {}; document.querySelectorAll('#hj-sheet [data-hl]').forEach((r) => { o[r.dataset.hl] = Object.assign(lireLigne(r), { suit: !!r.dataset.suit }); }); return o; }
+const p0k = (premier) => (personnes().find((p) => p.k === premier) || personnes()[0]).k;
 function heuresLignesHtml(d, j, premier) {
   const e = j ? DB.get(j.split('|')[0]) : null, ps = personnes(), ins = inscritsDuJour(d, j), br = HJ.cle === d + '|' + j ? HJ.brouillon : null;
-  const valeurs = (k) => { if (br && br[k]) return br[k]; const h = DB.get(hKey(d, k)) || {}; return h.debut ? { debut: h.debut, fin: h.fin, pause: h.pause || '' } : { ancien: num(h.heures) > 0 ? h.heures : 0 }; };
+  const seg = (k) => segmentsDe(DB.get(hKey(d, k)))[j || ''];
+  const valeurs = (k) => { if (br && br[k]) return br[k]; const g = seg(k); return g && g.debut ? { debut: g.debut, fin: g.fin, pause: g.pause || '' } : { ancien: g && num(g.heures) > 0 ? g.heures : 0 }; };
   const p0 = ps.find((p) => p.k === premier) || ps[0], v0 = valeurs(p0.k);
   if (!v0.debut && !v0.ancien && e && e.heureDebut && e.heureFin) { v0.debut = e.heureDebut; v0.fin = e.heureFin; }
-  const deja = (k) => (br ? !!br[k] : (() => { const h = DB.get(hKey(d, k)); return !!(h && num(h.heures) > 0); })());
+  const deja = (k) => (br ? !!br[k] : !!(seg(k) && num(seg(k).heures) > 0));
+  /* Les heures déjà notées ce jour-là pour d'autres événements (ou hors événement) */
+  const autresSeg = Object.entries(segmentsDe(DB.get(hKey(d, p0k(premier))))).filter(([sk, g]) => sk !== (j || '') && num(g.heures) > 0);
   const autres = ps.filter((p) => p !== p0), lignes = autres.filter((p) => deja(p.k));
   const boutons = (l) => l.map((p) => `<button type="button" class="chip" data-act="hlAjout" data-p="${esc(p.k)}">+ ${esc(p.nom)}</button>`).join('');
   const insB = autres.filter((p) => ins.includes(p.k) && !lignes.includes(p)), horsB = autres.filter((p) => !ins.includes(p.k) && !lignes.includes(p));
-  return `<div id="hl-lignes">${ligneHeuresHtml(p0, v0)}${lignes.map((p) => ligneHeuresHtml(p, Object.assign({ retirable: true }, valeurs(p.k)), br && br[p.k] && br[p.k].suit)).join('')}</div>
+  return `${autresSeg.length ? `<p class="hint">Déjà noté ce jour-là : ${autresSeg.map(([sk, g]) => `${fmtH(g.heures)} h ${sk ? '(' + esc(titreEv(DB.get(sk.split('|')[0]) || {})) + ')' : '(hors événement)'}`).join(', ')}.</p>` : ''}<div id="hl-lignes">${ligneHeuresHtml(p0, v0)}${lignes.map((p) => ligneHeuresHtml(p, Object.assign({ retirable: true }, valeurs(p.k)), br && br[p.k] && br[p.k].suit)).join('')}</div>
     <div class="row hl-qui" id="hl-qui">${insB.length ? `<span class="hint">Remplir aussi pour :</span>${boutons(insB)}` : ''}${horsB.length ? `<details class="hj-autres"><summary class="hint">Quelqu'un d'autre a travaillé ?</summary><div class="row">${boutons(horsB)}</div></details>` : ''}</div>`;
 }
 function brancherLignes(root) {
@@ -710,14 +719,23 @@ ACTIONS.heuresJour = (el) => {
   const sh = $('hj-sheet'); brancherLignes(sh); sh.querySelectorAll('[data-hl]').forEach(majTotal);
 };
 ACTIONS.hjOk = (el) => {
-  const d = el.dataset.d, j = el.dataset.j || '', notes = [];
+  const d = el.dataset.d, j = el.dataset.j || '', sk = j || '', notes = [];
+  /* Le jour d'une personne : ses segments (un par événement) ; total, début et fin de la journée en découlent */
+  const ecrire = (k, old, segs) => {
+    const o = Object.assign({}, old, { date: d, personne: k.split(':')[2], segments: segs }), l = Object.values(segs);
+    delete o.off;
+    if (!l.length) { delete o.heures; delete o.debut; delete o.fin; delete o.pause; delete o.segments; delete o.pour; delete o.pourAuto; if (!o.note) { DB.del(k); return; } DB.put(k, o); return; }
+    o.heures = r2(l.reduce((a, g) => a + num(g.heures), 0)); o.debut = l.map((g) => g.debut).filter(Boolean).sort()[0] || ''; o.fin = l.map((g) => g.fin).filter(Boolean).sort().pop() || ''; o.pause = l.reduce((a, g) => a + num(g.pause), 0);
+    DB.put(k, o);
+  };
   for (const r of document.querySelectorAll('#hj-sheet [data-hl]')) {
-    const k = hKey(d, r.dataset.hl), old = DB.get(k) || {}, v = lireLigne(r), nom = nomDe(r.dataset.hl);
-    if (!v.debut && !v.fin) { if (r.dataset.retire && old.debut) { const o = Object.assign({}, old); delete o.heures; delete o.debut; delete o.fin; delete o.pause; delete o.pour; delete o.pourAuto; if (!o.off && !o.note) DB.del(k); else DB.put(k, o); } continue; }
+    const k = hKey(d, r.dataset.hl), old = DB.get(k) || {}, v = lireLigne(r), nom = nomDe(r.dataset.hl), segs = Object.assign({}, segmentsDe(old));
+    if (!v.debut && !v.fin) { if (r.dataset.retire && segs[sk]) { delete segs[sk]; ecrire(k, old, segs); } continue; }
     const h = dureeH(v.debut, v.fin, v.pause);
     if (h == null || h > 24) { toast(`${nom} : vérifie le début, la fin et la pause.`); r.querySelector('[data-hc="debut"]').focus(); return; }
-    const o = Object.assign({}, old, { date: d, personne: r.dataset.hl, heures: h, debut: v.debut, fin: v.fin, pause: num(v.pause) || 0 }); delete o.off;
-    DB.put(k, o); notes.push(`${nom} ${fmtH(h)} h`);
+    segs[sk] = { debut: v.debut, fin: v.fin, pause: num(v.pause) || 0, heures: h };
+    if (Object.values(segs).reduce((a, g) => a + num(g.heures), 0) > 24) { toast(`${nom} : plus de 24 h ce jour-là avec les autres événements.`); return; }
+    ecrire(k, old, segs); notes.push(`${nom} ${fmtH(h)} h`);
   }
   const reste = j ? taches().filter((t) => t.journee === j && tacheOuverte(t)) : [];
   majPourAuto(d); viderJourneesFinies(d); HJ.brouillon = null; PL.rafraichir = null;
@@ -753,7 +771,7 @@ function viderJourneesFinies(d) {
   for (const x of (itemsPeriode(d, d)[d] || [])) {
     if (x.kind !== 'ev') continue; const e = DB.get(x.key); if (!e || evGenre(e).genre !== 'travail') continue;
     const dernier = addDays(x.occ, Math.round((new Date((e.fin || e.date) + 'T12:00') - new Date(e.date + 'T12:00')) / 864e5));
-    if (dernier !== d || !quiListe(e.qui).every((p) => heuresNotees(d, p))) continue;
+    if (dernier !== d || !quiListe(e.qui).every((p) => heuresNoteesEv(x.key + '|' + x.occ, d, p))) continue;
     const j = x.key + '|' + x.occ, reste = taches().filter((t) => t.journee === j && tacheOuverte(t)).map((t) => t.key);
     if (reste.length) deplacerTaches(reste, '');
   }

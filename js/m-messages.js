@@ -529,6 +529,7 @@ function renderMails() {
       ${MAIL.complet[m.key] ? mailCompletHtml(m) : `<p class="mail-extrait${MAIL.ouvert === m.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(m.key)}">${esc(m.extrait || '')}</p>
       <button class="btn link small" type="button" data-act="mailLire" data-key="${esc(m.key)}">${MAIL.charge === m.key ? 'Chargement…' : 'Lire en entier et voir les pièces jointes'}</button>`}
       <div class="mail-etat">${confie ? `<span class="hint">${esc(confie)}</span>` : ''}${(m.reponses || []).length ? `<span class="hint">↩ répondu par ${esc(m.reponses.map((r) => nomDe(r.par) + ' le ' + fmtDateCourt(String(r.le).slice(0, 10))).join(', '))}</span>` : ''}${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
+      ${estMailTwint(m) ? twintMailHtml(m) : ''}
       <div class="row mail-actions">
         <button class="btn primary small" type="button" data-act="mailRepondre" data-key="${esc(m.key)}">↩ Répondre</button>
         <button class="btn small etat-mail ${et.cls}" type="button" data-act="mailPlus" data-key="${esc(m.key)}" title="Qui s'en occupe, traité, archiver…">${esc(et.txt)}</button></div></div>`;
@@ -538,6 +539,47 @@ function renderMails() {
     <div class="chips">${chips}</div>
     ${list.length ? list.slice(0, 80).map(carte).join('') : '<p class="empty">Rien ici.</p>'}</div>`;
 }
+/* ---------- Mail « paiement TWINT reçu » → recette en un clic ----------
+   Vente directe : la recette est rattachée à la vente directe en cours ce jour-là (s'il y en a une). Autre vente : une recette simple.
+   Dans les deux cas, un paiement TWINT tw: (déjà « compté ») est créé : l'import du relevé TWINT ne le comptera pas une deuxième fois. */
+const estMailTwint = (m) => /twint/i.test(((m.de && m.de.adresse) || '') + ' ' + ((m.de && m.de.nom) || '')) || /twint/i.test(m.objet || '');
+function montantDansTexte(t) {
+  const r = /(?:CHF|Fr\.?)\s*([0-9'’]{1,7}(?:[.,]\d{1,2})?)|([0-9'’]{1,7}(?:[.,]\d{1,2})?)\s*(?:CHF|Fr\.)/i.exec(String(t || ''));
+  if (!r) return null; const v = Number(String(r[1] || r[2]).replace(/['’]/g, '').replace(',', '.'));
+  return v > 0 ? r2(v) : null;
+}
+const payeurDansTexte = (t) => { const r = /(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/u.exec(String(t || '')); return r ? r[1] : ''; };
+function twintMailHtml(m) {
+  const tw = DB.all('tw:').find((t) => t.mail === m.key), r = tw && tw.utilise && DB.get(tw.utilise);
+  if (r) return `<p class="twint-fait">✓ Enregistré : ${chf(r.montant)} · ${esc(r.self ? 'vente directe' : 'autre vente')} <a href="#" data-act="recEdit" data-key="${esc(tw.utilise)}">voir</a></p>`;
+  const mt = montantDansTexte((m.objet || '') + ' ' + (m.extrait || ''));
+  return `<div class="row twint-acts"><span class="hint">💳 Paiement TWINT${mt ? ' de <b>' + chf(mt) + '</b>' : ''} :</span><button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="self">Enregistrer comme vente directe</button><button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="autre">Enregistrer comme autre vente</button></div>`;
+}
+ACTIONS.twMail = async (el) => {
+  const k = el.dataset.key, quoi = el.dataset.quoi, m = DB.get(k); if (!m) return;
+  if (DB.all('tw:').some((t) => t.mail === k && t.utilise && DB.get(t.utilise))) { toast('Déjà enregistré.'); return; }
+  let txt = (m.objet || '') + ' ' + (m.extrait || ''), mt = montantDansTexte(txt);
+  if (!mt && !LOCAL_MODE && Sync.sb) { try { const c = MAIL.complet[k] || await boite(k, 'lire'); txt += ' ' + (c.texte || ''); mt = montantDansTexte(txt); } catch (e) { /* on demandera */ } }
+  const date = String(m.date || todayISO()).slice(0, 10);
+  if (!mt) { twMailFeuille(k, quoi, date, payeurDansTexte(txt)); return; }
+  enregistrerTwintMail(k, quoi, date, mt, payeurDansTexte(txt));
+};
+function twMailFeuille(k, quoi, date, payeur) {
+  openSheet(`${sheetHead('Paiement TWINT', 'Montant introuvable dans le mail')}<form class="sbody form" data-form="twMail"><input type="hidden" name="key" value="${esc(k)}"><input type="hidden" name="quoi" value="${esc(quoi)}"><input type="hidden" name="payeur" value="${esc(payeur)}">
+    <div class="grid2">${inp('twm-d', 'Date', date, { name: 'date', type: 'date', req: true })}${inp('twm-m', 'Montant CHF', '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal', autofocus: '' } })}</div>
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer comme ${quoi === 'self' ? 'vente directe' : 'autre vente'}</button></div></form>`);
+}
+FORMS.twMail = (v) => { const mt = r2(num(v.montant)); if (!(mt > 0)) { toast('Indique le montant.'); return; } closeSheet(); enregistrerTwintMail(v.key, v.quoi, v.date, mt, v.payeur); };
+function enregistrerTwintMail(k, quoi, date, montant, payeur) {
+  const m = DB.get(k) || {}, rk = 'rec:' + uid('r'), par = (typeof titulaireCompte === 'function' && titulaireCompte()) || Sync.me || '';
+  const s = quoi === 'self' && typeof misesEnVente === 'function' ? misesEnVente().find((x) => x.date <= date && (!x.closeLe || x.closeLe >= date)) : null;
+  DB.put(rk, Object.assign({ date, montant, moyen: 'TWINT', par, client: quoi === 'self' ? (s ? s.lieu || 'Self-service' : 'Vente directe') : payeur || 'Paiement TWINT',
+    libelle: quoi === 'self' ? `Vente directe${s ? ' du ' + fmtDate(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}` : `Paiement TWINT${payeur ? ' de ' + payeur : ''}`, remarque: 'Depuis le mail TWINT : ' + trunc(m.objet || '', 80), cree: new Date().toISOString(), creePar: Sync.me || '' }, s ? { self: s.key } : {}));
+  DB.put('tw:' + uid('w'), { cle: 'mail:' + k, src: 'mail', mail: k, date, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' });
+  majMail(k, { statut: 'traite', traitePar: Sync.me || '' });
+  toast(`${chf(montant)} enregistrés comme ${quoi === 'self' ? 'vente directe' + (s ? ' (' + (s.lieu || 'self-service') + ')' : '') : 'autre vente'}. Mail marqué traité.`, 5000);
+}
+
 const ouvrirWebmail = () => { try { window.open(cfgMails().webmail, '_blank', 'noopener'); } catch (e) { /* */ } };
 const majMail = (k, o) => { const m = DB.get(k); if (m) DB.put(k, Object.assign({}, m, o, { vus: Object.assign({}, m.vus || {}, Sync.me ? { [Sync.me]: new Date().toISOString() } : {}) })); };
 ACTIONS.mailFiltre = (el) => { MAIL.filtre = el.dataset.k; render(); };

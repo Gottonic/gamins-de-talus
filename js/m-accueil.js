@@ -53,7 +53,10 @@ function renderAccueil() {
     try { t = m.tuile ? m.tuile() : t; } catch (e) { console.error(e); }
     return `<a class="tile t-${k}" href="#/${k}"><span class="ic">${ICONS[k] || ''}</span><b>${esc(m.titre)}</b><span class="tline${t.warn ? ' warn' : ''}${t.clamp ? ' clamp' : ''}">${t.qui ? `<strong>${esc(t.qui)}</strong> ` : ''}${esc(t.line || '')}</span>${t.badge ? `<span class="badge" aria-label="${t.badge} à voir">${t.badge > 99 ? '99+' : t.badge}</span>` : ''}</a>`;
   }).join('');
+  /* Soit la journée en cours (avec « Terminer l'événement et enregistrer mes heures »), soit ce bouton */
+  const enCours = typeof journeesEnCours === 'function' ? journeesEnCours().length : 0;
   return `<section class="hello"><div><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></div>
+    ${enCours ? '' : `<div class="row hello-btns"><button class="btn primary big" type="button" data-act="heuresJour" data-d="${today}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Noter mes heures</button></div>`}
     </section>
     ${typeof journeeEnCoursHtml === 'function' ? journeeEnCoursHtml() : ''}
     <section class="tiles" aria-label="Modules">${tiles}</section>

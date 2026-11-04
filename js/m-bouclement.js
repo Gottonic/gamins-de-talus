@@ -23,11 +23,12 @@ function comptesAnnee(y) {
   const recs = recettesToutes().filter((r) => yearOf(r.date) === y).sort((a, b) => String(a.date).localeCompare(b.date));
   const charges = deps.filter((d) => d.type !== 'investissement'), invest = deps.filter((d) => d.type === 'investissement');
   const inv = inventaire();
-  const amortItems = inv.map((i) => ({ i, a: amortissementAnnee(i, Number(y), des), v0: valeurFinAnnee(i, Number(y) - 1, des), v1: valeurFinAnnee(i, Number(y), des) })).filter((x) => x.a > 0.004 || x.v1 > 0.004 || yearOf(x.i.dateAchat) === y);
+  /* Par objet : valeur au 01.01, achats de l'année (ajouts), amortissement, valeur au 31.12 (comme le tableau des amortissements des impôts) */
+  const amortItems = inv.map((i) => ({ i, a: amortissementAnnee(i, Number(y), des), v0: valeurFinAnnee(i, Number(y) - 1, des), v1: valeurFinAnnee(i, Number(y), des), ajouts: partsInv(i).filter((p) => yearOf(p.date || i.dateAchat) === y).reduce((s2, p) => s2 + num(p.valeur), 0) })).filter((x) => x.a > 0.004 || x.v1 > 0.004 || x.ajouts > 0);
   const tot = (l) => l.reduce((a, x) => a + num(x.montant), 0);
   const o = { y, deps, recs, charges, invest, amortItems, rec: tot(recs), ch: tot(charges), inv: tot(invest), amort: amortItems.reduce((a, x) => a + x.a, 0) };
   o.resultat = o.rec - o.ch - o.amort;
-  o.cat = {}; for (const d of charges) { const k = d.categorie || 'Sans catégorie'; o.cat[k] = (o.cat[k] || 0) + num(d.montant); }
+  o.cat = {}; for (const d of charges) { const k = libCompte(compteDe(d)); o.cat[k] = (o.cat[k] || 0) + num(d.montant); }
   const part = {}; ps.forEach((p) => { part[p.k] = 0; });
   for (const r of recs) { const P = parts(c, r.date); ps.forEach((p) => { part[p.k] += num(r.montant) * P[p.k]; }); }
   for (const d of charges) { const P = parts(c, d.date); ps.forEach((p) => { part[p.k] -= num(d.montant) * P[p.k]; }); }
@@ -37,7 +38,7 @@ function comptesAnnee(y) {
   o.facturesY = factures().filter((f) => yearOf(f.date) === y && f.numero).sort((a, b) => String(a.numero).localeCompare(String(b.numero)));
   o.ouvertes = factures().filter((f) => f.date <= y + '-12-31' && ['ouverte', 'retard'].includes(facStatut(f)));
   o.valeurInv = inv.reduce((a, i) => a + valeurFinAnnee(i, Number(y), des), 0);
-  const lies = new Set(inv.map((i) => i.depenseId).filter(Boolean));
+  const lies = new Set(inv.flatMap((i) => [i.depenseId].concat((i.parts || []).map((p) => p.depenseId))).filter(Boolean));
   o.investHorsInv = invest.filter((d) => !lies.has(d.key));
   o.sansJ = deps.filter(sansJustificatif);
   o.blY = factures().filter((f) => yearOf(f.date) === y && f.blNumero).sort((a, b) => String(a.blNumero).localeCompare(String(b.blNumero)));
@@ -64,7 +65,8 @@ function renderBouclement() {
         <p class="hint">Un fichier .zip avec les comptes en PDF, les tableaux (dépenses, recettes, inventaire, heures), toutes les factures émises et les bulletins de livraison en PDF (avec la photo signée quand il y en a une), et tous les justificatifs joints (${o.nFichiers} fichier${o.nFichiers > 1 ? 's' : ''}).
           C'est ce qu'il faut pour la déclaration d'impôts et pour ce que la caisse AVS vous demande de déclarer. Chaque associé la télécharge une fois pour ses propres déclarations. <b>À garder 10 ans</b>, par exemple dans votre Proton Drive.</p>
         <div class="row"><button class="btn primary" type="button" data-act="bclZip"${BCL.enCours ? ' disabled' : ''}>${BCL.enCours ? esc(BCL.etape || 'Préparation…') : `Télécharger l'archive ${y}`}</button>
-          <button class="btn" type="button" data-act="bclPdf"${BCL.enCours ? ' disabled' : ''}>Seulement le PDF des comptes</button></div>
+          <button class="btn" type="button" data-act="bclPdf"${BCL.enCours ? ' disabled' : ''}>Seulement le PDF des comptes</button>
+        <button class="btn" type="button" data-act="expAutre"${BCL.enCours ? ' disabled' : ''}>Exportation autre…</button></div>
         <p class="hint">${Object.keys(ar).length ? 'Téléchargée par ' + Object.entries(ar).map(([k, a]) => `${esc(nomDe(k))} le ${fmtDate(String(a.le).slice(0, 10))}${a.manquants ? ` (${a.manquants} fichier(s) manquant(s))` : ''}`).join(', ') + '.' : "L'archive de cette année n'a encore été téléchargée par personne."}
           ${manque.length ? `<b>Pas encore téléchargée par ${esc(manque.map((p) => p.nom).join(', '))}.</b>` : ''}
           Conservation dans l'app : photos des messages 6 mois ; justificatifs et bulletins signés 2 ans, et seulement une fois l'archive de leur année téléchargée.</p>
@@ -115,7 +117,7 @@ function pdfComptes(o) {
   titre('Compte de résultat');
   ligne('Recettes (ventes encaissées)', pdfM(o.rec));
   ligne('Charges', '- ' + pdfM(o.ch));
-  Object.entries(o.cat).sort((a, b) => b[1] - a[1]).forEach(([k, v]) => ligne(k, pdfM(v), { ind: 6 }));
+  Object.entries(o.cat).sort((a, b) => a[0].localeCompare(b[0])).forEach(([k, v]) => ligne(k, pdfM(v), { ind: 6 }));
   ligne("Amortissements (voir l'inventaire)", '- ' + pdfM(o.amort));
   ligne(`Résultat ${o.y}`, 'CHF ' + pdfM(o.resultat), { bold: true });
 
@@ -136,15 +138,15 @@ function pdfComptes(o) {
     o.recs.map((r) => [fmtDate(r.date), r.libelle, r.moyen, nomDe(r.par), r.src === 'facture' ? r.ref : '', pdfM(r.montant)]), [null, null, null, null, 'Total', pdfM(o.rec)]);
 
   titre(`Dépenses ${o.y} (${o.deps.length})`);
-  tableau([{ titre: 'N°', l: 10 }, { titre: 'Date', l: 20 }, { titre: 'Objet', l: 60 }, { titre: 'Catégorie', l: 30 }, { titre: 'Payé par', l: 20 }, { titre: 'Justif.', l: 18 }, { titre: 'Montant', l: 16, r: true }],
-    o.deps.map((d) => [d.n || '', fmtDate(d.date), d.objet + (d.type === 'investissement' ? ' (invest.)' : ''), d.categorie || '', nomDe(d.par), (d.fichiers || []).length ? 'joint' : d.justificatif ? 'réf.' : 'MANQUE', pdfM(d.montant)]),
+  tableau([{ titre: 'N°', l: 10 }, { titre: 'Date', l: 20 }, { titre: 'Objet', l: 60 }, { titre: 'Compte', l: 30 }, { titre: 'Payé par', l: 20 }, { titre: 'Justif.', l: 18 }, { titre: 'Montant', l: 16, r: true }],
+    o.deps.map((d) => [d.n || '', fmtDate(d.date), d.objet + (d.type === 'investissement' ? ' (invest.)' : ''), libCompte(compteDe(d)), nomDe(d.par), (d.fichiers || []).length ? 'joint' : d.justificatif ? 'réf.' : 'MANQUE', pdfM(d.montant)]),
     [null, null, null, null, null, 'Total', pdfM(o.ch + o.inv)]);
 
   titre('Inventaire et amortissements');
-  tableau([{ titre: 'Objet', l: 62 }, { titre: 'Achat', l: 22 }, { titre: 'Taux', l: 14, r: true }, { titre: 'Valeur 01.01', l: 28, r: true }, { titre: 'Amort.', l: 24, r: true }, { titre: 'Valeur 31.12', l: 24, r: true }],
-    o.amortItems.map((x) => [x.i.nom, x.i.dateAchat ? fmtDate(x.i.dateAchat) : '', Math.round(num(x.i.taux) * 100) + ' %', yearOf(x.i.dateAchat) === o.y ? pdfM(x.i.valeur) + ' *' : pdfM(x.v0), pdfM(x.a), pdfM(x.v1)]),
-    [null, null, null, 'Total', pdfM(o.amort), pdfM(o.valeurInv)]);
-  saut(8); t("* acheté dans l'année : valeur d'achat. Amortissement dégressif.", L, { size: 8 }); y += 6;
+  tableau([{ titre: 'Objet', l: 52 }, { titre: 'Achat', l: 20 }, { titre: 'Amort.', l: 14, r: true }, { titre: 'Valeur 01.01', l: 24, r: true }, { titre: 'Achats', l: 22, r: true }, { titre: 'Amort.', l: 20, r: true }, { titre: 'Valeur 31.12', l: 22, r: true }],
+    o.amortItems.map((x) => [x.i.nom, x.i.dateAchat ? fmtDate(x.i.dateAchat) : '', amortTxt(x.i), pdfM(x.v0), x.ajouts ? pdfM(x.ajouts) : '', pdfM(x.a), pdfM(x.v1)]),
+    [null, null, null, null, 'Total', pdfM(o.amort), pdfM(o.valeurInv)]);
+  saut(8); t("Achats : investissements de l'année rangés dans l'objet. % = amortissement dégressif (sur la valeur restante), ans = linéaire.", L, { size: 8 }); y += 6;
 
   if (o.ouvertes.length) {
     titre('Factures à recevoir au 31.12');
@@ -159,12 +161,12 @@ function pdfComptes(o) {
 const nomZip = (s) => String(s).replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
 function csvAnnee(o) {
   const ps = personnes();
-  const dep = csv(['N°', 'Date', 'Montant', 'Objet', 'Type', 'Catégorie', 'Payé par', 'Justificatif', 'Fichiers joints', 'Remarque'],
-    o.deps.map((d) => [d.n || '', fmtDate(d.date), r2(d.montant).toFixed(2), d.objet, d.type === 'investissement' ? 'Investissement' : 'Charge', d.categorie, nomDe(d.par), d.justificatif, (d.fichiers || []).length, d.remarque]));
+  const dep = csv(['N°', 'Date', 'Montant', 'Objet', 'Type', 'Compte', 'Payé par', 'Justificatif', 'Fichiers joints', 'Remarque'],
+    o.deps.map((d) => [d.n || '', fmtDate(d.date), r2(d.montant).toFixed(2), d.objet, d.type === 'investissement' ? 'Investissement' : 'Charge', libCompte(compteDe(d)), nomDe(d.par), d.justificatif, (d.fichiers || []).length, d.remarque]));
   const rec = csv(['Date', 'Montant', 'Client / libellé', 'Moyen', 'Encaissé par', 'Origine'],
     o.recs.map((r) => [fmtDate(r.date), r2(r.montant).toFixed(2), r.libelle, r.moyen, nomDe(r.par), r.src === 'facture' ? 'Facture ' + r.ref : 'Saisie directe']));
-  const inv = csv(['Objet', 'Catégorie', "Date d'achat", "Valeur d'achat", 'Taux', 'Valeur 01.01', 'Amortissement', 'Valeur 31.12'],
-    o.amortItems.map((x) => [x.i.nom, x.i.categorie, fmtDate(x.i.dateAchat), r2(x.i.valeur).toFixed(2), Math.round(num(x.i.taux) * 100) + ' %', r2(x.v0).toFixed(2), r2(x.a).toFixed(2), r2(x.v1).toFixed(2)]));
+  const inv = csv(['Objet', 'Catégorie', "Date d'achat", "Valeur d'achat totale", 'Amortissement (taux ou durée)', 'Valeur 01.01', "Achats de l'année", 'Amortissement', 'Valeur 31.12'],
+    o.amortItems.map((x) => [x.i.nom, x.i.categorie, fmtDate(x.i.dateAchat), r2(x.i.valeur).toFixed(2), amortTxt(x.i), r2(x.v0).toFixed(2), r2(x.ajouts).toFixed(2), r2(x.a).toFixed(2), r2(x.v1).toFixed(2)]));
   const hs = heuresToutes().filter((h) => yearOf(h.date) === o.y && (num(h.heures) || h.off)).sort((a, b) => String(a.date).localeCompare(b.date));
   const heu = csv(['Date', 'Personne', 'Heures', 'Off', 'Note'], hs.map((h) => [fmtDate(h.date), nomDe(h.personne), h.heures ? String(h.heures).replace('.', ',') : '', h.off ? 'off' : '', h.note || '']));
   return { dep, rec, inv, heu, ps };
@@ -226,4 +228,115 @@ ACTIONS.bclZip = async () => {
     toast(manquants.length ? `Archive téléchargée, mais ${manquants.length} fichier(s) manquent (voir LISEZ-MOI).` : 'Archive téléchargée. Range-la dans votre drive.', 6000);
   } catch (e) { console.error(e); toast("L'archive n'a pas pu être créée : " + (e.message || e), 6000); }
   BCL.enCours = false; BCL.etape = ''; render();
+};
+
+/* ---------- Exportation autre : choisir les pièces selon pour qui (impôts, caisse AVS, assurance accident, banque) ----------
+   Les présélections suivent ce que ces organismes demandent d'habitude en Suisse ; ils peuvent demander autre chose : la liste reste modifiable. */
+const EXP_PIECES = [
+  ['comptes', 'Comptes de l\'année (PDF : résultat, part de chaque associé, inventaire et amortissements, listes)'],
+  ['recettes', 'Liste des recettes (CSV)'],
+  ['depenses', 'Liste des dépenses par compte (CSV)'],
+  ['inventaire', 'Inventaire et tableau des amortissements (CSV)'],
+  ['partage', 'Partage des dépenses et recettes entre associés (explication)'],
+  ['factures', 'Factures émises aux clients (PDF)'],
+  ['bulletins', 'Bulletins de livraison (PDF et photos signées)'],
+  ['clients', 'Liste des clients et ventes par client (CSV)'],
+  ['prospection', 'Démarches commerciales : prospects contactés (CSV)'],
+  ['jInvest', 'Justificatifs des investissements (factures d\'achat)'],
+  ['jMateriel', 'Justificatifs du matériel : petit matériel, entretien et réparations'],
+  ['jFourn', 'Justificatifs des fournitures : semences, plants, engrais, protection, emballages'],
+  ['jAutres', 'Autres justificatifs de dépenses'],
+  ['heures', 'Feuilles d\'heures (CSV et total par personne)'],
+];
+const EXP_PRESETS = [
+  ['impots', 'Impôts', ['comptes', 'recettes', 'depenses', 'inventaire', 'partage'], 'Déclaration d\'indépendant : relevé des recettes et dépenses, actifs (inventaire) et tableau des amortissements, et la part de chaque associé. Les justificatifs se gardent 10 ans ; on ne les envoie que s\'ils sont demandés.'],
+  ['avs', 'Activité indépendante (AVS)', ['comptes', 'factures', 'clients', 'prospection', 'jInvest', 'jMateriel', 'inventaire', 'partage'], 'Pour montrer à la caisse de compensation que c\'est une vraie activité indépendante : factures à plusieurs clients en votre nom, achats de matériel et investissements (risque économique), démarches commerciales, et le partage entre associés.'],
+  ['accident', 'Assurance accident', ['comptes', 'partage', 'heures'], 'Le revenu de l\'activité (pour le gain assuré ou une indemnité) et la preuve qu\'on y travaille : comptes, part de chacun, heures.'],
+  ['banque', 'Banque ou crédit', ['comptes', 'recettes', 'depenses', 'inventaire', 'clients'], 'Ce qu\'une banque regarde d\'habitude : résultat, patrimoine (inventaire), régularité des recettes et clientèle.'],
+  ['tout', 'Tout (fiduciaire)', EXP_PIECES.map((x) => x[0]), 'Tout ce que l\'app a, pour la fiduciaire ou pour vos archives.'],
+];
+const EXP = { choix: new Set(), preset: '' };
+ACTIONS.expAutre = () => { if (!EXP.choix.size) EXP.choix = new Set(EXP_PRESETS[0][2]); expFeuille(); };
+function expFeuille() {
+  const pr = EXP_PRESETS.find((x) => x[0] === EXP.preset);
+  openSheet(`${sheetHead('Exportation autre', 'Année ' + BCL.annee)}<div class="sbody" id="exp-sheet">
+    <p class="hint" style="margin-top:0">Pour qui ? Un clic coche ce qu'il faut d'habitude. Tu peux ensuite cocher ou décocher.</p>
+    <div class="row">${EXP_PRESETS.map(([k, l]) => `<button type="button" class="chip${EXP.preset === k ? ' on' : ''}" data-act="expPreset" data-k="${k}">${esc(l)}</button>`).join('')}</div>
+    ${pr ? `<p class="exp-pour">${esc(pr[3])}</p>` : ''}
+    <div class="exp-l">${EXP_PIECES.map(([k, l]) => `<label class="exp-it"><input type="checkbox" data-exp="${k}"${EXP.choix.has(k) ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div>
+    <p class="hint">Chaque organisme peut demander d'autres pièces (attestations, contrats, pièce d'identité…) : celles-ci ne sont pas dans l'app. En cas de doute, demande-leur la liste ou à votre fiduciaire.</p>
+    <div class="row-end"><button class="btn primary" type="button" data-act="expGo">Télécharger (.zip)</button></div></div>`);
+  $('exp-sheet').addEventListener('change', (e) => { const k = e.target.dataset.exp; if (!k) return; if (e.target.checked) EXP.choix.add(k); else EXP.choix.delete(k); });
+}
+ACTIONS.expPreset = (el) => { const p = EXP_PRESETS.find((x) => x[0] === el.dataset.k); EXP.preset = p[0]; EXP.choix = new Set(p[2]); expFeuille(); };
+function textePartage(o) {
+  const c = cfg(), ps = personnes(), y = o.y;
+  const lignes = [`${c.nom} — partage des recettes et des dépenses entre associés, ${y}`, ''];
+  lignes.push('Les associés exploitent l\'activité ensemble. Chaque recette et chaque charge est partagée selon les parts des associés à sa date ; les amortissements selon les parts au 31 décembre.', '');
+  lignes.push('Associés et parts :');
+  for (const p of ps) lignes.push(`- ${p.nom} : part ${num(p.part == null ? 1 : p.part)}${p.associeDes ? `, associé dès le ${fmtDate(p.associeDes)}` : ''}`);
+  lignes.push('', `Parts au 31.12.${y} : ` + ps.filter((p) => o.P31[p.k] > 0).map((p) => `${p.nom} ${Math.round(o.P31[p.k] * 100)} %`).join(', '));
+  lignes.push('', `Résultat ${y} : CHF ${pdfM(o.resultat)} (recettes ${pdfM(o.rec)} − charges ${pdfM(o.ch)} − amortissements ${pdfM(o.amort)}).`, 'Part du résultat de chacun :');
+  for (const p of ps.filter((x) => Math.abs(o.part[x.k]) > 0.004 || o.P31[x.k] > 0)) lignes.push(`- ${p.nom} : CHF ${pdfM(o.part[p.k])}`);
+  lignes.push('', 'Qui a payé ou encaissé quoi : chaque dépense indique qui l\'a payée, chaque recette qui l\'a encaissée. Les écarts entre associés sont remboursés entre eux (décompte dans l\'app) ; ils ne changent pas le résultat.');
+  lignes.push('', `Établi le ${fmtDate(todayISO())} depuis l'app ${c.nom}.`);
+  return lignes.join('\r\n');
+}
+async function ajouterJustifs(dir, dossier, deps, manquants, etape) {
+  const fich = deps.flatMap((d) => (d.fichiers || []).filter((x) => !x.expire).map((x, i, arr) => ({ d, x, i, n: arr.length }))), vus = {};
+  let k = 0;
+  for (const { d, x, i, n } of fich) {
+    etape(`${dossier} ${++k}/${fich.length}…`);
+    let nom = nomZip(`${d.date} D${String(d.n || '').padStart(3, '0')} ${compteDe(d)} ${trunc(d.objet, 40)} ${r2(d.montant).toFixed(2)}${n > 1 ? ' (' + (i + 1) + ')' : ''}`);
+    if (vus[nom]) nom += ' ' + (++vus[nom]); else vus[nom] = 1;
+    try { dir.file(`${dossier}/${nom}.${(x.chemin.split('.').pop() || 'jpg')}`, await telechargerFichier(x.chemin)); } catch (e) { manquants.push(`${fmtDate(d.date)} ${d.objet} (${x.nom || x.chemin})`); }
+  }
+  return fich.length;
+}
+ACTIONS.expGo = async () => {
+  if (BCL.enCours) return; const ch = EXP.choix; if (!ch.size) { toast('Coche au moins une pièce.'); return; }
+  if (!window.JSZip) { toast("L'outil d'archive n'est pas chargé. Recharge la page."); return; }
+  const o = comptesAnnee(BCL.annee), c = cfg(), pr = EXP_PRESETS.find((x) => x[0] === EXP.preset), base = nomZip(`${c.nom} - ${pr ? pr[1] : 'Export'} ${o.y}`);
+  const b = document.querySelector('[data-act="expGo"]'), etape = (t) => { if (b) b.textContent = t; };
+  BCL.enCours = true; if (b) b.disabled = true;
+  try {
+    const z = new window.JSZip(), dir = z.folder(base), t = csvAnnee(o), manquants = [], contenu = [];
+    const ajoute = (k, l) => { if (ch.has(k)) contenu.push('- ' + l); return ch.has(k); };
+    if (ajoute('comptes', `Comptes ${o.y}.pdf`)) dir.file(`Comptes ${o.y}.pdf`, pdfComptes(o));
+    if (ajoute('recettes', `Recettes ${o.y}.csv`)) dir.file(`Recettes ${o.y}.csv`, t.rec);
+    if (ajoute('depenses', `Dépenses ${o.y}.csv (avec le compte de chaque dépense)`)) dir.file(`Dépenses ${o.y}.csv`, t.dep);
+    if (ajoute('inventaire', `Inventaire et amortissements ${o.y}.csv`)) dir.file(`Inventaire et amortissements ${o.y}.csv`, t.inv);
+    if (ajoute('partage', 'Partage entre associés.txt')) dir.file('Partage entre associés.txt', textePartage(o));
+    if (ajoute('heures', `Heures ${o.y}.csv`)) {
+      const hs = heuresToutes().filter((h) => yearOf(h.date) === o.y && (num(h.heures) || h.off)).sort((a, x) => String(a.date).localeCompare(x.date));
+      dir.file(`Heures ${o.y}.csv`, csv(['Date', 'Personne', 'Début', 'Fin', 'Pause (min)', 'Heures', 'Off'], hs.map((h) => [fmtDate(h.date), nomDe(h.personne), h.debut || '', h.fin || '', h.pause || '', h.heures ? String(h.heures).replace('.', ',') : '', h.off ? 'off' : '']))
+        + '\r\n\r\n' + csv(['Personne', `Total ${o.y} (heures)`], personnes().map((p) => [p.nom, String(r2(o.heures[p.k] || 0)).replace('.', ',')])).replace(/^\uFEFF/, ''));
+    }
+    if (ajoute('clients', `Clients ${o.y}.csv`)) {
+      const parC = {}; for (const r of o.recs) { const k = r.libelle || '—'; parC[k] = parC[k] || { n: 0, m: 0 }; parC[k].n++; parC[k].m += num(r.montant); }
+      dir.file(`Clients ${o.y}.csv`, csv(['Client', 'Ventes', 'Montant CHF', 'Part du chiffre d\'affaires'], Object.entries(parC).sort((a, x) => x[1].m - a[1].m).map(([k, v]) => [k, v.n, r2(v.m).toFixed(2), o.rec ? Math.round(v.m / o.rec * 100) + ' %' : ''])));
+    }
+    if (ajoute('prospection', `Prospection ${o.y}.csv`)) {
+      const rows = []; for (const p of (typeof tousContacts === 'function' ? tousContacts() : [])) for (const e of p.journal || []) if (yearOf(e.date) === o.y) rows.push([fmtDate(e.date), displayName(p), (p.prospection || {}).categorie || '', e.statut || '', e.note || '', nomDe(e.par)]);
+      dir.file(`Prospection ${o.y}.csv`, csv(['Date', 'Contact', 'Catégorie', 'Statut', 'Échange', 'Par'], rows.sort((a, x) => a[0].split('.').reverse().join('').localeCompare(x[0].split('.').reverse().join('')))));
+    }
+    if (ajoute('factures', 'Factures émises/')) { etape('Factures…'); for (const f of o.facturesY) { try { dir.file(`Factures émises/${nomZip(invoiceFileName(f).replace(/\.pdf$/, '') + (f.statut === 'annulee' ? ' (annulée)' : ''))}.pdf`, invoicePdfBlob(f)); } catch (e) { console.error(e); } } }
+    if (ajoute('bulletins', 'Bulletins de livraison/')) {
+      etape('Bulletins…');
+      for (const f of o.blY) {
+        const nb = nomZip(bulletinFileName(f).replace(/\.pdf$/, '')); try { dir.file(`Bulletins de livraison/${nb}.pdf`, bulletinPdfBlob(f, true)); } catch (e) { console.error(e); }
+        for (const [i, x] of (f.blSigne || []).filter((y) => !y.expire).entries()) { try { dir.file(`Bulletins de livraison/${nb} - signé ${i + 1}.${x.chemin.split('.').pop() || 'jpg'}`, await telechargerFichier(x.chemin)); } catch (e) { manquants.push('Bulletin ' + f.blNumero); } }
+      }
+    }
+    const groupe = (d) => { const n = compteDe(d); return estInvest(n) ? 'jInvest' : ['4400', '6100'].includes(n) ? 'jMateriel' : /^40\d\d$/.test(n) ? 'jFourn' : 'jAutres'; };
+    const dossiers = { jInvest: 'Justificatifs - investissements', jMateriel: 'Justificatifs - matériel', jFourn: 'Justificatifs - fournitures', jAutres: 'Justificatifs - autres dépenses' };
+    for (const g of Object.keys(dossiers)) if (ajoute(g, dossiers[g] + '/')) await ajouterJustifs(dir, dossiers[g], o.deps.filter((d) => groupe(d) === g), manquants, etape);
+    dir.file('LISEZ-MOI.txt', [`${c.nom} — ${pr ? pr[1] : 'exportation'} ${o.y}`, `Établi le ${fmtDate(todayISO())} par ${nomDe(Sync.me)} depuis l'app.`, '', pr ? pr[3] : '', '', 'Contenu :', ...contenu, '',
+      'Les justificatifs sont nommés « date, n° de dépense, compte, objet, montant ». Les montants sont en CHF.',
+      manquants.length ? '\nFichiers qui n\'ont pas pu être ajoutés :\n- ' + manquants.join('\n- ') : ''].join('\r\n'));
+    etape('Compression…');
+    downloadFile(base + '.zip', await z.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } }), 'application/zip');
+    closeSheet(); toast(manquants.length ? `Exportation téléchargée, mais ${manquants.length} fichier(s) manquent (voir LISEZ-MOI).` : 'Exportation téléchargée.', 5000);
+  } catch (e) { console.error(e); toast("L'exportation n'a pas pu être créée : " + (e.message || e), 6000); }
+  BCL.enCours = false; const b2 = document.querySelector('[data-act="expGo"]'); if (b2) { b2.disabled = false; b2.textContent = 'Télécharger (.zip)'; }
 };

@@ -508,6 +508,9 @@ ACTIONS.twImportOk = () => {
   for (const t of tx) {
     const base = t.ref || `${t.date}|${t.montant}|${t.texte}`; vus[base] = (vus[base] || 0) + 1; const cle = t.ref ? t.ref : base + '|' + vus[base];
     if (deja.has(cle)) continue;
+    /* Déjà enregistré depuis le mail TWINT (même jour, même montant) : on le relie, sans le recompter */
+    const viaMail = DB.all('tw:').find((x) => x.src === 'mail' && !x.apparie && x.date === t.date && Math.abs(num(x.montant) - t.montant) < 0.01);
+    if (viaMail) { DB.put(viaMail.key, Object.assign({}, viaMail, { apparie: cle, ref: t.ref || viaMail.ref })); deja.add(cle); continue; }
     const o = Object.assign({ cle, importe: new Date().toISOString(), par: Sync.me || '' }, t);
     const v = ventes.find((f) => !prises.has(f.key) && (f.payeeLe || f.date) === t.date && Math.abs(num(f.total) - t.montant) < 0.01);
     if (v) { o.utilise = v.key; prises.add(v.key); lies++; }

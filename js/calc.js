@@ -100,19 +100,26 @@ function decompte(depenses, recettesU, reglements, cfg, today) {
 /* ---------- Inventaire & amortissements (dégressif, comme l'Excel) ----------
    Par défaut (comme le tableur) : la valeur l'année d'achat = valeur d'achat,
    puis × (1 − taux) chaque année suivante. Option « dès l'année d'achat » : déjà amorti fin de l'année d'achat. */
-function valeurFinAnnee(item, year, desAchat) {
-  const v0 = num(item.valeur), t = Math.min(1, Math.max(0, num(item.taux)));
-  const ya = Number(yearOf(item.dateAchat) || year);
+/* Un objet de l'inventaire peut regrouper plusieurs achats : parts = [{ date, valeur, depenseId }] (ancien format : dateAchat + valeur).
+   Chaque achat s'amortit depuis sa propre année. Méthode : dégressive (taux sur la valeur restante, par défaut)
+   ou linéaire (methode 'lineaire', duree en années : la même somme chaque année). */
+function partsInv(item) { return Array.isArray(item.parts) && item.parts.length ? item.parts : [{ date: item.dateAchat, valeur: item.valeur }]; }
+function valeurPart(p, item, year, desAchat) {
+  const v0 = num(p.valeur), ya = Number(yearOf(p.date || item.dateAchat) || year);
   if (year < ya) return 0;
   if (item.sortieLe && Number(yearOf(item.sortieLe)) < year) return 0;
   const n = year - ya + (desAchat ? 1 : 0);
+  if (item.methode === 'lineaire') { const d = Math.max(1, num(item.duree) || 1); return Math.max(0, v0 * (1 - n / d)); }
+  const t = Math.min(1, Math.max(0, num(item.taux)));
   return v0 * Math.pow(1 - t, n);
 }
+function valeurFinAnnee(item, year, desAchat) { return partsInv(item).reduce((a, p) => a + valeurPart(p, item, year, desAchat), 0); }
 function amortissementAnnee(item, year, desAchat) {
-  const ya = Number(yearOf(item.dateAchat) || year);
-  if (year < ya) return 0;
-  const avant = year === ya ? num(item.valeur) : valeurFinAnnee(item, year - 1, desAchat);
-  return Math.max(0, avant - valeurFinAnnee(item, year, desAchat));
+  return partsInv(item).reduce((a, p) => {
+    const ya = Number(yearOf(p.date || item.dateAchat) || year); if (year < ya) return a;
+    const avant = year === ya ? num(p.valeur) : valeurPart(p, item, year - 1, desAchat);
+    return a + Math.max(0, avant - valeurPart(p, item, year, desAchat));
+  }, 0);
 }
 
 /* ---------- Plan de cultures ---------- */

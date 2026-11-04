@@ -224,6 +224,24 @@ table.irr input.cell-in { width: 84px; }
 .ref { font-weight: 700; color: var(--c-contacts); }
 .ref.moi { color: var(--accent); }
 .ref-choix { gap: 6px; align-items: center; }
+.cpt-l { display: flex; flex-direction: column; gap: 6px; }
+.cpt-it { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; }
+.cpt-it.cache { opacity: .55; }
+.cpt-n { width: 76px; font-weight: 700; }
+.cpt-lab { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+.cpt-lab select { width: auto; }
+.aide-comptes { border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; background: var(--bg); font-size: 14px; }
+.aide-comptes summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+.aide-comptes ul { margin: 8px 0 4px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.dp-inv { border: 1px solid color-mix(in srgb, var(--c-inventaire) 40%, transparent); border-radius: 10px; padding: 10px 12px; background: color-mix(in srgb, var(--c-inventaire) 6%, var(--surface)); }
+.dp-inv[hidden] { display: none; }
+.am:has(input[value=lineaire]:checked) .am-ch > .field:first-child, .am:has(input[value=degressif]:checked) .am-ch > .field:last-child { display: none; }
+.twint-acts { gap: 6px; align-items: center; margin: 6px 0; padding: 6px 8px; border-radius: 8px; background: var(--s-finances); }
+.twint-fait { margin: 6px 0; font-size: 14px; color: var(--paid); font-weight: 700; }
+.exp-l { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.exp-it { display: flex; font-weight: 400; font-size: 14.5px; gap: 8px; align-items: flex-start; cursor: pointer; }
+.exp-l input { width: auto; min-height: 0; margin-top: 3px; }
+.exp-pour { background: var(--s-finances); border-radius: 8px; padding: 8px 10px; font-size: 14px; margin: 8px 0 0; }
 .mention-sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .msg .bubble { -webkit-user-select: text; user-select: text; -webkit-touch-callout: none; }
 .msg-menu { border: 0; background: none; color: inherit; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 3px; opacity: .75; }
@@ -1045,6 +1063,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="lib/jszip.min.js"></script>
 <script src="js/calc.js"></script>
 <script src="js/core.js"></script>
+<script src="js/comptes.js"></script>
 <script src="js/fichiers.js"></script>
 <script src="js/pdf.js"></script>
 <script src="js/m-accueil.js"></script>
