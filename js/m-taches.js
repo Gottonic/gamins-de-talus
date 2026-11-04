@@ -261,6 +261,9 @@ document.addEventListener('change', (e) => {
   const v = e.target.dataset && e.target.dataset.liT; if (!v) return; const [k, i] = v.split('|'), t = DB.get(k); if (!t) return;
   const l = (t.liste || []).map((x) => Object.assign({}, x)); if (!l[Number(i)]) return; l[Number(i)].fait = e.target.checked;
   DB.put(k, Object.assign({}, t, { liste: l })); const s = e.target.nextElementSibling; if (s) s.classList.toggle('barre', e.target.checked);
+  /* Toute la liste cochée : la tâche est faite ; une case décochée : elle redevient à faire */
+  const toutes = l.every((x) => x.fait), faite = t.statut === 'termine';
+  if (toutes !== faite) { ACTIONS.taTick({ dataset: { key: k } }); if (!e.target.closest('.ta-sous') && e.target.closest('#sheet') && typeof reouvrirTache === 'function') reouvrirTache(k); }
   if (e.target.closest('.ta-sous') && typeof rafraichirFenetre === 'function') rafraichirFenetre();
 });
 /* Les journées prévues auxquelles rattacher une tâche : événements des 6 prochaines semaines (sauf congés) */
