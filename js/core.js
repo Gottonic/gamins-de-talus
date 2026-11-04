@@ -196,12 +196,14 @@ const UI = {
     clearTimeout(this._t);
     this._t = setTimeout(() => {
       const a = document.activeElement;
-      if (a && $('view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) { this.pending = true; return; }
+      if (a && $('view').contains(a) && enSaisie(a)) { this.pending = true; return; }
       render();
     }, 0);
   },
 };
-document.addEventListener('focusout', () => { setTimeout(() => { if (UI.pending) { const a = document.activeElement; if (!(a && $('view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) { UI.pending = false; render(); } } }, 0); });
+/* Un champ où l'on tape (pas une case à cocher ni un bouton radio : ceux-là ne doivent pas retarder l'affichage) */
+function enSaisie(a) { return !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file|range|color)$/i.test(a.type))); }
+document.addEventListener('focusout', () => { setTimeout(() => { if (UI.pending) { const a = document.activeElement; if (!(a && $('view').contains(a) && enSaisie(a))) { UI.pending = false; render(); } } }, 0); });
 
 /* Ré-affiche la page en gardant la case où l'on est (pour passer d'une case à l'autre avec Tab) */
 function renderGardeFocus() {
