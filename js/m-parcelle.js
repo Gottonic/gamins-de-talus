@@ -45,13 +45,15 @@ function conflitRotation(c, e) {
 }
 
 /* ---------- Onglet Planches ---------- */
+/* Placer une culture : son nombre de planches suit ce qui est placé */
+const placees = (c, l) => Object.assign({}, c, { emplacements: l }, l.length ? { planches: l.length } : {});
 function renderPlanches() {
   const s = saisonCourante(), ss = saisons(), list = cultures(s), secs = parcelle().secteurs;
   const coul = (c) => (DB.get(ficheDe(c)) || {}).couleur || couleurCulture(c, (c.ordre || 1) - 1);
   const occ = {}; for (const c of list) for (const e of c.emplacements || []) (occ[e] = occ[e] || []).push(c);
   const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
   const peint = PARC.peindre && DB.get(PARC.peindre);
-  const barre = `<div class="panel peindre"><div class="row">${sel('pa-cul', 'Placer', PARC.peindre, [['', 'Choisir une culture, puis touche les planches…']].concat(list.map((c) => [c.key, `${c.nom} · ${(c.emplacements || []).length}/${f0(c.planches)} placées`])), {})}
+  const barre = `<div class="panel peindre"><div class="row">${sel('pa-cul', 'Placer', PARC.peindre, [['', 'Choisir une culture, puis touche les planches…']].concat(list.map((c) => [c.key, `${c.nom} · ${(c.emplacements || []).length ? (c.emplacements || []).length + ' placées' : f0(c.planches) + ' prévues, à placer'}`])), {})}
       ${peint ? `<span class="hint">Touche une planche pour y mettre ou en retirer <b>${esc(peint.nom)}</b>.</span><button class="btn small" type="button" data-act="paFin">Terminé</button>` : ''}</div></div>`;
   const grille = secs.length ? secs.map((sec) => `<div class="panel secteur"><div class="between"><h3 style="margin:0">${esc(sec.nom)} <span class="hint">· ${f0(sec.planches)} planches${sec.longueur ? ' de ' + fmtNum(sec.longueur, 1) + ' m' : ''}</span></h3></div>
       <div class="planches">${Array.from({ length: Math.round(num(sec.planches)) }, (_, i) => {
@@ -62,10 +64,10 @@ function renderPlanches() {
         return `<button type="button" class="planche${cs.length ? ' pleine' : ''}${conflit ? ' conflit' : ''}${rot.length ? ' rot' : ''}${peint && cs.includes(peint) ? ' sel' : ''}" data-act="paClic" data-e="${esc(e)}" style="${fond ? `background:${fond}` : ''}" title="${esc(sec.nom + ' ' + (i + 1) + (cs.length ? ' : ' + cs.map((c) => c.nom).join(' puis ') : ' : libre') + rot.map((r) => ` · rotation : ${familleNom(r.famille)} déjà en ${r.avant.saison} (${r.avant.nom})`).join(''))}"><b>${i + 1}${rot.length ? ' ⚠' : ''}</b><span>${esc(cs.map((c) => c.nom.slice(0, 4)).join('/'))}</span></button>`;
       }).join('')}</div></div>`).join('')
     : '<div class="panel"><p class="empty">Aucun secteur pour l\'instant. Crée tes secteurs (ex. « Champ du haut », 12 planches) : les planches sont numérotées automatiquement.</p></div>';
-  const recap = list.length ? `<div class="panel"><h2>Où sont les cultures ${s}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévues</th><th class="r">Placées</th><th>Planches</th><th>Rotation</th></tr></thead><tbody>
+  const recap = list.length ? `<div class="panel"><h2>Où sont les cultures ${s}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Planches</th><th>Où</th><th>Rotation</th></tr></thead><tbody>
       ${list.map((c) => { const n = (c.emplacements || []).length, pr = Math.round(num(c.planches)), rot = (c.emplacements || []).map((e) => [e, conflitRotation(c, e)]).filter(([, r]) => r), fam = familleDe(c);
-        return `<tr><td><span class="sw" style="background:${coul(c)}"></span>${esc(c.nom)}<br><span class="hint">${esc(fam ? familleNom(fam) : 'famille ?')}</span></td><td class="r num">${pr}</td><td class="r num ${n !== pr ? 'bad' : ''}">${n}</td><td>${esc(resumeEmplacements(c.emplacements)) || '<span class="hint">pas encore placée</span>'}</td><td>${rot.length ? `<span class="err">⚠ ${esc(resumeEmplacements(rot.map(([e]) => e)))} : ${esc(familleNom(rot[0][1].famille))} en ${esc(rot[0][1].avant.saison)}</span>` : '<span class="hint">ok</span>'}</td></tr>`; }).join('')}</tbody></table></div>
-      <p class="hint">Une planche peut porter deux cultures qui se suivent dans l'année (couleurs partagées). En rouge : deux cultures qui y seraient en même temps. ⚠ orange : rotation, la même famille y était trop récemment (délai de retour : ${FAMILLES.filter((f) => f[2]).map((f) => `${familleNom(f[0])} ${f[2]} ans`).join(', ')}). La famille se règle dans la fiche de la culture.</p></div>` : '';
+        return `<tr><td><span class="sw" style="background:${coul(c)}"></span>${esc(c.nom)}<br><span class="hint">${esc(fam ? familleNom(fam) : 'famille ?')}</span></td><td class="r num">${n || `<span class="hint">${pr} prévues</span>`}</td><td>${esc(resumeEmplacements(c.emplacements)) || '<span class="hint">pas encore placée</span>'}</td><td>${rot.length ? `<span class="err">⚠ ${esc(resumeEmplacements(rot.map(([e]) => e)))} : ${esc(familleNom(rot[0][1].famille))} en ${esc(rot[0][1].avant.saison)}</span>` : '<span class="hint">ok</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+      <p class="hint">Une planche peut porter deux cultures qui se suivent dans l'année (couleurs partagées). En rouge : deux cultures qui y seraient en même temps. ⚠ orange : rotation, la même famille y était trop récemment (délai de retour : ${FAMILLES.filter((f) => f[2]).map((f) => `${familleNom(f[0])} ${f[2]} ans`).join(', ')}). La famille se règle dans la fiche de la culture. Le nombre de planches d'une culture suit ce qui est placé ici ; la surface prend la longueur des planches du secteur (bouton Secteurs).</p></div>` : '';
   return `<div class="between"><div class="row">${chips}</div><button class="btn small" type="button" data-act="paSecteurs">Secteurs</button></div>${barre}${grille}${recap}`;
 }
 function brancherPlanches() { const s = $('pa-cul'); if (s) s.addEventListener('change', () => { PARC.peindre = s.value; render(); }); }
@@ -75,7 +77,7 @@ ACTIONS.paClic = (el) => {
   if (PARC.peindre) {
     const c = DB.get(PARC.peindre); if (!c) return; const l = (c.emplacements || []).slice(), i = l.indexOf(e);
     if (i >= 0) l.splice(i, 1); else { l.push(e); const r = conflitRotation(c, e); if (r) toast(`Rotation : ${familleNom(r.famille)} déjà sur ${nomPlanche(e)} en ${r.avant.saison} (${r.avant.nom}). Délai conseillé : ${r.delai} ans.`, 5000); }
-    DB.put(PARC.peindre, Object.assign({}, c, { emplacements: l })); return;
+    DB.put(PARC.peindre, placees(c, l)); return;
   }
   const s = saisonCourante(), list = cultures(s);
   openSheet(`${sheetHead('Planche ' + nomPlanche(e), 'Saison ' + s)}<form class="sbody form" data-form="paPlanche"><input type="hidden" name="e" value="${esc(e)}">
@@ -87,7 +89,7 @@ FORMS.paPlanche = (v) => {
   for (const c of cultures(saisonCourante())) {
     const l = (c.emplacements || []).slice(), i = l.indexOf(v.e), on = !!v['c_' + c.key];
     if (on && i < 0) l.push(v.e); else if (!on && i >= 0) l.splice(i, 1); else continue;
-    DB.put(c.key, Object.assign({}, DB.get(c.key), { emplacements: l }));
+    DB.put(c.key, placees(DB.get(c.key), l));
   }
   closeSheet();
 };
@@ -191,7 +193,7 @@ function rapportAnnee(y) {
   if (!l.length) lignes.push('Aucune culture dans le plan.');
   for (const c0 of l) {
     const c = typeof avecPrixProduit === 'function' ? avecPrixProduit(c0) : c0, reel = recolteReelleDe(c0), o = culture(c, P);
-    lignes.push(`- **${c.nom}** : ${f0(c.planches)} planches (${f1(o.surface)} m²)${c.emplacements && c.emplacements.length ? ', ' + resumeEmplacements(c.emplacements) : ''} · plantation sem. ${c.semPlantation || '?'}, récolte sem. ${c.semRecolte || '?'} · variété ${c.variete || '?'}`);
+    lignes.push(`- **${c.nom}** : ${f0(planchesDe(c))} planches (${f1(o.surface)} m²)${c.emplacements && c.emplacements.length ? ', ' + resumeEmplacements(c.emplacements) : ''} · plantation sem. ${c.semPlantation || '?'}, récolte sem. ${c.semRecolte || '?'} · variété ${c.variete || '?'}`);
     lignes.push(`  récolte prévue ${f0(o.recolte)} kg, réelle ${reel ? f0(reel) + ' kg' : 'non notée'}${reel && o.surface ? ` (${fmtNum(reel / o.surface, 2)} kg/m² pour ${fmtNum(c.rendement, 1)} prévus)` : ''} · prix direct ${money(c.prixDirect)} CHF/kg`);
   }
   const parFiche = {}; for (const j of notes) { const fs = jnlFiches(j); for (const f of fs.length ? fs : ['']) (parFiche[f] = parFiche[f] || []).push(j); }

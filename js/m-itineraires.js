@@ -109,7 +109,7 @@ function synchroTachesCultures(saison) {
         if (e.date < addDays(today, -3)) continue;                         // déjà passée : rien à créer
         const g = typeof devinerCategorie === 'function' ? devinerCategorie(e.t, s) : { cat: 'champ', sous: '' };
         const k = 't:' + uid('t'), pl = (c.emplacements || []).map((x) => (typeof nomPlanche === 'function' ? nomPlanche(x) : x));
-        DB.put(k, { titre: `${e.t} · ${c.nom}`, statut: 'afaire', importance: 2, echeance: e.date, cat: g.cat || 'champ', sous: g.sous || '', cultures: [c.key], planches: pl.join(', '), gen: { cul: c.key, etape: e.id }, heuresPrevues: e.h ? r2(num(e.h) * Math.max(1, num(c.planches))) : '', cree: new Date().toISOString(), creePar: Sync.me || '' });
+        DB.put(k, { titre: `${e.t} · ${c.nom}`, statut: 'afaire', importance: 2, echeance: e.date, cat: g.cat || 'champ', sous: g.sous || '', cultures: [c.key], planches: pl.join(', '), gen: { cul: c.key, etape: e.id }, heuresPrevues: e.h ? r2(num(e.h) * Math.max(1, planchesDe(c))) : '', cree: new Date().toISOString(), creePar: Sync.me || '' });
         lien[e.id] = k; change = true; n++;
       }
       if (change) DB.put(c.key, Object.assign({}, DB.get(c.key), { taches: lien }));
@@ -158,7 +158,7 @@ function chargePrevue(s) {
   for (const c of cultures(s)) {
     const d = datesCulture(c); if (!d) continue; const sf = culture(c, P).surface, pr = profilFiche(ficheDe(c), String(s));
     if (pr) { const w0 = semaineISO(d.plantation).semaine; for (const [off, x] of Object.entries(pr.prof)) { const w = w0 + Number(off); if (w >= 1 && w <= 53) sem[w] = (sem[w] || 0) + x * sf; } src[c.key] = `appris (${pr.n} saison${pr.n > 1 ? 's' : ''})`; }
-    else { let any = false; for (const e of etapesCulture(c)) if (num(e.h) > 0 && yearOf(e.date) === String(s)) { const w = semaineISO(e.date).semaine; sem[w] = (sem[w] || 0) + num(e.h) * Math.max(1, num(c.planches)); any = true; } src[c.key] = any ? 'heures des étapes' : 'pas encore de données'; }
+    else { let any = false; for (const e of etapesCulture(c)) if (num(e.h) > 0 && yearOf(e.date) === String(s)) { const w = semaineISO(e.date).semaine; sem[w] = (sem[w] || 0) + num(e.h) * Math.max(1, planchesDe(c)); any = true; } src[c.key] = any ? 'heures des étapes' : 'pas encore de données'; }
   }
   return { sem, src };
 }

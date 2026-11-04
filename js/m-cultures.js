@@ -62,14 +62,14 @@ const uniteCourte = (u) => (u === 'pièce' ? 'pc' : u);
    Une culture vendue à la pièce : prévu = nombre de plants, réel en pièces. */
 function prevuReelHtml(y) {
   const cs = cultures(y); if (!cs.length) return '';
-  const P = paramsCultures(y), M = margesSaison(y), mg = {}; for (const x of M.lignes) mg[x.c.key] = x;
+  const P = paramsCultures(y), mg = {};
   const ls = cs.map((c) => { const e = Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }), o = culture(e, P), m = mg[c.key] || {}, u = uniteRecolte(c);
     return { c, o, u, prevu: u === 'kg' ? o.recolte : Math.round(o.plantons), reel: num(e.recolteReelle), m }; });
   const kg = ls.filter((x) => x.u === 'kg'), t = (l, f) => l.reduce((a, x) => a + f(x), 0), pc = ls.some((x) => x.u !== 'kg');
-  return `<div class="panel"><h2>Prévu et réel ${esc(y)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévu</th><th class="r">Réel</th><th class="r">Écart</th><th class="r">Réel au m²</th><th class="r">Heures</th><th class="r">CHF/h</th></tr></thead><tbody>
-    ${ls.map(({ c, o, u, prevu, reel, m }) => `<tr><td>${esc(c.nom)}</td><td class="r num">${prevu ? f0(prevu) + ' ' + esc(uniteCourte(u)) : '—'}</td><td class="r num">${reel ? f0(reel) + ' ' + esc(uniteCourte(u)) : '—'}</td><td class="r num ${reel && prevu ? (reel >= prevu ? 'good' : 'bad') : ''}">${reel && prevu ? Math.round((reel / prevu - 1) * 100) + ' %' : '—'}</td><td class="r num">${reel && o.surface ? fmtNum(reel / o.surface, 2) + ' ' + esc(uniteCourte(u)) + '/m²' : '—'}</td><td class="r num">${m.hDirect ? fmtH(r2(m.hDirect)) : '—'}</td><td class="r num">${m.chfH != null ? money(m.chfH) : '—'}</td></tr>`).join('')}
-    </tbody><tfoot><tr><td>Total${pc ? ' (kg)' : ''}</td><td class="r num">${f0(t(kg, (x) => x.prevu))} kg</td><td class="r num">${f0(t(kg, (x) => x.reel))} kg</td><td></td><td></td><td class="r num">${fmtH(r2(t(ls, (x) => num(x.m.hDirect))))}</td><td></td></tr></tfoot></table></div>
-    <p class="hint">Heures : celles notées pour chaque culture, et celles « champ » sans culture précise réparties selon la surface. CHF/h : la marge de la culture (onglet Marges) par heure. Le rendement prévu se règle dans la fiche, où la moyenne de vos 5 dernières saisons est proposée.${pc ? ' Cultures vendues à la pièce (pc) : le prévu est le nombre de plants du plan, elles ne comptent pas dans le total en kg.' : ''}</p></div>`;
+  return `<div class="panel"><h2>Prévu et réel ${esc(y)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévu</th><th class="r">Réel</th><th class="r">Écart</th><th class="r">Réel au m²</th></tr></thead><tbody>
+    ${ls.map(({ c, o, u, prevu, reel, m }) => `<tr><td>${esc(c.nom)}</td><td class="r num">${prevu ? f0(prevu) + ' ' + esc(uniteCourte(u)) : '—'}</td><td class="r num">${reel ? f0(reel) + ' ' + esc(uniteCourte(u)) : '—'}</td><td class="r num ${reel && prevu ? (reel >= prevu ? 'good' : 'bad') : ''}">${reel && prevu ? Math.round((reel / prevu - 1) * 100) + ' %' : '—'}</td><td class="r num">${reel && o.surface ? fmtNum(reel / o.surface, 2) + ' ' + esc(uniteCourte(u)) + '/m²' : '—'}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td>Total${pc ? ' (kg)' : ''}</td><td class="r num">${f0(t(kg, (x) => x.prevu))} kg</td><td class="r num">${f0(t(kg, (x) => x.reel))} kg</td><td></td><td></td></tr></tfoot></table></div>
+    <p class="hint">Le rendement prévu se règle dans la fiche, où la moyenne de vos 5 dernières saisons est proposée.${pc ? ' Cultures vendues à la pièce (pc) : le prévu est le nombre de plants du plan, elles ne comptent pas dans le total en kg.' : ''}</p></div>`;
 }
 ACTIONS.rcAnnee = (el) => { RC.annee = el.dataset.y; RC.culture = ''; render(); };
 ACTIONS.rcCulture = (el) => { RC.culture = RC.culture === el.dataset.n ? '' : el.dataset.n; render(); };
@@ -93,32 +93,6 @@ function renderPlan(vue) {
     /* Ligne venant de la fiche (Nos cultures) : affichée, se modifie dans la fiche */
     const fic = (label, f, o = {}) => `<tr class="fic"><td>${label}</td>${list.map((c, i) => { const e = eff[i], v = get(e, f); const shown = o.fmt ? o.fmt(v, e, os[i]) : v == null || v === '' ? '—' : String(v).replace('.', ','); const pp = o.prix && e.prixProduit; return `<td><button type="button" class="fic-cell" ${pp ? `data-act="prodEdit" data-key="${esc(e.prixProduit)}" title="Prix du produit (Stock et prix)"` : `data-act="ficheEdit" data-key="${esc(ficheDe(c))}" title="Modifier dans la fiche ${esc(c.nom)}"`}>${esc(shown)}</button></td>`; }).join('')}<td class="num tot">${o.tot ?? ''}</td></tr>`;
     const engr = (P.engrais || []);
-    const table = `<div class="table-wrap"><table class="matrix"><thead><tr><th></th>${list.map((c, i) => `<th><button type="button" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button></th>`).join('')}<th>Total</th></tr></thead>
-      ${grp('Surface', 4)}
-      ${edit('Planches', 'planches', { tot: f0(list.reduce((a, c) => a + num(c.planches), 0)) })}
-      ${edit('Longueur de planche m', 'longueur', { ph: () => String(P.longueur).replace('.', ',') })}
-      ${calc('Surface m²', (c, o) => f1(o.surface), f1(T.surface))}
-      ${calc('Part de la surface', (c, o) => T.surface ? Math.round(o.surface / T.surface * 100) + ' %' : '—', '100 %')}
-      ${grp('Récolte et ventes', 9)}
-      ${fic('Rendement kg/m²', 'rendement')}
-      ${calc('Récolte prévue kg', (c, o) => f0(o.recolte), f0(T.recolte))}
-      ${calc('Récolte réelle kg', (c) => (c.uniteRec ? (c.reelPieces ? f0(c.reelPieces) + ' ' + esc(uniteCourte(c.uniteRec)) : '—') : num(c.recolteReelle) ? f0(c.recolteReelle) : '—'), T.recolteReelle ? f0(T.recolteReelle) : '—')}
-      ${fic('Prix direct CHF/kg', 'prixDirect', { prix: true, fmt: (v) => (v ? money(v) : '—') })}
-      ${calc('Ventes directes CHF', (c, o) => f0(o.ventesDirect), f0(T.ventesDirect))}
-      ${calc('CHF/m² direct', (c, o) => money(o.chfM2Direct))}
-      ${fic('Prix revendeur CHF/kg', 'prixRevendeur', { prix: true, fmt: (v, c, o) => (v == null || v === '' ? money(o.prixRevendeur) + ' auto' : money(v)) })}
-      ${calc('Ventes revendeur CHF', (c, o) => f0(o.ventesRevendeur), f0(T.ventesRevendeur))}
-      ${calc('CHF/m² revendeur', (c, o) => money(o.chfM2Revendeur))}
-      ${grp('Plantation', 7)}
-      ${fic('Semaine de plantation', 'semPlantation')}
-      ${fic('Semaines de récolte', 'semRecolte')}
-      ${fic('Lignes par planche', 'lignes')}
-      ${fic('Interplant cm', 'interplant')}
-      ${calc('Plantons', (c, o) => f0(o.plantons), f0(T.plantons))}
-      ${fic('Variété', 'variete')}
-      ${fic('Fournisseur', 'fournisseur')}
-    </tbody></table></div>
-    <div class="row"><button class="btn small" type="button" data-act="cuToutes" data-v="ouvrir">Tout ouvrir</button><button class="btn small" type="button" data-act="cuToutes" data-v="fermer">Tout fermer</button></div>`;
     gi = 0;
     const tableFumure = `<div class="table-wrap"><table class="matrix"><thead><tr><th></th>${list.map((c, i) => `<th><button type="button" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button></th>`).join('')}<th>Total</th></tr></thead>
       ${grp('Détail par culture', 18 + 2 * engr.length)}
@@ -139,44 +113,55 @@ function renderPlan(vue) {
     const cartePl = secs.map((sec) => `<div class="cp-sec"><div class="cp-nom"><b>${esc(sec.nom)}</b> <span class="hint">${f0(sec.planches)} pl.</span></div><div class="cp-pl">${Array.from({ length: Math.round(num(sec.planches)) }, (_, j) => {
         const e = `${sec.k}:${j + 1}`, is = occ[e] || [], fond = is.length ? `linear-gradient(90deg, ${is.map((ci, m) => `${coul[ci]} ${m / is.length * 100}% ${(m + 1) / is.length * 100}%`).join(', ')})` : '';
         return `<span class="cp-p${is.length ? ' on' : ''}"${fond ? ` style="background:${fond}"` : ''} title="${esc(sec.nom + ' ' + (j + 1) + ' : ' + (is.length ? is.map((ci) => list[ci].nom).join(' puis ') : 'libre'))}">${j + 1}</span>`; }).join('')}</div></div>`).join('');
-    const aPlacer = list.map((c, i) => [i, Math.max(0, Math.round(num(c.planches)) - (c.emplacements || []).length)]).filter(([, n]) => n > 0);
+    const aPlacer = list.map((c, i) => [i, (c.emplacements || []).length ? 0 : Math.round(num(c.planches))]).filter(([, n]) => n > 0);
     const cartePlanches = `${secs.length ? cartePl : '<p class="hint">Pas encore de secteurs : créez-les dans l\'onglet Planches.</p>'}
       ${aPlacer.length ? `<div class="cp-sec"><div class="cp-nom"><b>À placer</b></div><div class="cp-pl">${aPlacer.map(([i, n]) => Array.from({ length: Math.min(60, n) }, () => `<span class="cp-p on vide" style="--c:${coul[i]}" title="${esc(list[i].nom)} : pas encore placée"></span>`).join('')).join('')}</div></div>` : ''}`;
-    const legend = list.map((c, i) => `<span><i style="background:${coul[i]}"></i>${esc(c.nom)} · ${f0(c.planches)} pl. · ${Math.round(T.surface ? os[i].surface / T.surface * 100 : 0)} %</span>`).join('');
-    /* ---- Récolte et ventes ---- */
-    const maxK = Math.max(1, ...os.map((o, i) => Math.max(o.recolte, num(eff[i].recolteReelle))));
-    const maxV = Math.max(1, ...os.map((o) => o.ventesDirect));
-    const bars = `<div class="bars">${list.map((c, i) => `<div class="bar-row"><span>${esc(c.nom)}</span><span class="bar-track" style="position:relative"><span class="bar-fill" style="width:${(os[i].recolte / maxK * 100).toFixed(1)}%;background:${coul[i]}44"></span>${num(eff[i].recolteReelle) ? `<span class="bar-fill" style="position:absolute;top:0;left:0;height:100%;width:${(num(eff[i].recolteReelle) / maxK * 100).toFixed(1)}%;background:${coul[i]}"></span>` : ''}</span><span class="num">${num(eff[i].recolteReelle) ? f0(eff[i].recolteReelle) + ' / ' : ''}${f0(os[i].recolte)} kg</span></div>`).join('')}</div>`;
-    const ventes = `<div class="bars">${list.map((c, i) => `<div class="bar-row"><span>${esc(c.nom)}</span><span class="bar-track"><span class="bar-fill" style="width:${(os[i].ventesDirect / maxV * 100).toFixed(1)}%;background:${coul[i]}"></span></span><span class="num">${f0(os[i].ventesDirect)}</span></div>`).join('')}</div>`;
+    const legend = list.map((c, i) => `<span><i style="background:${coul[i]}"></i>${esc(c.nom)} · ${f0(planchesDe(c))} pl. · ${Math.round(T.surface ? os[i].surface / T.surface * 100 : 0)} %</span>`).join('');
 
     if (vue === 'fumure') return `${head}
       <div class="panel"><h2>Fumure ${s} : à apporter</h2>
         <div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Planches</th><th class="r">Compost L/planche</th>${engr.map((e) => `<th class="r">${esc(e.nom)} kg/planche</th>`).join('')}${engr.map((e) => `<th class="r">${esc(e.nom)} kg</th>`).join('')}</tr></thead><tbody>
-          ${list.map((c, i) => `<tr><td style="white-space:nowrap"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</td><td class="r num">${f0(c.planches)}</td><td class="r num">${f0(os[i].compostLParPlanche)}</td>${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kgParPlanche || 0, 2)}</td>`).join('')}${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kg || 0, 1)}</td>`).join('')}</tr>`).join('')}
-        </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(list.reduce((a, c) => a + num(c.planches), 0))}</td><td class="r num">${fmtNum(T.compostM3, 1)} m³</td>${engr.map(() => '<td></td>').join('')}${engr.map((e) => `<td class="r num">${fmtNum(T.engrais[e.k] || 0, 1)}</td>`).join('')}</tr></tfoot></table></div>
+          ${list.map((c, i) => `<tr><td style="white-space:nowrap"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</td><td class="r num">${f0(planchesDe(c))}</td><td class="r num">${f0(os[i].compostLParPlanche)}</td>${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kgParPlanche || 0, 2)}</td>`).join('')}${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kg || 0, 1)}</td>`).join('')}</tr>`).join('')}
+        </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(list.reduce((a, c) => a + planchesDe(c), 0))}</td><td class="r num">${fmtNum(T.compostM3, 1)} m³</td>${engr.map(() => '<td></td>').join('')}${engr.map((e) => `<td class="r num">${fmtNum(T.engrais[e.k] || 0, 1)}</td>`).join('')}</tr></tfoot></table></div>
         ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).length ? `<p class="banner">Pas couvert par vos engrais : ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).map((n) => `${n} ${fmtNum(T.nonCouvert[n] / 1000, 1)} kg`).join(', ')}. Ajoute un engrais qui en contient dans les hypothèses, ou augmente le compost.</p>` : ''}
         <p class="hint">Une planche = ${fmtNum(P.longueur, 1)} m × ${fmtNum(P.facteurSurface, 2)} m (avec le passe-pied) = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m². Besoin brut × correction du sol − compost (${Math.round(num(P.dispoCompost) * 100)} % disponible la 1re année) = reste à couvrir par les engrais, dans l'ordre de la liste des engrais (Données). Corrections d'analyse de sol : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Un excédent de compost (en gris) compte pour 0 ; ce qu'un engrais apporte en plus de son nutriment principal (ex. Mg) est déduit des autres.</p></div>
       <div class="panel"><h2>Détail par culture ${s}</h2><p class="hint">Lignes vertes : besoins et compost de la fiche de chaque culture (touche une case pour la modifier). Lignes grisées : calculées. « Données » : corrections d'analyse de sol, teneur du compost, engrais.</p>${tableFumure}</div>`;
+    /* ---- La liste de la saison ---- */
+    const ca = list.map((c, i) => caPrevu(eff[i], os[i])), caT = ca.filter(Boolean).reduce((a, x) => ({ min: a.min + x.min, max: a.max + x.max }), { min: 0, max: 0 });
+    const nPl = list.reduce((a, c) => a + planchesDe(c), 0), nAPlacer = aPlacer.reduce((a, [, n]) => a + n, 0);
+    const semTxt = (w) => { const r = parseSemaines(w); return r ? (r[0] === r[1] ? 'sem. ' + r[0] : `sem. ${r[0]}–${r[1]}`) : '—'; };
+    const ligne = (c, i) => { const e = eff[i], o = os[i], u = uniteRecolte(c), placees = (c.emplacements || []).length;
+      const pl = placees ? `${placees}<br><span class="hint">${esc(resumeEmplacements(c.emplacements))}</span>` : `<input class="cell-in" id="ci-${i}-planches" data-cu="${esc(c.key)}" data-f="planches" inputmode="decimal" autocomplete="off" value="${esc(String(c.planches ?? ''))}" aria-label="Planches · ${esc(c.nom)}" style="width:56px">${secs.length ? '<br><span class="hint">à placer</span>' : ''}`;
+      return `<tr><td><button type="button" class="lien-cu" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button>${c.remarque ? `<br><span class="hint">${esc(trunc(c.remarque, 60))}</span>` : ''}</td>
+        <td class="r num">${pl}</td><td class="r num">${f0(o.surface)} m²</td><td>${esc(semTxt(e.semPlantation))}</td><td>${esc(semTxt(e.semRecolte))}</td><td class="r num">${o.plantons ? f0(o.plantons) : '—'}</td>
+        <td class="r num">${u === 'kg' ? (o.recolte ? f0(o.recolte) + ' kg' : '—') : (o.plantons ? f0(o.plantons) + ' ' + esc(uniteCourte(u)) : '—')}</td><td class="r num">${ca[i] ? fmtFourchette(ca[i]) : '<span class="hint">prix ?</span>'}</td></tr>`; };
     return `${head}
       <div class="stats">
-        <div class="stat good"><span class="k">Surface cultivée</span><span class="v">${f0(T.surface)} m²</span><span class="s">${list.reduce((a, c) => a + num(c.planches), 0)} planches de ${fmtNum(P.longueur, 1)} m</span></div>
-        <div class="stat"><span class="k">Récolte prévue</span><span class="v">${f0(T.recolte)} kg</span><span class="s">${T.recolteReelle ? 'Réelle : ' + f0(T.recolteReelle) + ' kg' : 'Récolte réelle à saisir'}</span></div>
-        <div class="stat good"><span class="k">Ventes directes prévues</span><span class="v">${chf(T.ventesDirect)}</span></div>
-        <div class="stat blue"><span class="k">Ventes revendeur prévues</span><span class="v">${chf(T.ventesRevendeur)}</span></div>
-        <div class="stat"><span class="k">Plantons</span><span class="v">${f0(T.plantons)}</span></div>
-        <div class="stat"><span class="k">Compost</span><span class="v">${fmtNum(T.compostM3, 1)} m³</span></div>
+        <div class="stat good"><span class="k">Surface cultivée</span><span class="v">${f0(T.surface)} m²</span><span class="s">${f0(nPl)} planches${nAPlacer ? ` · ${f0(nAPlacer)} à placer` : ''}</span></div>
+        <div class="stat"><span class="k">Cultures</span><span class="v">${list.length}</span><span class="s">${f0(T.plantons)} plants</span></div>
+        <div class="stat blue"><span class="k">Chiffre d'affaires prévu</span><span class="v">${caT.max ? fmtFourchette(caT) : '—'}</span><span class="s">selon les prix des produits, du plus bas au plus haut</span></div>
       </div>
+      <div class="panel"><h2>Plan ${s}</h2><div class="table-wrap"><table class="list plan-l"><thead><tr><th>Culture</th><th class="r">Planches</th><th class="r">Surface</th><th>Plantation</th><th>Récolte</th><th class="r">Plants</th><th class="r">Récolte prévue</th><th class="r">CA prévu CHF</th></tr></thead><tbody>
+        ${list.map(ligne).join('')}</tbody>
+        <tfoot><tr><td>Total</td><td class="r num">${f0(nPl)}</td><td class="r num">${f0(T.surface)} m²</td><td></td><td></td><td class="r num">${f0(T.plantons)}</td><td class="r num">${f0(list.reduce((a, c, i) => a + (uniteRecolte(c) === 'kg' ? os[i].recolte : 0), 0))} kg</td><td class="r num">${caT.max ? fmtFourchette(caT) : ''}</td></tr></tfoot></table></div>
+        <p class="hint">Touche une culture pour la saison (remarque, retirer du plan) et sa fiche : rendement, semaines, espacements et fumure se règlent dans la fiche (Nos cultures). Planches : celles placées sur la carte ; tant que rien n'est placé, le nombre prévu. Surface = planches × longueur du secteur × ${fmtNum(P.facteurSurface, 2)} m (largeur avec passe-pied). CA prévu : récolte prévue × prix du produit lié (Ventes → Stock et prix), du plus bas au plus haut de ses prix ; une culture à la pièce compte une pièce par plant.</p></div>
       ${friseHtml(s)}
-      <div class="split">
-        <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Placer</a></div>${cartePlanches}<div class="legend">${legend}</div></div>
-        <div class="panel"><h2>Récolte prévue et réelle (kg)</h2>${bars}<h2 style="margin-top:8px">Ventes directes prévues (CHF)</h2>${ventes}</div>
-      </div>
-      <div class="panel"><h2>Plan ${s}</h2>
-        <p class="hint">Cases blanches : propres à cette saison (planches, longueur), elles se modifient directement. Lignes vertes : données de la culture, qui viennent de « Nos cultures » ; touche une case pour modifier la fiche. Lignes grisées : calculées. Touche le nom d'une culture pour ses réglages de saison ou pour la retirer du plan. Récolte réelle : la somme des récoltes enregistrées avec « + Récolte ».</p>
-        ${table}
-        <p class="hint">Surface = planches × longueur × largeur avec passe-pied (${fmtNum(P.facteurSurface, 2)} m). Plantons = longueur ÷ interplant × lignes × planches. Prix : ceux du produit lié dans Ventes → Stock et prix (direct = particuliers, revendeur = grossiste) ; sans produit, ceux de la fiche (revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du direct). La fumure a son onglet.</p></div>`;
+      <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Placer</a></div>${cartePlanches}<div class="legend">${legend}</div></div>`;
   }
 }
+/* Fourchette de prix d'une culture (CHF par kg, ou par pièce) : du plus bas au plus haut des prix de son produit (fourchette, prix par type de client).
+   Une saison passée garde ses prix enregistrés. */
+function prixCulture(c) {
+  const ok = (x) => x !== '' && x != null && num(x) > 0, p = typeof produitDeCulture === 'function' ? produitDeCulture(c) : null;
+  const duProduit = () => (p ? [p.prixMin, p.prixMax].concat(typeof NIVEAUX !== 'undefined' ? NIVEAUX.map(([n]) => prixNiveau(p, n)) : []).filter(ok).map(num) : []);
+  const enregistres = [c.prixDirect, c.prixRevendeur].filter(ok).map(num);
+  const xs = String(c.saison || '9999') < todayISO().slice(0, 4) ? (enregistres.length ? enregistres : duProduit()) : (duProduit().length ? duProduit() : enregistres);
+  return xs.length ? { min: Math.min(...xs), max: Math.max(...xs) } : null;
+}
+function caPrevu(c, o) { const pr = prixCulture(c), q = uniteRecolte(c) === 'kg' ? o.recolte : o.plantons; return pr && q ? { min: q * pr.min, max: q * pr.max } : null; }
+const prixFicheTxt = (f) => { const pr = prixCulture({ nom: f.nom, fiche: f.key }), p = produitDeCulture({ nom: f.nom, fiche: f.key }), u = p && p.unite && p.unite !== 'kg' ? p.unite : 'kg';
+  return pr ? `${pr.min === pr.max ? money(pr.min) : money(pr.min) + ' – ' + money(pr.max)} CHF/${u === 'pièce' ? 'pc' : u}` : ''; };
+const fmtFourchette = (f) => (!f ? '—' : Math.round(f.min) === Math.round(f.max) ? fmtNum(Math.round(f.min), 0) : `${fmtNum(Math.round(f.min), 0)} – ${fmtNum(Math.round(f.max), 0)}`);
 function brancherPlan() {
   {
     $('view').querySelectorAll('input.cell-in').forEach((el) => el.addEventListener('change', () => {
@@ -218,8 +203,8 @@ ACTIONS.cuEdit = (el) => {
   const k = el.dataset.key || ''; if (!k || !DB.get(k)) { ACTIONS.cuAjouter(el); return; }
   const c = DB.get(k), fk = ficheDe(c), n = (id, label, val, step) => inp(id, label, val ?? '', { name: id.slice(3), type: 'number', attrs: { step: step || 'any', inputmode: 'decimal' } });
   openSheet(`${sheetHead(c.nom, 'Saison ' + c.saison)}<form class="sbody form" data-form="cu"><input type="hidden" name="key" value="${esc(k)}">
-    <div class="grid2">${n('cu-planches', 'Planches', c.planches, '1')}${n('cu-longueur', 'Longueur de planche m', c.longueur)}${n('cu-ordre', "Ordre d'affichage", c.ordre, '1')}</div>
-    <p class="hint">Longueur vide : celle des données de la saison (Fumure → Données) (${fmtNum(paramsCultures(c.saison).longueur, 1)} m). Récolte réelle de cette saison : ${f0(recolteReelleDe(c, k))} kg (somme des récoltes enregistrées).</p>
+    <div class="grid2">${(c.emplacements || []).length ? `<div class="field"><span class="flabel">Planches</span><span>${(c.emplacements || []).length} : ${esc(resumeEmplacements(c.emplacements))}</span><a class="hint" href="#/cultures/planches">changer sur la carte</a></div>` : n('cu-planches', 'Planches prévues', c.planches, '1')}${n('cu-ordre', "Ordre d'affichage", c.ordre, '1')}</div>
+    <p class="hint">Récolte réelle de cette saison : ${esc(fmtQ(recolteReelleDe(c, k), uniteRecolte(c)))} (somme des récoltes enregistrées).</p>
     <div class="row"><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte" data-culture="${esc(k)}">+ Récolte de ${esc(c.nom)}</button></div>
     ${txt('cu-rem', 'Remarque pour cette saison', c.remarque, { name: 'remarque' })}
     <p class="hint">Rendement, prix, semaines, espacements, variété, fumure : dans la fiche de la culture. <a href="#/cultures/fiches/${encodeURIComponent(fk)}" data-act="go" data-href="#/cultures/fiches/${encodeURIComponent(fk)}">Ouvrir la fiche ${esc(c.nom)}</a></p>
@@ -228,8 +213,7 @@ ACTIONS.cuEdit = (el) => {
 FORMS.cu = (v) => {
   const k = v.key, old = DB.get(k); if (!old) return;
   const o = Object.assign({}, old, { remarque: v.remarque });
-  o.planches = num(v.planches); o.ordre = num(v.ordre) || old.ordre || 1;
-  o.longueur = v.longueur === '' ? null : num(v.longueur);
+  if ('planches' in v) o.planches = num(v.planches); o.ordre = num(v.ordre) || old.ordre || 1;
   DB.put(k, o); closeSheet(); toast('Culture mise à jour.');
 };
 ACTIONS.cuParams = () => {
@@ -237,7 +221,7 @@ ACTIONS.cuParams = () => {
   const n = (id, label, val, name, sub) => inp(id, label, val ?? '', { name, type: 'number', attrs: { step: 'any', inputmode: 'decimal' }, sub });
   openSheet(`${sheetHead('Données ' + s)}<form class="sbody form" data-form="cuParams"><input type="hidden" name="saison" value="${esc(s)}">
     <div class="grid2">${n('cp-l', 'Longueur de planche m', P.longueur, 'longueur')}${n('cp-f', 'Largeur planche + passe-pied m', P.facteurSurface, 'facteurSurface', `Une planche = longueur × largeur = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m²`)}
-      ${n('cp-r', 'Prix revendeur (part du direct)', P.partRevendeur, 'partRevendeur', '0,6 = 60 %')}${n('cp-d', 'Compost disponible 1re année', r2(P.dispoCompost * 1000) / 1000, 'dispoCompost', '0,333 = un tiers')}</div>
+      ${n('cp-d', 'Compost disponible 1re année', r2(P.dispoCompost * 1000) / 1000, 'dispoCompost', '0,333 = un tiers')}</div>
     <h3>Corrections d'analyse de sol</h3>
     <p class="hint">Liées au champ : multiplient les besoins de toutes les cultures (1 = pas de correction, 0,8 = −20 %).</p>
     <div class="grid2">${NUTR.map((x) => n('cp-c' + x, x, (P.correction || {})[x] ?? 1, 'c_' + x)).join('')}</div>
@@ -252,7 +236,7 @@ ACTIONS.cuParams = () => {
 };
 FORMS.cuParams = (v) => {
   const P = paramsCultures(v.saison);
-  const o = { longueur: num(v.longueur) || 19, facteurSurface: num(v.facteurSurface) || 1, partRevendeur: num(v.partRevendeur), dispoCompost: Math.abs(num(v.dispoCompost) - r2(P.dispoCompost * 1000) / 1000) < 1e-9 ? P.dispoCompost : num(v.dispoCompost), teneurCompost: {}, engrais: [] };
+  const o = { longueur: num(v.longueur) || 19, facteurSurface: num(v.facteurSurface) || 1, partRevendeur: P.partRevendeur, dispoCompost: Math.abs(num(v.dispoCompost) - r2(P.dispoCompost * 1000) / 1000) < 1e-9 ? P.dispoCompost : num(v.dispoCompost), teneurCompost: {}, engrais: [] };
   for (const x of NUTR) o.teneurCompost[x] = num(v['t_' + x]);
   o.correction = {}; for (const x of NUTR) o.correction[x] = v['c_' + x] === '' ? 1 : num(v['c_' + x]);
   for (let i = 0; ('en_' + i) in v; i++) {
@@ -312,14 +296,14 @@ function historiqueFiche(k) {
   return DB.all('cul:').filter((c) => ficheDe(c) === k).sort((a, b) => String(b.saison).localeCompare(String(a.saison))).map((c) => {
     const P = paramsCultures(c.saison), reel = recolteReelleDe(c);
     const o = culture(Object.assign({}, c, { recolteReelle: reel }), P);
-    return { saison: c.saison, planches: num(c.planches), surface: o.surface, prevu: o.recolte, reel, rdtReel: reel && o.surface ? reel / o.surface : 0, rdtPrevu: num(c.rendement), unite: uniteRecolte(c) };
+    return { saison: c.saison, planches: planchesDe(c), surface: o.surface, prevu: o.recolte, reel, rdtReel: reel && o.surface ? reel / o.surface : 0, rdtPrevu: num(c.rendement), unite: uniteRecolte(c) };
   });
 }
 function renderFiches(id) {
   const l = fiches(), s = saisonCourante(), dans = new Set(cultures(s).map((c) => ficheDe(c)));
   const sel = id && DB.get(id) ? Object.assign({ key: id }, DB.get(id)) : null;
   const ligne = (f, i) => `<a class="item${sel && sel.key === f.key ? ' sel' : ''}" href="#/cultures/fiches/${encodeURIComponent(f.key)}"><span class="who"><strong><span class="sw" style="background:${f.couleur || CULT_PALETTE[i % CULT_PALETTE.length]}"></span>${esc(f.nom)}</strong>
-    <span class="meta">${[f.rendement ? fmtNum(f.rendement, 1) + ' kg/m²' : '', (() => { const x = produitPrixDeFiche(f.key, f.nom); const pd = x ? x.prixDirect : f.prixDirect; return pd ? money(pd) + ' CHF/kg' : ''; })(), f.semPlantation ? 'plant. sem. ' + esc(f.semPlantation) : '', f.variete ? esc(f.variete) : ''].filter(Boolean).join(' · ') || 'Données à compléter'}</span></span>
+    <span class="meta">${[f.rendement ? fmtNum(f.rendement, 1) + ' kg/m²' : '', prixFicheTxt(f), f.semPlantation ? 'plant. sem. ' + esc(f.semPlantation) : '', f.variete ? esc(f.variete) : ''].filter(Boolean).join(' · ') || 'Données à compléter'}</span></span>
     ${dans.has(f.key) ? `<span class="tpill">plan ${esc(s)}</span>` : ''}</a>`;
   let droite = '<div class="panel"><p class="hint">Choisis une culture pour voir sa fiche et ce qu\'elle a donné chaque saison.</p></div>';
   if (sel) {
@@ -329,7 +313,7 @@ function renderFiches(id) {
         <div class="row">${!dans.has(sel.key) ? `<button class="btn primary small" type="button" data-act="cuAjouter" data-fiche="${esc(sel.key)}">Ajouter au plan ${esc(s)}</button>` : ''}<button class="btn small" type="button" data-act="ficheEdit" data-key="${esc(sel.key)}">Modifier</button></div></div>
       <table class="list"><tbody>
         <tr><td>Rendement</td><td class="r">${v(sel.rendement, 'kg/m²')}</td></tr>
-        <tr><td>Prix direct / revendeur</td><td class="r">${(() => { const x = produitPrixDeFiche(sel.key, sel.nom); return x ? `${v(x.prixDirect, 'CHF/kg')} / ${x.prixRevendeur == null ? '—' : v(x.prixRevendeur, 'CHF/kg')}<br><a href="#" class="hint" data-act="prodEdit" data-key="${esc(x.p.key)}">du produit ${esc(x.p.nom)}</a>` : `${v(sel.prixDirect, 'CHF/kg')} / ${sel.prixRevendeur == null || sel.prixRevendeur === '' ? 'auto' : v(sel.prixRevendeur, 'CHF/kg')}`; })()}</td></tr>
+        <tr><td>Prix</td><td class="r">${(() => { const p = produitDeCulture({ nom: sel.nom, fiche: sel.key }); return (prixFicheTxt(sel) || '—') + (p ? `<br><a href="#" class="hint" data-act="prodEdit" data-key="${esc(p.key)}">du produit ${esc(p.nom)}</a>` : '<br><span class="hint">aucun produit lié</span>'); })()}</td></tr>
         <tr><td>Mise en place · plantation · récolte</td><td class="r">${esc((MODES.find((m) => m[0] === (sel.mode || 'achete')) || ['', ''])[1])} · sem. ${v(sel.semPlantation)} · sem. ${v(sel.semRecolte)}</td></tr>
         <tr><td>Itinéraires</td><td class="r">${(sel.itin || []).map((x) => (itineraires().find((it) => it.k === x) || {}).nom).filter(Boolean).map(esc).join(', ') || '—'}${(sel.etapes || []).length ? ` + ${sel.etapes.length} travaux propres` : ''}</td></tr>
         <tr><td>Lignes par planche · interplant</td><td class="r">${v(sel.lignes)} · ${v(sel.interplant, 'cm')}</td></tr>
@@ -390,7 +374,7 @@ ACTIONS.ficheEdit = (el) => {
     <div class="field"><span class="flabel">Couleur</span><div class="seg">${CULT_PALETTE.map((x) => `<label style="--c:${x}"><input type="radio" name="couleur" value="${x}"${f.couleur === x ? ' checked' : ''}> <span class="blk" style="background:${x};width:18px;height:18px"></span></label>`).join('')}</div></div>
     ${moy ? `<p class="hint rdt-moy">📈 Moyenne de ${moy.n > 1 ? `vos ${moy.n} dernières saisons` : 'votre dernière saison'} (${esc(moy.de)}${moy.n > 1 ? '–' + esc(moy.a) : ''}) : <b>${fmtNum(moy.v, 2)} kg/m²</b> <button type="button" class="btn small" data-act="rdtMoyen" data-v="${moy.v}">Utiliser</button></p>` : ''}
     <div class="grid2">${n('fi-r', 'Rendement kg/m²', f.rendement, 'rendement')}${n('fi-c', 'Compost L/m²', f.compost, 'compost')}
-      ${pp ? `<input type="hidden" name="prixDirect" value="${esc(f.prixDirect ?? '')}"><input type="hidden" name="prixRevendeur" value="${esc(f.prixRevendeur ?? '')}"><div class="field"><span class="flabel">Prix</span><span class="hint">${money(pp.prixDirect)} CHF/kg direct${pp.prixRevendeur != null ? ' · ' + money(pp.prixRevendeur) + ' revendeur' : ''} : ceux du produit <a href="#" data-act="prodEdit" data-key="${esc(pp.p.key)}">${esc(pp.p.nom)}</a> (Stock et prix).</span></div><div></div>` : n('fi-pd', 'Prix direct CHF/kg', f.prixDirect, 'prixDirect') + n('fi-pr', 'Prix revendeur CHF/kg', f.prixRevendeur, 'prixRevendeur')}
+      <input type="hidden" name="prixDirect" value="${esc(f.prixDirect ?? '')}"><input type="hidden" name="prixRevendeur" value="${esc(f.prixRevendeur ?? '')}"><div class="field"><span class="flabel">Prix</span><span class="hint">${(() => { const p = k ? produitDeCulture({ nom: f.nom, fiche: k }) : null; return p ? `${esc(prixFicheTxt(Object.assign({ key: k }, f)) || 'pas encore de prix')} : ceux du produit <a href="#" data-act="prodEdit" data-key="${esc(p.key)}">${esc(p.nom)}</a> (Stock et prix).` : 'Viennent du produit lié à cette culture (Ventes → Stock et prix).'; })()}</span></div><div></div>
     </div>
     <h3>Itinéraire</h3>
     <div class="field"><span class="flabel">Mise en place</span><div class="seg">${MODES.map(([m, l]) => `<label><input type="radio" name="mode" value="${m}"${(f.mode || 'achete') === m ? ' checked' : ''}> ${l}</label>`).join('')}</div></div>
@@ -566,6 +550,7 @@ function renderMarges() {
   const s = saisonCourante(), ss = saisons(), M = margesSaison(s);
   const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
   if (!M.lignes.length) return `<div class="row">${chips}</div><div class="panel"><p class="empty">Aucune culture dans le plan ${esc(s)}.</p></div>`;
+  const P = paramsCultures(s); for (const x of M.lignes) x.ca = caPrevu(avecPrixProduit(x.c), culture(x.c, P));
   const tri = M.lignes.slice().sort((a, b) => b.marge - a.marge), T = (f) => M.lignes.reduce((a, x) => a + f(x), 0);
   const pc = (a, b) => (b ? Math.round(a / b * 100) + ' %' : '—');
   return `<div class="row">${chips}</div>
@@ -573,9 +558,9 @@ function renderMarges() {
       <div class="stat good"><span class="k">Ventes ${esc(s)} attribuées</span><span class="v">${chf(T((x) => x.ventes))}</span><span class="s">${M.nonAttr > 0.5 ? `${chf(M.nonAttr)} de ventes sans culture (lignes sans produit lié)` : 'toutes les ventes ont leur culture'}${M.autres > 0.5 ? ` · ${chf(M.autres)} de recettes saisies à la main (sans culture)` : ''}</span></div>
       <div class="stat"><span class="k">Heures marquées pour une culture</span><span class="v">${pc(M.hDir, M.hTot)}</span><span class="s">${fmtH(M.hTot)} h en ${esc(s)} · admin ${fmtH(M.hAdmin)} h · ventes ${fmtH(M.hVentes)} h · sans précision ${fmtH(M.hNon)} h</span></div>
       <div class="stat"><span class="k">Dépenses marquées pour une culture</span><span class="v">${pc(M.depDir, M.depTot)}</span><span class="s">frais communs ${chf(M.commun)}${M.amort ? ` dont amortissements ${chf(M.amort)}` : ''}</span></div></div>
-    <div class="panel"><h2>Marges ${esc(s)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Surface</th><th class="r">Ventes</th><th class="r">Coûts directs</th><th class="r">Frais communs</th><th class="r">Marge</th><th class="r">Heures</th><th class="r">CHF / heure</th><th class="r">CHF / m²</th></tr></thead><tbody>
-      ${tri.map((x) => `<tr><td><span class="sw" style="background:${couleurCulture(x.c, (x.c.ordre || 1) - 1)}"></span>${esc(x.c.nom)}</td><td class="r num">${f0(x.surface)} m²</td><td class="r num">${money(x.ventes)}</td><td class="r num">${money(x.direct)}</td><td class="r num">${money(x.partFrais)}</td><td class="r num ${x.marge < 0 ? 'bad' : ''}"><b>${money(x.marge)}</b></td><td class="r num">${fmtH(x.heures)} h<br><span class="hint">${fmtH(x.hDirect)} h marquées</span></td><td class="r num">${x.chfH == null ? '—' : money(x.chfH)}</td><td class="r num">${x.chfM2 == null ? '—' : money(x.chfM2)}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(T((x) => x.surface))} m²</td><td class="r num">${money(T((x) => x.ventes))}</td><td class="r num">${money(T((x) => x.direct))}</td><td class="r num">${money(T((x) => x.partFrais))}</td><td class="r num"><b>${money(T((x) => x.marge))}</b></td><td class="r num">${fmtH(T((x) => x.heures))} h</td><td></td><td></td></tr></tfoot></table></div>
+    <div class="panel"><h2>Marges ${esc(s)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Surface</th><th class="r">CA prévu</th><th class="r">Ventes</th><th class="r">Coûts directs</th><th class="r">Frais communs</th><th class="r">Marge</th><th class="r">Heures</th><th class="r">CHF / heure</th><th class="r">CHF / m²</th></tr></thead><tbody>
+      ${tri.map((x) => `<tr><td><span class="sw" style="background:${couleurCulture(x.c, (x.c.ordre || 1) - 1)}"></span>${esc(x.c.nom)}</td><td class="r num">${f0(x.surface)} m²</td><td class="r num hint">${x.ca ? fmtFourchette(x.ca) : '—'}</td><td class="r num ${x.ca && x.ventes ? (x.ventes >= x.ca.min ? 'good' : 'bad') : ''}">${money(x.ventes)}</td><td class="r num">${money(x.direct)}</td><td class="r num">${money(x.partFrais)}</td><td class="r num ${x.marge < 0 ? 'bad' : ''}"><b>${money(x.marge)}</b></td><td class="r num">${fmtH(x.heures)} h<br><span class="hint">${fmtH(x.hDirect)} h marquées</span></td><td class="r num">${x.chfH == null ? '—' : money(x.chfH)}</td><td class="r num">${x.chfM2 == null ? '—' : money(x.chfM2)}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(T((x) => x.surface))} m²</td><td class="r num hint">${fmtFourchette({ min: T((x) => (x.ca ? x.ca.min : 0)), max: T((x) => (x.ca ? x.ca.max : 0)) })}</td><td class="r num">${money(T((x) => x.ventes))}</td><td class="r num">${money(T((x) => x.direct))}</td><td class="r num">${money(T((x) => x.partFrais))}</td><td class="r num"><b>${money(T((x) => x.marge))}</b></td><td class="r num">${fmtH(T((x) => x.heures))} h</td><td></td><td></td></tr></tfoot></table></div>
       <p class="hint">Ventes : factures et ventes de l'année dont la ligne a un produit lié à la culture, plus la vente directe (argent encaissé, réparti selon ce qui était en vente). Coûts directs : dépenses marquées pour cette culture. Frais communs : admin, ventes et dépenses sans précision, plus les amortissements, répartis selon la surface. Heures : celles marquées pour la culture, plus une part des heures communes selon la surface. Marge = ventes − coûts directs − frais communs, avant de payer vos heures : « CHF / heure » dit ce que chaque heure a rapporté.</p>
       <p class="hint">Plus vous marquez « Pour quoi ? » en notant vos heures et vos dépenses, plus c'est précis.</p></div>`;
 }

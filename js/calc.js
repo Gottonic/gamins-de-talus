@@ -135,10 +135,19 @@ const DEFAULT_PARAMS_CULTURES = {
 };
 /* Teneurs d'un engrais : { N, P, K, Mg } (0,14 = 14 %). Ancien format : un seul nutriment + teneur. */
 function teneursEngrais(e) { const t = Object.assign({}, e.teneurs || {}); if (e.nutriment && t[e.nutriment] == null) t[e.nutriment] = num(e.teneur); return t; }
+/* Planches d'une culture : celles placées sur la carte (onglet Planches) ; tant que rien n'est placé, le nombre prévu */
+const planchesDe = (c) => { const n = Array.isArray(c.emplacements) ? c.emplacements.length : 0; return n || num(c.planches); };
+/* Longueur moyenne des planches : celle de leur secteur ; sinon celle de la culture ou des données de la saison */
+function longueurDe(c, p) {
+  const defaut = num(c.longueur) || num(p.longueur), es = Array.isArray(c.emplacements) ? c.emplacements : [];
+  if (!es.length || typeof parcelle !== 'function') return defaut;
+  const secs = parcelle().secteurs || [], ls = es.map((e) => { const x = secs.find((y) => y.k === String(e).split(':')[0]); return x && num(x.longueur) > 0 ? num(x.longueur) : defaut; });
+  return ls.reduce((a, x) => a + x, 0) / ls.length;
+}
 function culture(c, params) {
   const p = Object.assign({}, DEFAULT_PARAMS_CULTURES, params || {});
-  const longueur = num(c.longueur) || num(p.longueur);
-  const planches = num(c.planches);
+  const longueur = longueurDe(c, p);
+  const planches = planchesDe(c);
   const surface = planches * longueur * num(p.facteurSurface);
   const recolte = num(c.rendement) * surface;
   const prixRev = c.prixRevendeur === '' || c.prixRevendeur == null ? num(c.prixDirect) * num(p.partRevendeur) : num(c.prixRevendeur);

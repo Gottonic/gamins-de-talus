@@ -169,7 +169,7 @@ MODULES.irrigation = {
     chargerMeteo();
     const l = lundiDe(todayISO()), xs = culturesIrriguees(l);
     if (!xs.length) return { line: 'Aucune culture en place cette semaine' };
-    let m3 = 0, nb = 0; for (const x of xs) { const r = calculIrrigation(x, l).cible; if (r && r.net > 0.5) { nb++; m3 += r.litresPl * num(x.c.planches) / 1000; } }
+    let m3 = 0, nb = 0; for (const x of xs) { const r = calculIrrigation(x, l).cible; if (r && r.net > 0.5) { nb++; m3 += r.litresPl * planchesDe(x.c) / 1000; } }
     return { line: nb ? `Semaine ${semaineISO(l).semaine} : ${nb} culture${nb > 1 ? 's' : ''} à arroser · ${fmtNum(m3, 1)} m³` : `Semaine ${semaineISO(l).semaine} : pas besoin d'arroser` };
   },
   render(sub) {
@@ -204,7 +204,7 @@ function renderIrrSemaine() {
   const xs = culturesIrriguees(l).map((x) => Object.assign(x, { r: calculIrrigation(x, l) })).filter((x) => x.r.cible);
   /* On garde l'estimation de la semaine (pour comparer ensuite avec ce qui a été mesuré) */
   if (l >= lundiDe(today) && sem.et0Prevu == null && METEO.charge && !METEO.erreur && ms.mes < 7) setTimeout(() => DB.put('irr:' + l, Object.assign({}, DB.get('irr:' + l) || {}, { et0Prevu: r2(ms.et0) })), 0);
-  const totalM3 = xs.reduce((a, x) => a + x.r.cible.litresPl * num(x.c.planches) / 1000, 0);
+  const totalM3 = xs.reduce((a, x) => a + x.r.cible.litresPl * planchesDe(x.c) / 1000, 0);
   const dpMax = Math.max(0, ...xs.map((x) => x.r.dp)), plMax = dpMax ? Math.floor(num(ci.debitSource) * 1000 / dpMax) : 0;
   const lignes = xs.map((x) => {
     const r = x.r.cible, s = x.r.sys, arr = Math.max(1, r.arrosages || 1), coul = (DB.get(ficheDe(x.c)) || {}).couleur || couleurCulture(x.c, (x.c.ordre || 1) - 1);
@@ -212,13 +212,13 @@ function renderIrrSemaine() {
       <td class="r num">${fmtNum(r.etc, 1)}</td><td class="r num">${fmtNum(r.pe, 1)}</td><td class="r num">${r.report ? (r.report > 0 ? '−' : '+') + fmtNum(Math.abs(r.report), 1) : '0'}</td>
       <td class="r num"><b>${fmtNum(r.net, 1)}</b></td><td class="r num">${r.net > 0.5 ? f0(r.litresPl) + ' L' : '—'}</td>
       <td class="r"><b>${r.net > 0.5 ? `${arr} × ${fmtDuree(r.heuresPl / arr)}` : 'pas besoin'}</b>${r.net > 0.5 ? `<br><span class="hint">${fmtDuree(r.heuresPl)} par semaine</span>` : ''}</td>
-      <td class="r num">${r.net > 0.5 ? fmtNum(r.litresPl * num(x.c.planches) / 1000, 2) : '—'}<br><span class="hint">${f0(x.c.planches)} pl.</span></td>
+      <td class="r num">${r.net > 0.5 ? fmtNum(r.litresPl * planchesDe(x.c) / 1000, 2) : '—'}<br><span class="hint">${f0(planchesDe(x.c))} pl.</span></td>
       <td><input class="cell-in" data-fait="${esc(x.c.key)}" inputmode="decimal" value="${r.fait == null ? '' : esc(String(r.fait).replace('.', ','))}" placeholder="${l < lundiDe(today) ? 'conseil' : 'h'}" aria-label="Heures arrosées ${esc(x.c.nom)}"></td></tr>`;
   }).join('');
   const cartes = xs.map((x) => {
     const r = x.r.cible, s = x.r.sys, arr = Math.max(1, r.arrosages || 1), coul = (DB.get(ficheDe(x.c)) || {}).couleur || couleurCulture(x.c, (x.c.ordre || 1) - 1);
     return `<div class="irr-carte"><div class="between"><b><span class="sw" style="background:${coul}"></span>${esc(x.c.nom)}</b><b>${r.net > 0.5 ? `${arr} × ${fmtDuree(r.heuresPl / arr)}` : 'pas besoin'}</b></div>
-      <span class="hint">${esc(STADES[r.stade] || '')} · réserve du sol ${f0(x.r.rfu)} mm · ETc ${fmtNum(r.etc, 1)} mm − pluie ${fmtNum(r.pe, 1)} mm${r.report ? ` ${r.report > 0 ? '−' : '+'} réserve ${fmtNum(Math.abs(r.report), 1)} mm` : ''} = <b>${fmtNum(r.net, 1)} mm</b>${r.net > 0.5 ? ` · ${f0(r.litresPl)} L par planche · ${fmtNum(r.litresPl * num(x.c.planches) / 1000, 1)} m³ pour ${f0(x.c.planches)} pl.` : ''}</span>
+      <span class="hint">${esc(STADES[r.stade] || '')} · réserve du sol ${f0(x.r.rfu)} mm · ETc ${fmtNum(r.etc, 1)} mm − pluie ${fmtNum(r.pe, 1)} mm${r.report ? ` ${r.report > 0 ? '−' : '+'} réserve ${fmtNum(Math.abs(r.report), 1)} mm` : ''} = <b>${fmtNum(r.net, 1)} mm</b>${r.net > 0.5 ? ` · ${f0(r.litresPl)} L par planche · ${fmtNum(r.litresPl * planchesDe(x.c) / 1000, 1)} m³ pour ${f0(planchesDe(x.c))} pl.` : ''}</span>
       <label class="row" style="font-size:13.5px;margin-top:6px">Fait (heures par planche) <input class="cell-in" data-fait="${esc(x.c.key)}" inputmode="decimal" style="width:80px" value="${r.fait == null ? '' : esc(String(r.fait).replace('.', ','))}" placeholder="${l < lundiDe(today) ? 'conseil' : 'h'}"></label></div>`;
   }).join('');
   return `<div class="between"><div class="row"><button class="btn small" type="button" data-act="irrSem" data-n="-7" aria-label="Semaine précédente">←</button><h2 style="margin:0">Semaine ${w.semaine}</h2><button class="btn small" type="button" data-act="irrSem" data-n="7" aria-label="Semaine suivante">→</button></div>
@@ -247,7 +247,7 @@ function renderIrrSaison() {
   const parts = xs.map((x) => {
     const r = calculIrrigation(x, x.fin < lc ? lundiDe(x.fin) : lc);
     const tot = r.semaines.reduce((a, s) => ({ etc: a.etc + s.etc, pe: a.pe + s.pe, net: a.net + s.net, l: a.l + s.litresPl }), { etc: 0, pe: 0, net: 0, l: 0 });
-    return `<details class="fold"><summary><b>${esc(x.c.nom)}</b> · ${r.semaines.length} semaines · ETc ${f0(tot.etc)} mm · pluie efficace ${f0(tot.pe)} mm · arrosage ${f0(tot.net)} mm (${fmtNum(tot.l * num(x.c.planches) / 1000, 1)} m³)</summary>
+    return `<details class="fold"><summary><b>${esc(x.c.nom)}</b> · ${r.semaines.length} semaines · ETc ${f0(tot.etc)} mm · pluie efficace ${f0(tot.pe)} mm · arrosage ${f0(tot.net)} mm (${fmtNum(tot.l * planchesDe(x.c) / 1000, 1)} m³)</summary>
       <div class="table-wrap"><table class="list"><thead><tr><th>Semaine</th><th>Stade</th><th class="r">Kc</th><th class="r">ET0</th><th class="r">ETc</th><th class="r">Pluie eff.</th><th class="r">Besoin net</th><th class="r">Fait (h)</th><th class="r">Réserve fin</th></tr></thead><tbody>
       ${r.semaines.map((s) => { const sem = DB.get('irr:' + s.lundi) || {}; return `<tr><td>${semaineISO(s.lundi).semaine} <span class="hint">${fmtDateCourt(s.lundi)}</span></td><td>${esc(STADES[s.stade] || '')}</td><td class="r num">${fmtNum(s.kc, 2)}</td><td class="r num">${fmtNum(s.et0, 1)}${sem.et0Prevu != null && s.joursMes === 7 ? ` <span class="hint">(prévu ${fmtNum(sem.et0Prevu, 1)})</span>` : s.joursMes < s.n ? ' <span class="hint">est.</span>' : ''}</td><td class="r num">${fmtNum(s.etc, 1)}</td><td class="r num">${fmtNum(s.pe, 1)}</td><td class="r num">${fmtNum(s.net, 1)}</td><td class="r num">${s.fait == null ? '—' : fmtH(s.fait)}</td><td class="r num">${fmtNum(s.stock, 1)}</td></tr>`; }).join('')}
       </tbody></table></div></details>`;
@@ -356,7 +356,7 @@ function toursArrosage(xs, ci) {
   const source = num(ci.debitSource) * 1000; if (!(source > 0)) return null;
   const items = xs.filter((x) => x.r.cible && x.r.cible.net > 0.5).map((x) => {
     const r = x.r.cible, arr = Math.max(1, r.arrosages || 1), dp = x.r.sys.type === 'aspersion' ? num(x.r.sys.pluviometrie) * x.r.surfPl : x.r.dp;
-    return { x, dp, duree: r.heuresPl / arr, arr, planches: Math.round(num(x.c.planches)) };
+    return { x, dp, duree: r.heuresPl / arr, arr, planches: Math.round(planchesDe(x.c)) };
   }).filter((i) => i.dp > 0 && i.planches > 0).sort((a, b) => b.duree - a.duree);
   const tours = []; let cur = null;
   for (const it of items) {
