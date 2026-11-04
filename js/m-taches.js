@@ -148,7 +148,7 @@ function tacheHtml(t, o = {}) {
   const li = t.liste || []; if (li.length) meta.push(`<span>☑ ${li.filter((x) => x.fait).length}/${li.length}</span>`);
   if (t.rep && !done) meta.push(`<span title="Tâche qui se répète">↻</span>`);
   return `<div class="task${done ? ' done' : ''}" draggable="${done ? 'false' : 'true'}" data-tache="${esc(t.key)}" style="--c:${esc(couleurCat(c.cat))}">${o.tri && !done ? '<span class="poignee" data-poignee draggable="false" title="Glisser pour changer l\'ordre" aria-hidden="true">⋮⋮</span>' : ''}<button class="tick" type="button" data-act="taTick" data-key="${esc(t.key)}" aria-label="${done ? 'Rouvrir' : 'Marquer comme faite'} : ${esc(t.titre)}"></button>
-    <div class="body" data-act="taVoir" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp ? `<span class="imp imp${imp}" title="${esc(IMPORTANCES[imp - 1][1])}">${IMPORTANCES[imp - 1][2]}</span> ` : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div></div>`;
+    <div class="body" data-act="taVoir" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp ? `<span class="imp imp${imp}" title="${esc(IMPORTANCES[imp - 1][1])}">${IMPORTANCES[imp - 1][2]}</span> ` : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div>${o.sous && li.length ? `<div class="ta-sous">${li.map((x, i) => `<label class="ta-li"><input type="checkbox" data-li-t="${esc(t.key)}|${i}"${x.fait ? ' checked' : ''}> <span${x.fait ? ' class="barre"' : ''}>${esc(x.t)}</span></label>`).join('')}</div>` : ''}</div>`;
 }
 /* Planifier en deux touches (téléphone) : une journée prévue, ou un jour */
 ACTIONS.taPlanifier = (el) => {
@@ -261,6 +261,7 @@ document.addEventListener('change', (e) => {
   const v = e.target.dataset && e.target.dataset.liT; if (!v) return; const [k, i] = v.split('|'), t = DB.get(k); if (!t) return;
   const l = (t.liste || []).map((x) => Object.assign({}, x)); if (!l[Number(i)]) return; l[Number(i)].fait = e.target.checked;
   DB.put(k, Object.assign({}, t, { liste: l })); const s = e.target.nextElementSibling; if (s) s.classList.toggle('barre', e.target.checked);
+  if (e.target.closest('.ta-sous') && typeof rafraichirFenetre === 'function') rafraichirFenetre();
 });
 /* Les journées prévues auxquelles rattacher une tâche : événements des 6 prochaines semaines (sauf congés) */
 function journeesProchaines(garder) {

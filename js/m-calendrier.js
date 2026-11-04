@@ -212,7 +212,7 @@ function ouvrirJour(d) {
       <label class="row" style="font-size:14px"><input type="checkbox" data-fait="${esc(x.key)}|${x.occ}"${st.fait ? ' checked' : ''}> Fait</label></div>
       ${e.type === 'recolte' ? (() => { const kg = typeof recolteDeLEvenement === 'function' ? recolteDeLEvenement(x.key, x.occ) : 0; return kg ? `<p class="hint">✓ Récolte enregistrée : ${esc(fmtNum(kg, 1))} kg.</p>` : st.sansRecolte ? '<p class="hint">Pas de récolte ce jour-là.</p>' : `<div class="row"><button class="btn small primary" type="button" data-act="recolteEv" data-key="${esc(x.key)}" data-occ="${x.occ}">Enregistrer la récolte</button></div>`; })() : ''}
       ${e.remarque ? `<p class="hint" style="white-space:pre-wrap">${esc(e.remarque)}</p>` : ''}
-      ${tj.length ? `<div class="ev-taches">${tj.map((t) => tacheHtml(t, { sansDate: true, court: true })).join('')}</div>` : ''}
+      ${tj.length ? `<div class="ev-taches">${tj.map((t) => tacheHtml(t, { sansDate: true, court: true, sous: true })).join('')}</div>` : ''}
       <div class="row">${ce.cat !== 'conge' ? `<button class="btn small" type="button" data-act="plJournee" data-j="${esc(x.key + '|' + x.occ)}">☑ Tâches de la journée${tj.length ? ' · ' + tj.length : ''}</button>` : ''}${e.type === 'livraison' && e.contactId ? `<button class="btn small primary" type="button" data-act="evFacturer" data-key="${esc(x.key)}" data-occ="${x.occ}">Créer la facture</button>` : ''}
         <button class="btn small" type="button" data-act="evEdit" data-key="${esc(x.key)}">Modifier</button>
         ${rec ? `<button class="btn small" type="button" data-act="evSauter" data-key="${esc(x.key)}" data-occ="${x.occ}">Annuler ce jour-là</button>` : ''}
@@ -440,7 +440,7 @@ function journeeEnCoursHtml() {
       <span class="jc-coin"><button class="icone-btn" type="button" data-act="evEdit" data-key="${esc(ek)}" title="Modifier la journée" aria-label="Modifier la journée">${ICONE_REGLAGES}</button><button class="icone-btn jc-tri" type="button" data-act="jcFermer" data-id="${esc(x.id)}" title="Replier" aria-label="Replier la journée" aria-expanded="true">▴</button></span>
       <h2 class="jc-tete" data-act="jcFermer" data-id="${esc(x.id)}" role="button" tabindex="0" aria-expanded="true" title="Replier">${esc(iconeEv(e))} ${esc(titreEv(e))} <small class="hint">${esc(quand)}${e.heureDebut ? ' · ' + esc(e.heureDebut) + (e.heureFin ? '–' + esc(e.heureFin) : '') : ''}${e.qui ? ' · ' + esc(quiLabel(e.qui)) : ''}${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</small></h2>
       ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
-      ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Pas encore de tâche pour cette journée.</p>'}
+      ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true, sous: true })).join('')}</div>` : '<p class="hint">Pas encore de tâche pour cette journée.</p>'}
       ${ajoutTacheBarre({ id: 'jc-ajout-' + x.id.replace(/[^\w-]/g, ''), journee: j, placeholder: 'Ajouter une tâche à la journée…' })}
       ${terminerJourneeHtml(j, d)}</section>`;
   }).join('');
@@ -482,7 +482,7 @@ ACTIONS.plJourneeVoir = (el) => {
     ${e.remarque ? `<p class="pl-rem">${linkify(e.remarque)}</p>` : ''}
     ${rec ? `<div class="row"><button class="btn primary" type="button" data-act="recolteEv" data-key="${esc(ek)}" data-occ="${d}">Enregistrer la récolte</button></div>` : ''}
     <h3>Tâches${tj.length ? ` · ${faites}/${tj.length} faites` : ''}</h3>
-    ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true })).join('')}</div>` : '<p class="hint">Aucune tâche pour cette journée.</p>'}
+    ${tj.length ? `<div class="tri-taches">${tj.map((t) => tacheHtml(t, { court: true, sansDate: true, tri: true, sous: true })).join('')}</div>` : '<p class="hint">Aucune tâche pour cette journée.</p>'}
     ${ajoutTacheHtml({ journee: j })}
     ${ce.cat !== 'conge' ? terminerJourneeHtml(j, d) : ''}
     <div class="row-end"><button class="btn" type="button" data-act="evEdit" data-key="${esc(ek)}">Modifier la journée</button></div></div>`);
