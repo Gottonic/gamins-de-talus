@@ -22,7 +22,9 @@ const tousContacts = () => DB.all('ct:');
 const contacts = () => tousContacts().filter((c) => !c.prospect);
 const prospects = () => tousContacts().filter((c) => c.prospect);
 const CT = { search: '', type: '' };
-const PR = { search: '', groupe: 'actifs', prio: '', categorie: '' };
+const PR = { search: '', groupe: 'actifs', prio: '', categorie: '', miens: false };
+/* Le contact principal d'un prospect : la personne qui a noté le premier échange (modifiable sur la fiche) */
+const referentDe = (c) => { const p = c.prospection || {}; if (p.referent !== undefined) return p.referent; const e = (c.journal || []).find((x) => x.par); return e ? e.par : ''; };
 
 /* Statuts de prospection (ceux du tableur) et leur groupe de couleur */
 const STATUTS_P = [
@@ -216,13 +218,15 @@ function renderProspection(sub, id) {
     else if (PR.groupe !== 'tous' && g(c) !== PR.groupe) return false;
     if (PR.prio && String((c.prospection || {}).priorite) !== PR.prio) return false;
     if (PR.categorie && (c.prospection || {}).categorie !== PR.categorie) return false;
+    if (PR.miens && referentDe(c) !== Sync.me) return false;
     return contactMatches(c, PR.search);
   };
   const ordre = { relance: 0, discussion: 1, afaire: 2, valide: 3, clos: 4 };
   const shown = all.filter(filtre).sort((a, b) => (aRelancer(b) ? 1 : 0) - (aRelancer(a) ? 1 : 0) || ((a.prospection || {}).priorite || 9) - ((b.prospection || {}).priorite || 9) || ordre[g(a)] - ordre[g(b)] || byName(a, b));
   const nGroupe = (k) => k === 'actifs' ? all.filter((c) => !['clos', 'valide'].includes(g(c))).length : k === 'tous' ? all.length : cnt[k];
   const chips = GROUPES_P.map(([k, l]) => `<button class="chip${PR.groupe === k ? ' on' : ''}" type="button" data-act="prGroupe" data-k="${k}">${l}<span class="n">${nGroupe(k)}</span></button>`).join('');
-  const prios = ['1', '2', '3'].map((x) => `<button class="chip${PR.prio === x ? ' on' : ''}" type="button" data-act="prPrio" data-k="${x}">Priorité ${x}</button>`).join('');
+  const prios = ['1', '2', '3'].map((x) => `<button class="chip${PR.prio === x ? ' on' : ''}" type="button" data-act="prPrio" data-k="${x}">Priorité ${x}</button>`).join('')
+    + (Sync.me ? `<button class="chip${PR.miens ? ' on' : ''}" type="button" data-act="prMiens">👤 Les miens<span class="n">${all.filter((c) => referentDe(c) === Sync.me).length}</span></button>` : '');
   const cats = [...new Set(all.map((c) => (c.prospection || {}).categorie).filter(Boolean))].sort();
   const list = !all.length ? '<p class="empty">Aucun prospect. Ajoute-en avec « + Prospect », ou importe le fichier de prospection (Réglages → Données).</p>'
     : !shown.length ? '<p class="empty">Aucun prospect ne correspond à ces filtres.</p>'
@@ -230,7 +234,7 @@ function renderProspection(sub, id) {
       const p = c.prospection || {}, last = dernierContact(c);
       return `<a class="item prow${c.key === id ? ' sel' : ''}${aRelancer(c) ? ' due' : ''}" href="#/contacts/prospect/${encodeURIComponent(c.key)}">
         <span class="prio p${p.priorite || 0}" title="Priorité ${p.priorite || '—'}">${p.priorite || '·'}</span>
-        <span class="who"><strong>${esc(displayName(c))}</strong><span class="meta">${esc([p.categorie, p.lieu || c.localite].filter(Boolean).join(' · '))}${aRelancer(c) ? ` · <b class="err">à relancer (${fmtDateCourt(p.relanceLe)})</b>` : last ? ` · dernier échange ${fmtDateCourt(last)}` : ''}</span></span>
+        <span class="who"><strong>${esc(displayName(c))}</strong><span class="meta">${[referentDe(c) ? `<span class="ref${referentDe(c) === Sync.me ? ' moi' : ''}">👤 ${esc(referentDe(c) === Sync.me ? 'Toi' : nomDe(referentDe(c)))}</span>` : '', esc([p.categorie, p.lieu || c.localite].filter(Boolean).join(' · ')), aRelancer(c) ? `<b class="err">à relancer (${fmtDateCourt(p.relanceLe)})</b>` : last ? `dernier échange ${fmtDateCourt(last)}` : ''].filter(Boolean).join(' · ')}</span></span>
         ${pillStatut(pStat(c))}</a>`;
     }).join('');
   let right = '';
@@ -255,6 +259,8 @@ function renderProspection(sub, id) {
       ${ctDroite(right, ouvert, '#/contacts/prospection')}</div>`;
 }
 ACTIONS.prGroupe = (el) => { PR.groupe = el.dataset.k; render(); };
+ACTIONS.prMiens = () => { PR.miens = !PR.miens; render(); };
+ACTIONS.prReferent = (el) => { const c = DB.get(el.dataset.key); if (!c) return; DB.put(el.dataset.key, Object.assign({}, c, { prospection: Object.assign({}, c.prospection || {}, { referent: el.dataset.p }) })); toast(el.dataset.p ? `Contact principal : ${nomDe(el.dataset.p)}.` : 'Plus de contact principal.'); };
 ACTIONS.prPrio = (el) => { PR.prio = PR.prio === el.dataset.k ? '' : el.dataset.k; render(); };
 
 /* Le dernier échange du journal, affiché en haut de la fiche */
@@ -269,6 +275,7 @@ function ficheProspect(c) {
   return `<div class="panel">
     <div class="between"><div><h2>${esc(displayName(c))}</h2><div class="row">${pillStatut(st)}<span class="tpill">${esc(p.categorie || '—')}</span>${p.priorite ? `<span class="tpill">Priorité ${p.priorite}</span>` : ''}</div></div>
       <div class="row"><a class="btn primary" href="#/contacts/convertir/${encodeURIComponent(c.key)}">Devenir client</a><a class="btn" href="#/contacts/pmodifier/${encodeURIComponent(c.key)}">Modifier</a></div></div>
+    <div class="row ref-choix"><span class="hint">Contact principal :</span>${personnes().map((x) => `<button type="button" class="chip${referentDe(c) === x.k ? ' on' : ''}" data-act="prReferent" data-key="${esc(c.key)}" data-p="${referentDe(c) === x.k ? '' : esc(x.k)}">${esc(x.k === Sync.me ? 'Moi' : x.nom)}</button>`).join('')}${referentDe(c) ? '' : '<span class="hint">personne (le premier qui note un échange)</span>'}</div>
     ${dernierEchange(c)}
     ${p.horaires ? `<div class="banner callhours"><span><b>Quand appeler :</b> ${esc(p.horaires)}</span></div>` : ''}
     ${lignesContact(c)}
@@ -291,7 +298,8 @@ FORMS.appel = (v) => {
   const e = { date: v.date || todayISO(), par: Sync.me || '', statut: v.statut, note: v.note };
   const j = (c.journal || []).concat([e]);
   const relance = groupeStatut(v.statut) === 'clos' ? '' : v.relanceLe;
-  DB.put(v.key, Object.assign({}, c, { journal: j, prospection: Object.assign({}, c.prospection || {}, { statut: v.statut, relanceLe: relance }) }));
+  const ref = referentDe(c) || Sync.me || '';
+  DB.put(v.key, Object.assign({}, c, { journal: j, prospection: Object.assign({}, c.prospection || {}, { statut: v.statut, relanceLe: relance, referent: ref }) }));
   toast('Échange noté.' + (groupeStatut(v.statut) === 'valide' ? ' Tu peux maintenant le passer en client.' : ''), 4000);
   render();
 };

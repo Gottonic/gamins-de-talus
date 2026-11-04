@@ -319,11 +319,31 @@ FORMS.ev = (v) => {
   const o = Object.assign({}, old, { type: t, titre: champ('titre') ? v.titre : '', date: v.date, fin: v.fin && v.fin > v.date ? v.fin : '', heureDebut: champ('heures') ? v.heureDebut : '', heureFin: champ('heures') ? v.heureFin : '', qui: v.qui,
     contactId: EVF.ancien && t === EVF.ancien ? old.contactId || '' : '', cultureId: EVF.ancien && t === EVF.ancien ? old.cultureId || '' : '', remarque: v.remarque, rec: champ('rep') ? { freq: v.freq, jusquau: v.freq ? v.jusquau : '' } : { freq: '' } });
   delete o.cat; delete o.sous;
+  /* Date changée : les tâches de la journée (et ce qui est noté pour chaque jour : fait, récolte…) suivent */
+  const decale = v.key && old.date && old.date !== v.date ? Math.round((new Date(v.date + 'T12:00') - new Date(old.date + 'T12:00')) / 864e5) : 0;
+  if (decale) {
+    o.occ = Object.fromEntries(Object.entries(old.occ || {}).map(([d, x]) => [addDays(d, decale), x]));
+    o.exceptions = (old.exceptions || []).map((d) => addDays(d, decale));
+    let n = 0;
+    for (const tk of taches()) if (String(tk.journee || '').startsWith(k + '|')) { DB.put(tk.key, Object.assign({}, tk, { journee: k + '|' + addDays(tk.journee.split('|')[1], decale) })); n++; }
+    if (n) setTimeout(() => toast(`Les ${n} tâche${n > 1 ? 's' : ''} de la journée ${n > 1 ? 'ont' : 'a'} suivi le changement de date.`, 4000), 50);
+  }
   DB.put(k, o); closeSheet();
   if (!v.key && EVF.taches.length && evGenre(o).genre === 'travail') { deplacerTaches(EVF.taches, k + '|' + v.date); toast(`Journée créée avec ${EVF.taches.length} tâche${EVF.taches.length > 1 ? 's' : ''}.`); EVF.taches = []; return; }
   EVF.taches = [];
   if (EVF.sondage && !v.key) { const m = DB.get(EVF.sondage); if (m) DB.put(EVF.sondage, Object.assign({}, m, { evenement: k })); EVF.sondage = ''; } toast(v.key ? 'Événement mis à jour.' : 'Événement ajouté.');
 };
+
+/* Réparation : des tâches restées sur l'ancienne date d'une journée (déplacée avant que les tâches suivent) la retrouvent.
+   Seulement pour une journée qui ne se répète pas : elle n'a qu'une date possible. */
+function reparerJournees() {
+  for (const tk of taches()) {
+    const [ek, d] = String(tk.journee || '').split('|'); if (!ek || !d) continue;
+    const e = DB.get(ek); if (!e || (e.rec && e.rec.freq) || e.date === d) continue;
+    DB.put(tk.key, Object.assign({}, tk, { journee: ek + '|' + e.date }));
+  }
+}
+setTimeout(() => sansAnnuler(reparerJournees), 9000);
 
 /* ---------- Vue d'ensemble : les 14 prochains jours ----------
    Jour par jour : les événements en cartes, avec les tâches rattachées à chaque journée, puis les tâches prévues ce jour.
