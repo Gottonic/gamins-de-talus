@@ -1,5 +1,5 @@
 /* Gamins de Talus : fonctionne hors ligne. Changer VERSION à chaque mise à jour du code. */
-const VERSION = 'gdt-2026-11-04-102';
+const VERSION = 'gdt-2026-11-04-103';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/supabase.js', 'lib/jspdf.umd.min.js', 'lib/qrcode.js', 'lib/jszip.min.js',
@@ -37,7 +37,8 @@ self.addEventListener('notificationclick', (e) => {
   const url = (e.notification.data && e.notification.data.url) || './';
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
     const c = cs.find((x) => x.url.startsWith(self.registration.scope));
-    if (c) return c.focus().then((f) => (f && f.navigate ? f.navigate(url) : null)).catch(() => self.clients.openWindow(url));
+    /* App déjà ouverte : on la montre et elle change de page elle-même (navigate() la rechargerait et perdrait ce qu'on écrit) */
+    if (c) return c.focus().then((f) => { (f || c).postMessage({ aller: url }); }).catch(() => self.clients.openWindow(url));
     return self.clients.openWindow(url);
   }));
 });

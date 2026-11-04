@@ -43,7 +43,11 @@ async function startApp() {
     try {
       /* Nouvelle version de l'app installée : on recharge une fois pour l'utiliser tout de suite */
       const avait = !!navigator.serviceWorker.controller; let fait = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => { if (avait && !fait && !DB.dirty.size) { fait = true; location.reload(); } });
+      /* … sauf si quelqu'un est en train d'écrire : la nouvelle version servira au prochain lancement */
+      const ecrit = () => { const a = document.activeElement; return (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || document.body.classList.contains('sheet-open') || (typeof MSG !== 'undefined' && !!MSG.draft); };
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (avait && !fait && !DB.dirty.size && !ecrit()) { fait = true; location.reload(); } });
+      /* Toucher une notification quand l'app est ouverte : on change de page sans recharger */
+      navigator.serviceWorker.addEventListener('message', (e) => { const u = e.data && e.data.aller; if (!u) return; const h = String(u).replace(/^[^#]*/, ''); if (h && location.hash !== h) location.hash = h; });
       navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => { setInterval(() => r.update(), 30 * 60000); });
     } catch (e) { /* */ }
   }

@@ -7,6 +7,13 @@
 'use strict';
 
 const MSG = { draft: '', timer: null, photo: null, envoi: false, repondA: '', edition: '' };
+/* Le message en cours d'écriture est aussi gardé sur l'appareil : il survit à un rechargement de l'app (nouvelle version, notification, appli fermée) */
+const brouillonMsg = {
+  cle: () => 'gdt-msg-brouillon-' + (Sync.me || ''),
+  lire() { try { return localStorage.getItem(this.cle()) || ''; } catch (e) { return ''; } },
+  ecrire(t) { try { if (t) localStorage.setItem(this.cle(), t); else localStorage.removeItem(this.cle()); } catch (e) { /* */ } },
+};
+Object.defineProperty(MSG, 'draft', { get() { if (this._d == null || this._dMe !== Sync.me) { this._d = brouillonMsg.lire(); this._dMe = Sync.me; } return this._d; }, set(v) { this._d = v || ''; if (!this.edition) brouillonMsg.ecrire(this._d); }, enumerable: true });
 const MAX_EPINGLES = 3;
 /* Réserve la place de la photo avant qu'elle se charge (sinon les messages « redescendent ») */
 const taillePhoto = (ph) => { const w = Number(ph.w) || 4, h = Number(ph.h) || 3, r = Math.min(280 / w, 340 / h); return ` width="${w}" height="${h}" style="width:${Math.round(w * r)}px;aspect-ratio:${w}/${h}"`; };
@@ -373,7 +380,7 @@ ACTIONS.msgMenu = (el) => {
 };
 ACTIONS.msgRepondre = (el) => { MSG.repondA = el.dataset.key; MSG.edition = ''; closeSheet(); render(); const t = $('msg-txt'); if (t) t.focus(); };
 ACTIONS.msgModifier = (el) => { const m = DB.get(el.dataset.key); if (!m) return; MSG.edition = el.dataset.key; MSG.repondA = ''; MSG.draft = m.texte || ''; closeSheet(); render(); const t = $('msg-txt'); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } };
-ACTIONS.msgAnnuler = () => { if (MSG.edition) MSG.draft = ''; MSG.edition = ''; MSG.repondA = ''; render(); };
+ACTIONS.msgAnnuler = () => { if (MSG.edition) MSG._d = null; /* on retrouve le brouillon d'avant */ MSG.edition = ''; MSG.repondA = ''; render(); };
 ACTIONS.msgEpingle = (el) => {
   const k = el.dataset.key, m = DB.get(k); if (!m) return;
   if (!m.epingle && messages().filter((x) => x.epingle).length >= MAX_EPINGLES) { closeSheet(); toast(`${MAX_EPINGLES} messages sont déjà épinglés : désépingle-en un d'abord.`, 4500); return; }
