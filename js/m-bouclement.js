@@ -29,6 +29,8 @@ function comptesAnnee(y) {
   const o = { y, deps, recs, charges, invest, amortItems, rec: tot(recs), ch: tot(charges), inv: tot(invest), amort: amortItems.reduce((a, x) => a + x.a, 0) };
   o.resultat = o.rec - o.ch - o.amort;
   o.cat = {}; for (const d of charges) { const k = libCompte(compteDe(d)); o.cat[k] = (o.cat[k] || 0) + num(d.montant); }
+  o.recCat = {}; for (const r of recs) { const k = libCompte(compteRecette(r)); o.recCat[k] = (o.recCat[k] || 0) + num(r.montant); }
+  o.direct = Object.entries(o.cat).filter(([k]) => k.startsWith('4')).reduce((a, [, v]) => a + v, 0);
   const part = {}; ps.forEach((p) => { part[p.k] = 0; });
   for (const r of recs) { const P = parts(c, r.date); ps.forEach((p) => { part[p.k] += num(r.montant) * P[p.k]; }); }
   for (const d of charges) { const P = parts(c, d.date); ps.forEach((p) => { part[p.k] -= num(d.montant) * P[p.k]; }); }
@@ -51,9 +53,8 @@ function renderBouclement() {
   const y = BCL.annee, o = comptesAnnee(y), ar = archivesDe(y), manque = archiveManquePour(y), ps = personnes();
   const fini = y < todayISO().slice(0, 4);
   const chk = (ok, txt, lien, act) => `<li class="${ok ? 'ok' : 'todo'}"><span class="ck">${ok ? '✓' : '!'}</span><span>${txt}</span>${!ok && lien ? `<a class="btn small" href="${lien}"${act ? ` data-act="${act}"` : ''}>Voir</a>` : ''}</li>`;
-  return `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="bclAnnee" data-y="${x}">${x}</button>`).join('')}</div>
-    <div class="split">
-      <div class="panel"><h2>Avant de boucler ${y}</h2>
+  return `    <div class="bcl-l">
+      <div class="panel"><h2>Bouclement ${y}</h2>
         <ul class="checklist">
           ${chk(fini, fini ? `L'année ${y} est terminée.` : `L'année ${y} n'est pas encore finie : l'archive sera provisoire.`)}
           ${chk(!o.sansJ.length, o.sansJ.length ? `<b>${o.sansJ.length} dépense${o.sansJ.length > 1 ? 's' : ''} sans justificatif</b> (${chf(o.sansJ.reduce((a, d) => a + num(d.montant), 0))})` : 'Toutes les dépenses ont leur justificatif.', '#/finances/depenses', 'goSansJ')}
@@ -73,17 +74,6 @@ function renderBouclement() {
         <p class="hint">${Object.keys(ar).length ? 'Téléchargée par ' + Object.entries(ar).map(([k, a]) => `${esc(nomDe(k))} le ${fmtDate(String(a.le).slice(0, 10))}${a.manquants ? ` (${a.manquants} fichier(s) manquant(s))` : ''}`).join(', ') + '.' : "L'archive de cette année n'a encore été téléchargée par personne."}
           ${manque.length ? `<b>Pas encore téléchargée par ${esc(manque.map((p) => p.nom).join(', '))}.</b>` : ''}
           Conservation dans l'app : photos des messages 6 mois ; justificatifs et bulletins signés 2 ans, et seulement une fois l'archive de leur année téléchargée.</p>
-      </div>
-      <div class="panel"><h2>Comptes ${y}</h2>
-        <table class="list"><tbody>
-          <tr><td>Recettes</td><td class="r num">${money(o.rec)}</td></tr>
-          <tr><td>Charges</td><td class="r num">− ${money(o.ch)}</td></tr>
-          <tr><td>Amortissements</td><td class="r num">− ${money(o.amort)}</td></tr>
-        </tbody><tfoot><tr><td>Résultat</td><td class="r num">${money(o.resultat)}</td></tr></tfoot></table>
-        <h3>Part du résultat de chacun</h3>
-        <table class="list"><tbody>${ps.filter((p) => Math.abs(o.part[p.k]) > 0.004 || o.P31[p.k] > 0).map((p) => `<tr><td>${esc(p.nom)}</td><td class="r num">${money(o.part[p.k])}</td></tr>`).join('')}</tbody></table>
-        <p class="hint">Investissements ${y} : ${chf(o.inv)} (amortis via l'inventaire) · valeur de l'inventaire au 31.12 : ${chf(o.valeurInv)}.
-          Chaque associé déclare sa part comme revenu d'activité indépendante (impôts et caisse AVS). Ces chiffres sont une base de travail : faites-les valider par votre fiduciaire ou votre comptable.</p>
       </div>
     </div>`;
 }
@@ -118,10 +108,14 @@ function pdfComptes(o) {
   t([adr, 'Associés : ' + ps.filter((p) => o.P31[p.k] > 0 || Math.abs(o.part[p.k]) > 0.004).map((p) => p.nom).join(', '), c.mention].filter(Boolean).join(' · '), L, { size: 9, max: R - L }); y += 8;
 
   titre('Compte de résultat');
-  ligne('Recettes (ventes encaissées)', pdfM(o.rec));
-  ligne('Charges', '- ' + pdfM(o.ch));
-  Object.entries(o.cat).sort((a, b) => a[0].localeCompare(b[0])).forEach(([k, v]) => ligne(k, pdfM(v), { ind: 6 }));
-  ligne("Amortissements (voir l'inventaire)", '- ' + pdfM(o.amort));
+  ligne('Produits (recettes encaissées)', pdfM(o.rec), { bold: true });
+  Object.entries(o.recCat).sort((a, b) => a[0].localeCompare(b[0])).forEach(([k, v]) => ligne(k, pdfM(v), { ind: 6 }));
+  ligne('Charges directes (matériel et fournitures)', '- ' + pdfM(o.direct), { bold: true });
+  Object.entries(o.cat).filter(([k]) => k.startsWith('4')).sort((a, b) => a[0].localeCompare(b[0])).forEach(([k, v]) => ligne(k, pdfM(v), { ind: 6 }));
+  ligne('Marge brute', pdfM(o.rec - o.direct), { bold: true });
+  ligne("Autres charges d'exploitation", '- ' + pdfM(o.ch - o.direct), { bold: true });
+  Object.entries(o.cat).filter(([k]) => !k.startsWith('4')).sort((a, b) => a[0].localeCompare(b[0])).forEach(([k, v]) => ligne(k, pdfM(v), { ind: 6 }));
+  ligne("6800 Amortissements (voir l'inventaire)", '- ' + pdfM(o.amort));
   ligne(`Résultat ${o.y}`, 'CHF ' + pdfM(o.resultat), { bold: true });
 
   titre('Part du résultat de chaque associé');
@@ -166,8 +160,8 @@ function csvAnnee(o) {
   const ps = personnes();
   const dep = csv(['N°', 'Date', 'Montant', 'Objet', 'Type', 'Compte', 'Payé par', 'Justificatif', 'Fichiers joints', 'Remarque'],
     o.deps.map((d) => [d.n || '', fmtDate(d.date), r2(d.montant).toFixed(2), d.objet, d.type === 'investissement' ? 'Investissement' : 'Charge', libCompte(compteDe(d)), nomDe(d.par), d.justificatif, (d.fichiers || []).length, d.remarque]));
-  const rec = csv(['Date', 'Montant', 'Client / libellé', 'Moyen', 'Encaissé par', 'Origine'],
-    o.recs.map((r) => [fmtDate(r.date), r2(r.montant).toFixed(2), r.libelle, r.moyen, nomDe(r.par), r.src === 'facture' ? 'Facture ' + r.ref : 'Saisie directe']));
+  const rec = csv(['Date', 'Montant', 'Client / libellé', 'Compte', 'Moyen', 'Encaissé par', 'Origine'],
+    o.recs.map((r) => [fmtDate(r.date), r2(r.montant).toFixed(2), r.libelle, libCompte(compteRecette(r)), r.moyen, nomDe(r.par), r.src === 'facture' ? 'Facture ' + r.ref : 'Saisie directe']));
   const inv = csv(['Objet', 'Catégorie', "Date d'achat", "Valeur d'achat totale", 'Amortissement (taux ou durée)', 'Valeur 01.01', "Achats de l'année", 'Amortissement', 'Valeur 31.12'],
     o.amortItems.map((x) => [x.i.nom, x.i.categorie, fmtDate(x.i.dateAchat), r2(x.i.valeur).toFixed(2), amortTxt(x.i), r2(x.v0).toFixed(2), r2(x.ajouts).toFixed(2), r2(x.a).toFixed(2), r2(x.v1).toFixed(2)]));
   const hs = heuresToutes().filter((h) => yearOf(h.date) === o.y && (num(h.heures) || h.off)).sort((a, b) => String(a.date).localeCompare(b.date));
@@ -350,3 +344,44 @@ ACTIONS.expGo = async (el) => {
   } catch (e) { console.error(e); toast("L'exportation n'a pas pu être créée : " + (e.message || e), 6000); }
   BCL.enCours = false; const b2 = document.querySelector('[data-act="expGo"]'); if (b2) { b2.disabled = false; b2.textContent = 'Télécharger (.zip)'; }
 };
+
+/* ---------- Onglet « Bilans et bouclement » : l'année choisie, le compte de résultat par compte, le bilan, puis le bouclement ---------- */
+function renderBilansBouclement() {
+  const ys = anneesFin(); if (!BCL.annee || !ys.includes(BCL.annee)) BCL.annee = ys.includes(anneeBouclement()) ? anneeBouclement() : ys[0];
+  const y = BCL.annee, o = comptesAnnee(y), ps = personnes(), d = decompteActuel();
+  const heures = Object.values(o.heures).reduce((a, x) => a + x, 0);
+  const lignes = (cat, filtre) => Object.entries(cat).filter(([k]) => filtre(k)).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `<tr class="sous"><td>${esc(k)}</td><td class="r num">${money(v)}</td></tr>`).join('');
+  const autres = o.ch - o.direct;
+  /* Actifs au 31.12 : les objets de l'inventaire par compte, et les factures à recevoir */
+  const actifs = {}; for (const x of o.amortItems) { const k = libCompte(compteObjet(x.i)); actifs[k] = (actifs[k] || 0) + x.v1; }
+  const aRecevoir = o.ouvertes.reduce((a, f) => a + f.total, 0), totActifs = o.valeurInv + aRecevoir;
+  return `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="bclAnnee" data-y="${x}">${x}</button>`).join('')}</div>
+    <div class="stats">
+      <div class="stat good"><span class="k">Produits ${y}</span><span class="v">${chf(o.rec)}</span><span class="s">${o.recs.length} encaissement${o.recs.length > 1 ? 's' : ''}</span></div>
+      <div class="stat bad"><span class="k">Charges</span><span class="v">${chf(o.ch + o.amort)}</span><span class="s">dont amortissements ${chf(o.amort)}</span></div>
+      <div class="stat ${o.resultat >= 0 ? 'good' : 'bad'}"><span class="k">Résultat</span><span class="v">${chf(o.resultat)}</span></div>
+      <div class="stat"><span class="k">Par heure travaillée</span><span class="v">${heures ? chf(o.resultat / heures) : '—'}</span><span class="s">${fmtH(heures)} h</span></div>
+    </div>
+    <div class="split">
+      <div class="panel"><h2>Compte de résultat ${y}</h2>
+        <table class="list cr"><tbody>
+          <tr class="tot"><td>Produits</td><td class="r num">${money(o.rec)}</td></tr>${lignes(o.recCat, () => true)}
+          <tr class="tot"><td>Charges directes (matériel, fournitures)</td><td class="r num">− ${money(o.direct)}</td></tr>${lignes(o.cat, (k) => k.startsWith('4'))}
+          <tr class="tot marge"><td>Marge brute</td><td class="r num">${money(o.rec - o.direct)}</td></tr>
+          <tr class="tot"><td>Autres charges d'exploitation</td><td class="r num">− ${money(autres)}</td></tr>${lignes(o.cat, (k) => !k.startsWith('4'))}
+          <tr class="tot"><td>6800 Amortissements</td><td class="r num">− ${money(o.amort)}</td></tr>
+        </tbody><tfoot><tr><td>Résultat ${y}</td><td class="r num">${money(o.resultat)}</td></tr></tfoot></table>
+        <h3>Part du résultat de chacun</h3>
+        <table class="list"><tbody>${ps.filter((p) => Math.abs(o.part[p.k]) > 0.004 || o.P31[p.k] > 0).map((p) => `<tr><td>${esc(p.nom)}</td><td class="r num">${money(o.part[p.k])}</td></tr>`).join('')}</tbody></table>
+        <p class="hint">Les recettes vont dans leur compte toutes seules (vente directe et particuliers 3200, professionnels 3000) ; on peut le changer sur une recette saisie. Investissements de l'année : ${chf(o.inv)}, amortis via l'inventaire.</p></div>
+      <div class="panel"><h2>Bilan au 31.12.${y}</h2>
+        <table class="list cr"><tbody>
+          <tr class="tot"><td>Actifs connus de l'app</td><td class="r num">${money(totActifs)}</td></tr>
+          <tr class="sous"><td>1100 Factures à recevoir (${o.ouvertes.length})</td><td class="r num">${money(aRecevoir)}</td></tr>
+          ${Object.entries(actifs).sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `<tr class="sous"><td>${esc(k)}</td><td class="r num">${money(v)}</td></tr>`).join('')}
+        </tbody></table>
+        <p class="hint">Valeur des objets après amortissements. Les liquidités (comptes, caisse), les dettes et les apports des associés ne sont pas dans l'app : la fiduciaire les ajoute pour le bilan complet.</p>
+        <h3>Entre associés</h3><p style="margin:0"><b>${esc(phraseDecompte(d))}</b> <a class="btn link small" href="#/finances/associes">Détail</a></p></div>
+    </div>
+    ${renderBouclement()}`;
+}

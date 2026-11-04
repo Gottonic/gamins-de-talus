@@ -244,12 +244,7 @@ function renderProspection(sub, id) {
   else if (sub === 'modifier' && DB.get(id)) right = contactForm(Object.assign({ key: id }, DB.get(id)));
   else right = '<div class="panel"><p class="hint">Choisis un prospect pour voir sa fiche et noter un appel.</p></div>';
   const ouvert = (sub === 'prospect' && (id === 'nouveau' || !!DB.get(id))) || (['convertir', 'modifier'].includes(sub) && !!DB.get(id));
-  return `${pitchBox()}<div class="stats">
-      <div class="stat good"><span class="k">À contacter</span><span class="v">${cnt.afaire}</span></div>
-      <div class="stat blue"><span class="k">À relancer</span><span class="v">${cnt.relance}</span><span class="s ${dus.length ? 'err' : ''}">${dus.length ? `${dus.length} relance${dus.length > 1 ? 's' : ''} prévue${dus.length > 1 ? 's' : ''} aujourd'hui ou avant` : 'pas joignable, à rappeler, mail envoyé'}</span></div>
-      <div class="stat good"><span class="k">En discussion</span><span class="v">${cnt.discussion}</span><span class="s">intéressés, en cours</span></div>
-      <div class="stat"><span class="k">Validés</span><span class="v">${cnt.valide}</span><span class="s">${((n) => `${n} déjà passé${n > 1 ? 's' : ''} en client${n > 1 ? 's' : ''}`)(contacts().filter((c) => c.devenuClientLe || (c.prospection || {}).statut === 'Validé').length)}</span></div>
-    </div>
+  return `${pitchBox()}
     <div class="split wide-left"><div class="panel">
       <div class="between"><h2>Prospection</h2><a class="btn primary small" href="#/contacts/prospect/nouveau">+ Prospect</a></div>
       <div class="grid2">${fld('pr-search', 'Rechercher', `<input id="pr-search" type="search" value="${esc(PR.search)}" placeholder="Nom, lieu, note…" autocomplete="off">`)}
@@ -277,6 +272,7 @@ function ficheProspect(c) {
       <div class="row"><a class="btn primary" href="#/contacts/convertir/${encodeURIComponent(c.key)}">Devenir client</a><a class="btn" href="#/contacts/pmodifier/${encodeURIComponent(c.key)}">Modifier</a></div></div>
     <div class="row ref-choix"><span class="hint">Contact principal :</span>${personnes().map((x) => `<button type="button" class="chip${referentDe(c) === x.k ? ' on' : ''}" data-act="prReferent" data-key="${esc(c.key)}" data-p="${referentDe(c) === x.k ? '' : esc(x.k)}">${esc(x.k === Sync.me ? 'Moi' : x.nom)}</button>`).join('')}${referentDe(c) ? '' : '<span class="hint">personne (le premier qui note un échange)</span>'}</div>
     ${dernierEchange(c)}
+    ${prixPourProspect(c)}
     ${p.horaires ? `<div class="banner callhours"><span><b>Quand appeler :</b> ${esc(p.horaires)}</span></div>` : ''}
     ${lignesContact(c)}
     ${p.pourquoi ? `<div><h3>Pourquoi eux</h3><p class="hint" style="color:var(--ink)">${esc(p.pourquoi)}</p></div>` : ''}
@@ -338,24 +334,43 @@ FORMS.convertir = (v, form) => {
 document.addEventListener('click', (e) => { const b = e.target.closest('form[data-form="convertir"] button[type=submit]'); if (b) b.form._ensuite = b.value; }, true);
 
 /* ---------- Pitch d'appel (modifiable) ---------- */
-const PITCH_DEFAUT = "1. Qui : « Bonjour, je suis [prénom], maraîcher à Marly, Gamins de Talus. »\n2. Quoi : « J'ai cette saison des patates douces et des courges de Marly, en quantité. »\n3. Pour eux : « Vous travaillez local et de saison, je me suis dit que ça pourrait vous intéresser. »\n4. Question : « Qui s'occupe des achats de légumes chez vous, et quel est le meilleur moment pour en parler ? »\n5. Suite : proposer de passer avec un échantillon, ou envoyer prix et quantités par mail.";
-/* Boîte « pitch et prix », repliable, en haut de la prospection */
+/* Boîte « pitch et prix », repliée par défaut : ce qu'on dit, ce qu'on demande (points clés, une ligne chacun), et les prix
+   (ceux de Ventes → Stock et prix). « En ce moment » se remplit tout seul avec les produits en stock. */
+const DIRE_DEFAUT = "Gamins de Talus, maraîchers à Marly\nLégumes de notre champ à Marly, sans traitements ni engrais chimiques\nLivraison possible par nous-mêmes";
+const DEMANDER_DEFAUT = "Qui s'occupe des achats de légumes ? (noter le prénom)\nQuels légumes vous intéressent, quelles quantités par semaine ?\nQuel jour de livraison vous arrange ?\nFacture à 30 jours, ça vous va ?\nJe passe avec un échantillon ? Sinon : votre e-mail pour les prix";
+const pointsDe = (t) => String(t || '').split('\n').map((x) => x.replace(/^\s*[-•\d.)]+\s*/, '').trim()).filter(Boolean);
+function enStockMaintenant() { return typeof stockDe === 'function' ? produits().filter((p) => num(stockDe(p.key)) > 0).map((p) => p.nom) : []; }
 function pitchBox() {
-  const P = DB.get('cfg:prospection') || {}, ouvert = ls.get('gdt-pitch-ouvert') === '1';
-  const prods = produits(), cols = NIVEAUX;
-  const prix = prods.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Fourchette</th>${cols.map(([k]) => `<th class="r">${esc(NIVEAU_COURT[k])}</th>`).join('')}</tr></thead><tbody>
-    ${prods.map((p) => `<tr><td>${esc(p.nom)}${p.remarque ? `<br><span class="hint">${esc(p.remarque)}</span>` : ''}</td><td class="r num" style="white-space:nowrap">${fourchette(p) || '—'}</td>${cols.map(([k]) => `<td class="r num">${vide(prixNiveau(p, k)) ? '—' : money(prixNiveau(p, k))}</td>`).join('')}</tr>`).join('')}
-    </tbody></table></div><p class="hint">CHF par ${esc(prods[0].unite || 'kg')}. À modifier dans Ventes → <a href="#/factures/stock">Stock et prix</a>.</p>` : '<p class="hint">Aucun produit. Ajoute-les dans Ventes → Stock et prix.</p>';
-  return `<details class="pitchbox" id="pitchbox"${ouvert ? ' open' : ''}><summary><span>Pitch d'appel et prix</span><span class="hint">${ouvert ? 'fermer' : 'ouvrir'}</span></summary>
-    <div class="split"><div class="form"><div class="between"><h3>Pitch</h3><button class="btn small" type="button" data-act="pitchEdit">Modifier</button></div>
-      <div class="notes">${esc(P.pitch || PITCH_DEFAUT)}</div>${P.memo ? `<h3>À avoir sous la main</h3><div class="notes">${esc(P.memo)}</div>` : ''}</div>
-      <div class="form"><h3>Prix</h3>${prix}</div></div></details>`;
+  const P = DB.get('cfg:prospection') || {}, ouvert = ls.get('gdt-pitch-ouvert') === '1', st = enStockMaintenant();
+  const prods = produits().filter((p) => NIVEAUX.some(([k]) => !vide(prixNiveau(p, k))));
+  const prix = prods.length ? `<table class="list pitch-prix"><thead><tr><th></th>${NIVEAUX.map(([k]) => `<th class="r">${esc(NIVEAU_COURT[k])}</th>`).join('')}</tr></thead><tbody>
+    ${prods.map((p) => `<tr><td>${esc(p.nom)}${st.includes(p.nom) ? ' <span title="En stock">●</span>' : ''}</td>${NIVEAUX.map(([k]) => `<td class="r num">${vide(prixNiveau(p, k)) ? '—' : money(prixNiveau(p, k))}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <p class="hint">CHF par ${esc(prods[0].unite || 'kg')}, tirés de <a href="#/factures/stock">Ventes → Stock et prix</a>. ● en stock.</p>` : '<p class="hint">Aucun prix : ajoute-les dans <a href="#/factures/stock">Ventes → Stock et prix</a>.</p>';
+  const ul = (l) => `<ul>${l.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+  return `<details class="pitchbox" id="pitchbox"${ouvert ? ' open' : ''}><summary><span>Pitch et prix</span><span class="hint">${ouvert ? 'fermer' : 'ouvrir'}</span></summary>
+    <div class="pitch-g">
+      <div><h4>À dire</h4>${ul(pointsDe(P.dire ?? DIRE_DEFAUT).concat(st.length ? [`En ce moment : ${st.join(', ')}`] : []))}</div>
+      <div><h4>À demander</h4>${ul(pointsDe(P.demander ?? DEMANDER_DEFAUT))}</div>
+      <div><h4>Prix</h4>${prix}</div>
+    </div>
+    ${P.memo ? `<p class="hint pitch-memo">📌 ${esc(P.memo)}</p>` : ''}
+    <div class="row-end"><button class="btn link small" type="button" data-act="pitchEdit">Modifier les points</button></div></details>`;
 }
 ACTIONS.pitchEdit = () => {
   const P = DB.get('cfg:prospection') || {};
-  openSheet(`${sheetHead("Pitch d'appel")}<form class="sbody form" data-form="pitch">${txt('pi-p', 'Pitch', P.pitch || PITCH_DEFAUT, { name: 'pitch', rows: 8 })}${txt('pi-m', 'À avoir sous la main', P.memo, { name: 'memo', rows: 5 })}<div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  openSheet(`${sheetHead('Pitch : points clés')}<form class="sbody form" data-form="pitch">
+    ${txt('pi-d', 'À dire (un point par ligne)', P.dire ?? DIRE_DEFAUT, { name: 'dire', rows: 5, sub: '« En ce moment : … » s\'ajoute tout seul avec les produits en stock.' })}
+    ${txt('pi-q', 'À demander (un point par ligne)', P.demander ?? DEMANDER_DEFAUT, { name: 'demander', rows: 6 })}
+    ${inp('pi-m', 'Mémo (facultatif)', P.memo, { name: 'memo', attrs: { placeholder: 'Ex. commande minimum 10 kg' } })}
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
-FORMS.pitch = (v) => { DB.put('cfg:prospection', Object.assign({}, DB.get('cfg:prospection') || {}, { pitch: v.pitch, memo: v.memo })); closeSheet(); toast('Pitch enregistré.'); };
+FORMS.pitch = (v) => { DB.put('cfg:prospection', Object.assign({}, DB.get('cfg:prospection') || {}, { dire: v.dire, demander: v.demander, memo: v.memo })); closeSheet(); toast('Points enregistrés.'); };
+/* Sur la fiche d'un prospect : ses prix (selon sa catégorie) et ce qui est en stock, sous les yeux pendant l'appel */
+function prixPourProspect(c) {
+  const t = c.type || TYPE_DE_CATEGORIE[(c.prospection || {}).categorie] || 'pro', niv = niveauDeType(t), st = enStockMaintenant();
+  const l = produits().filter((p) => !vide(prixNiveau(p, niv))); if (!l.length) return '';
+  return `<div class="prix-pour"><span class="hint">Prix ${esc(NIVEAU_COURT[niv])} :</span> ${l.map((p) => `<span class="tpill${st.includes(p.nom) ? ' stock' : ''}">${esc(p.nom)} <b class="num">${money(prixNiveau(p, niv))}</b></span>`).join(' ')}</div>`;
+}
 
 /* Pour l'accueil et le calendrier */
 function relancesProspection(de, a) { return prospects().filter((c) => { const r = (c.prospection || {}).relanceLe; return r && r >= de && r <= a && !['clos', 'valide'].includes(groupeStatut(pStat(c))); }); }

@@ -269,11 +269,11 @@ function renderComptesReglages() {
   const l = comptesTous(), nDep = {}; for (const d of depenses()) { const c = compteDe(d); nDep[c] = (nDep[c] || 0) + 1; }
   const ligne = (c, i) => `<div class="cpt-it${c.cache ? ' cache' : ''}"><input class="num cpt-n" value="${esc(c.n)}" data-cpt="${i}" data-f="n" maxlength="6" inputmode="numeric" aria-label="Numéro">
     <input value="${esc(c.nom)}" data-cpt="${i}" data-f="nom" maxlength="60" aria-label="Nom" style="flex:1;min-width:140px">
-    ${estInvest(c.n) ? `<label class="hint cpt-lab">Taux <input type="number" value="${esc(c.taux || '')}" data-cpt="${i}" data-f="taux" min="0" max="100" style="width:64px"> %</label>` : `<label class="hint cpt-lab">Pour <select data-cpt="${i}" data-f="pour">${POUR_CHOIX.map(([k, n]) => `<option value="${k}"${(c.pour || '') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`}
-    <span class="hint">${nDep[c.n] ? nDep[c.n] + ' dép.' : ''}</span>
+    ${estRecette(c.n) ? '<span class="hint cpt-lab">recette</span>' : estInvest(c.n) ? `<label class="hint cpt-lab">Taux <input type="number" value="${esc(c.taux || '')}" data-cpt="${i}" data-f="taux" min="0" max="100" style="width:64px"> %</label>` : `<label class="hint cpt-lab">Pour <select data-cpt="${i}" data-f="pour">${POUR_CHOIX.map(([k, n]) => `<option value="${k}"${(c.pour || '') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`}
+    <span class="hint">${nDep[c.n] ? nDep[c.n] + (estRecette(c.n) ? ' rec.' : ' dép.') : ''}</span>
     <button class="btn small" type="button" data-act="cptCacher" data-i="${i}" title="${c.cache ? 'Remettre dans la liste' : 'Ne plus proposer'}">${c.cache ? 'Remettre' : 'Masquer'}</button></div>`;
-  return `<div class="panel"><h2>Comptes des dépenses</h2>
-    <p class="hint">Numéros du plan comptable suisse des PME, gardés au minimum. <b>1xxx</b> = investissements (inventaire, amortis ; le taux est proposé pour un nouvel objet), <b>4xxx</b> = charges directes (matériel, ce qui part dans les cultures), <b>6xxx</b> = autres charges. « Pour » pré-coche à quoi sert la dépense (marges par culture). Un compte masqué n'est plus proposé mais garde ses dépenses.</p>
+  return `<div class="panel"><h2>Comptes</h2>
+    <p class="hint">Numéros du plan comptable suisse des PME, gardés au minimum. <b>1xxx</b> = investissements (inventaire, amortis ; le taux est proposé pour un nouvel objet), <b>3xxx</b> = recettes (les ventes y vont toutes seules : vente directe et particuliers en 3200, professionnels en 3000), <b>4xxx</b> = charges directes (matériel, ce qui part dans les cultures), <b>6xxx</b> = autres charges. « Pour » pré-coche à quoi sert la dépense (marges par culture). Un compte masqué n'est plus proposé mais garde ses dépenses.</p>
     <div class="cpt-l">${l.map(ligne).join('')}</div>
     <div class="row"><input id="cpt-new-n" class="num" placeholder="N° (ex. 4050)" maxlength="6" inputmode="numeric" style="width:120px"><input id="cpt-new-nom" placeholder="Nom (ex. Location de matériel)" maxlength="60" style="flex:1"><button class="btn" type="button" data-act="cptAjout">+ Compte</button></div></div>`;
 }

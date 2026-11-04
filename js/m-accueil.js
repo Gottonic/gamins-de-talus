@@ -34,7 +34,7 @@ function renderAccueil() {
   const kpis = `<section class="dash" aria-label="Tableau de bord">
     <a class="kpi t-factures" href="#/factures"><span class="k">À encaisser</span><span class="v">${chf(ouvertes.reduce((a, f) => a + f.total, 0))}</span>
       <span class="s ${retard.length ? 'bad' : ''}">${ouvertes.length ? `${ouvertes.length} facture${ouvertes.length > 1 ? 's' : ''} ouverte${ouvertes.length > 1 ? 's' : ''}${retard.length ? `, dont ${retard.length} en retard` : ''}` : 'Toutes les factures sont payées'}</span></a>
-    <a class="kpi t-finances" href="#/finances/bilan"><span class="k">Résultat ${y}</span><span class="v">${chf(b.resultat)}</span><span class="s">Recettes ${chf(b.rec)} · charges ${chf(b.charges)}</span></a>
+    <a class="kpi t-finances" href="#/finances/bilans"><span class="k">Résultat ${y}</span><span class="v">${chf(b.resultat)}</span><span class="s">Recettes ${chf(b.rec)} · charges ${chf(b.charges)}</span></a>
     <a class="kpi t-calendrier" href="#/calendrier/heures"><span class="k">${Sync.me ? 'Mes heures cette semaine' : 'Heures cette semaine'}</span><span class="v">${fmtH(Sync.me ? hs[Sync.me] || 0 : hTot)} h</span><span class="s">${personnes().map((p) => `${esc(p.nom)} ${fmtH(hs[p.k] || 0)} h`).join(' · ')}</span></a>
   </section>`;
 
@@ -45,7 +45,7 @@ function renderAccueil() {
   const yb = String(Number(y) - 1);
   if (typeof archiveManquePour === 'function' && (depenses().some((x) => yearOf(x.date) === yb) || recettesToutes().some((x) => yearOf(x.date) === yb))) {
     const manque = archiveManquePour(yb);
-    if (manque.some((p) => p.k === Sync.me)) rappels.push(`<a class="banner rappel" href="#/finances/annee">📦 <span><b>Fin d'année ${yb}</b> · télécharger l'archive des comptes (impôts)</span></a>`);
+    if (manque.some((p) => p.k === Sync.me)) rappels.push(`<a class="banner rappel" href="#/finances/bilans">📦 <span><b>Fin d'année ${yb}</b> · télécharger l'archive des comptes (impôts)</span></a>`);
   }
 
   const tiles = ORDRE.filter((k) => MODULES[k]).map((k) => {

@@ -36,13 +36,14 @@ function lierDepenseInventaire(depKey, invKey, opts) {
   return n;
 }
 function ajouterInventaireDepuis(depKey) { if (!objetDeDepense(depKey)) lierDepenseInventaire(depKey, '', {}); }
+const compteObjet = (i) => String(i.compte || ({ Machine: '1500', Irrigation: '1510', 'Véhicule': '1530', Outil: '1540' })[i.categorie] || '1500');
 const amortTxt = (i) => i.methode === 'lineaire' ? `${num(i.duree) || 1} ans` : pct(i.taux);
 
 MODULES.inventaire = {
   titre: 'Inventaire',
   tuile() { const y = Number(todayISO().slice(0, 4)), l = inventaire(); const v = l.reduce((a, i) => a + valeurFinAnnee(i, y, !!cfg().amortirDesAchat), 0); const p = achats().filter((a) => a.statut !== 'achete').length; return { line: `${l.length} objets · valeur ${chf(v)}${p ? ` · ${p} achats prévus` : ''}` }; },
   /* L'inventaire est maintenant dans Finances : les anciennes adresses y mènent */
-  render(sub) { setTimeout(() => location.replace(sub === 'achats' ? '#/finances/achats' : '#/finances/inventaire'), 0); return ''; },
+  render() { setTimeout(() => location.replace('#/finances/inventaire'), 0); return ''; },
 };
 
 function renderInventaire() {
@@ -97,15 +98,6 @@ FORMS.inv = (v) => {
   DB.put(k, o); closeSheet(); toast('Objet enregistré.');
 };
 
-function renderAchats() {
-  const l = achats(), prevus = l.filter((a) => a.statut !== 'achete'), faits = l.filter((a) => a.statut === 'achete');
-  const tot = (xs) => xs.reduce((s, a) => s + num(a.qte || 1) * num(a.prixUnit), 0);
-  const ordre = { indispensable: 0, utile: 1, plustard: 2 };
-  const item = (a) => `<div class="item" data-act="achatEdit" data-key="${esc(a.key)}"><span class="who"><strong>${num(a.qte) > 1 ? fmtNum(a.qte) + ' × ' : ''}${esc(a.nom)}</strong><span class="meta">${[a.fournisseur, (PRIO.find((p) => p[0] === a.priorite) || ['', ''])[1]].filter(Boolean).map(esc).join(' · ')}${a.lien ? ` · <a href="${esc(a.lien)}" target="_blank" rel="noopener">lien</a>` : ''}</span></span><span class="amt">${a.prixUnit ? chf(num(a.qte || 1) * num(a.prixUnit)) : '—'}</span></div>`;
-  return `<div class="split"><div class="panel"><div class="between"><h2>À acheter</h2><button class="btn primary small" type="button" data-act="achatEdit">+ Achat</button></div>
-      ${prevus.length ? `<p class="hint">Total estimé : <span class="num">${chf(tot(prevus))}</span></p><div class="items">${prevus.sort((a, b) => (ordre[a.priorite] ?? 3) - (ordre[b.priorite] ?? 3)).map(item).join('')}</div>` : '<p class="empty">Rien de prévu.</p>'}</div>
-    <div class="panel"><h2>Déjà achetés</h2>${faits.length ? `<div class="items">${faits.map(item).join('')}</div>` : '<p class="empty">Aucun.</p>'}</div></div>`;
-}
 ACTIONS.achatEdit = (el) => {
   if (el.closest && el.closest('a[target]')) return;
   const k = el.dataset.key || '', a = k ? DB.get(k) : { qte: 1, priorite: 'utile', statut: 'prevu' };
@@ -128,3 +120,16 @@ ACTIONS.achatFait = (el) => {
   DB.put(el.dataset.key, Object.assign({}, a, { statut: 'achete' }));
   ACTIONS.depEdit({ dataset: {}, _pre: { objet: a.nom, montant: a.prixUnit ? r2(num(a.qte || 1) * num(a.prixUnit)) : '', compte: '1540' } });
 };
+
+/* Les « achats prévus » sont devenus des tâches : chaque achat pas encore fait devient une tâche (une seule fois) */
+function achatsEnTaches() {
+  const l = achats().filter((a) => a.statut !== 'achete' && !a.tache); if (!l.length) return;
+  const imp = { indispensable: 3, utile: 2, plustard: 1 };
+  for (const a of l) {
+    const tk = 't:' + uid('t'), prix = a.prixUnit ? r2(num(a.qte || 1) * num(a.prixUnit)) : 0;
+    DB.put(tk, { titre: `Acheter : ${a.nom}${num(a.qte) > 1 ? ' × ' + fmtNum(a.qte) : ''}`, statut: 'afaire', importance: imp[a.priorite] || 2, cat: 'admin', sous: '', cultures: [],
+      remarques: [a.fournisseur ? 'Fournisseur : ' + a.fournisseur : '', prix ? 'Prix estimé : ' + chf(prix) : '', a.lien || ''].filter(Boolean).join('\n'), cree: new Date().toISOString(), creePar: Sync.me || '' });
+    DB.put(a.key, Object.assign({}, a, { tache: tk }));
+  }
+}
+setTimeout(() => { if (Sync.me || LOCAL_MODE) sansAnnuler(achatsEnTaches); }, 12000);

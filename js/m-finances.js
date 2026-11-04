@@ -38,19 +38,14 @@ MODULES.finances = {
   titre: 'Finances',
   tuile() { const d = decompteActuel(), gFin = garanties().filter((x) => x.garantie <= addDays(todayISO(), 30)).length; return { line: gFin ? `🛡️ ${gFin} garantie${gFin > 1 ? 's' : ''} se termine${gFin > 1 ? 'nt' : ''} bientôt` : phraseDecompte(d), badge: gFin + depenses().filter((x) => sansJustificatif(x) && (typeof pourMoi !== 'function' || pourMoi(x.par))).length }; },
   render(sub) {
-    /* Trois onglets : l'argent qui entre et sort, les comptes entre associés, la fin d'année (comptes, inventaire, archive) */
-    const FINA = ['annee', 'bilan', 'inventaire', 'achats'];
-    const onglet = sub === 'associes' ? 'associes' : FINA.includes(sub) ? 'annee' : '';
-    const t = tabs('finances', [['', 'Dépenses et recettes'], ['associes', 'Associés'], ['annee', "Fin d'année"]], onglet);
+    /* Quatre onglets : l'argent qui entre et sort, les comptes entre associés, les bilans et le bouclement de l'année, l'inventaire */
+    if (['annee', 'bilan'].includes(sub)) sub = 'bilans'; if (sub === 'achats') { setTimeout(() => location.replace('#/finances/inventaire'), 0); return ''; }
+    const onglet = ['associes', 'bilans', 'inventaire'].includes(sub) ? sub : '';
+    const t = tabs('finances', [['', 'Dépenses et recettes'], ['associes', 'Associés'], ['bilans', 'Bilans et bouclement'], ['inventaire', 'Inventaire']], onglet);
     const sous = (items, cur) => `<nav class="row sousnav" aria-label="Rubriques">${items.map(([k, l]) => `<a class="chip${k === cur ? ' on' : ''}" href="#/finances/${k}">${l}</a>`).join('')}</nav>`;
     if (onglet === 'associes') return t + renderAssocies();
-    if (onglet === 'annee') {
-      const n = sous([['annee', 'Bouclement et archive'], ['bilan', 'Comptes de l\'année'], ['inventaire', 'Inventaire'], ['achats', 'Achats prévus']], sub);
-      if (sub === 'inventaire') return t + n + renderInventaire();
-      if (sub === 'achats') return t + n + renderAchats();
-      if (sub === 'bilan') return t + n + renderBilan();
-      return t + n + renderBouclement();
-    }
+    if (onglet === 'bilans') return t + renderBilansBouclement();
+    if (onglet === 'inventaire') return t + renderInventaire();
     const n = sous([['depenses', 'Dépenses'], ['recettes', 'Recettes']], sub === 'recettes' ? 'recettes' : 'depenses');
     if (sub === 'recettes') return t + n + renderRecettes();
     return t + n + renderDepenses();
@@ -70,30 +65,6 @@ function bilanAnnee(y) {
   const amort = DB.all('inv:').reduce((a, i) => a + amortissementAnnee(i, Number(y), !!cfg().amortirDesAchat), 0);
   const cat = {}; for (const d of deps) { if (d.type === 'investissement') continue; const k = libCompte(compteDe(d)); cat[k] = (cat[k] || 0) + num(d.montant); }
   return { charges, invest, rec, amort, resultat: rec - charges - amort, cat, nDep: deps.length, nRec: recs.length };
-}
-function renderBilan() {
-  const ys = anneesFin(); const y = FIN.annee && ys.includes(FIN.annee) ? FIN.annee : ys[0];
-  const b = bilanAnnee(y), d = decompteActuel();
-  const heures = Object.values(totalHeures(DB.all('h:'), (h) => yearOf(h.date) === y)).reduce((a, x) => a + x, 0);
-  const maxCat = Math.max(1, ...Object.values(b.cat));
-  return `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="finAnnee" data-y="${x}">${x}</button>`).join('')}</div>
-    <div class="stats">
-      <div class="stat good"><span class="k">Recettes ${y}</span><span class="v">${chf(b.rec)}</span><span class="s">${b.nRec} encaissement${b.nRec > 1 ? 's' : ''}</span></div>
-      <div class="stat bad"><span class="k">Charges</span><span class="v">${chf(b.charges)}</span></div>
-      <div class="stat blue"><span class="k">Investissements</span><span class="v">${chf(b.invest)}</span><span class="s">Amortis sur plusieurs années</span></div>
-      <div class="stat"><span class="k">Amortissements ${y}</span><span class="v">${chf(b.amort)}</span></div>
-      <div class="stat ${b.resultat >= 0 ? 'good' : 'bad'}"><span class="k">Résultat</span><span class="v">${chf(b.resultat)}</span><span class="s">Recettes − charges − amortissements</span></div>
-      <div class="stat"><span class="k">Par heure travaillée</span><span class="v">${heures ? chf(b.resultat / heures) : '—'}</span><span class="s">${fmtH(heures)} h en ${y}</span></div>
-    </div>
-    <div class="split">
-      <div class="panel"><div class="between"><h2>Entre associés</h2><a class="btn small" href="#/finances/associes">Détail</a></div>
-        <p style="margin:0;font-size:18px"><b>${esc(phraseDecompte(d))}</b></p>
-        <p class="hint">Calculé sur toutes les dépenses, recettes et remboursements depuis le début, avec un partage selon la date de chaque montant. Aujourd'hui : ${phrasePartage()}.</p>
-        ${d.transferts.length ? `<div class="row"><button class="btn primary" type="button" data-act="regEdit" data-de="${d.transferts[0].de}" data-a="${d.transferts[0].a}" data-m="${d.transferts[0].montant}">Enregistrer le remboursement</button></div>` : ''}
-      </div>
-      <div class="panel"><h2>Charges ${y} par compte</h2>${Object.keys(b.cat).length ? `<div class="bars">${Object.entries(b.cat).sort((a, c) => a[0].localeCompare(c[0])).map(([k, v]) => `<div class="bar-row"><span>${esc(k)}</span><span class="bar-track"><span class="bar-fill b3" style="width:${(v / maxCat * 100).toFixed(1)}%"></span></span><span class="num">${money(v)}</span></div>`).join('')}</div>` : '<p class="empty">Aucune dépense cette année.</p>'}</div>
-    </div>
-    <div class="row"><a class="btn primary" href="#" data-act="depEdit">+ Dépense</a><a class="btn" href="#" data-act="recEdit">+ Recette</a></div>`;
 }
 ACTIONS.finAnnee = (el) => { FIN.annee = el.dataset.y; render(); };
 
@@ -236,10 +207,10 @@ function renderRecettes() {
   return `<div class="panel"><div class="between"><h2>Recettes</h2><div class="row"><button class="btn small" type="button" data-act="recCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="recEdit">+ Autre entrée</a></div></div>
     <p class="hint">Les ventes arrivent ici toutes seules depuis <a href="#/factures">Ventes</a> : factures payées, ventes sans facture, encaissements de la vente directe. Ici, on saisit seulement l'argent qui n'est pas une vente : subvention, remboursement, indemnité…</p>
     <div class="grid2">${sel('fin-annee', 'Année', FIN.annee, [['', 'Toutes']].concat(ys.map((y) => [y, y])))}</div>
-    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Client / libellé</th><th>Moyen</th><th>Encaissé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((r) => r.src === 'facture'
-      ? `<tr class="click" data-act="go" data-href="#/factures/voir/${encodeURIComponent(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle)} <span class="tpill">${esc(r.ref)}</span></td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`
-      : `<tr class="click" data-act="recEdit" data-key="${esc(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle || '—')}</td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td colspan="4">${list.length} recette${list.length > 1 ? 's' : ''}</td><td class="r num">${money(tot)}</td></tr></tfoot></table></div>` : '<p class="empty">Aucune recette pour cette période.</p>'}</div>`;
+    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Client / libellé</th><th>Compte</th><th>Moyen</th><th>Encaissé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((r) => r.src === 'facture'
+      ? `<tr class="click" data-act="go" data-href="#/factures/voir/${encodeURIComponent(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle)} <span class="tpill">${esc(r.ref)}</span></td><td title="${esc(libCompte(compteRecette(r)))}" class="num">${esc(compteRecette(r))}</td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`
+      : `<tr class="click" data-act="recEdit" data-key="${esc(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle || '—')}</td><td title="${esc(libCompte(compteRecette(r)))}" class="num">${esc(compteRecette(r))}</td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="5">${list.length} recette${list.length > 1 ? 's' : ''}</td><td class="r num">${money(tot)}</td></tr></tfoot></table></div>` : '<p class="empty">Aucune recette pour cette période.</p>'}</div>`;
 }
 ACTIONS.recEdit = (el) => {
   const k = el.dataset.key || '', r = k ? DB.get(k) : { date: todayISO(), moyen: 'TWINT', par: Sync.me || 'nicolas' };
@@ -249,6 +220,7 @@ ACTIONS.recEdit = (el) => {
     <div class="grid2">${inp('rc-date', 'Date', r.date, { name: 'date', type: 'date', req: true })}${inp('rc-montant', 'Montant CHF', r.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}</div>
     ${sel('rc-contact', 'Client (contact)', r.contactId || '', [['', '— aucun / vente au stand —']].concat(cl.map((c) => [c.key, displayName(c)])), { name: 'contactId' })}
     ${inp('rc-client', 'Libellé', r.client, { name: 'client', attrs: { placeholder: 'Ex. Subvention, remboursement assurance' } })}
+    <div class="field"><label for="rc-compte">Compte</label><select id="rc-compte" name="compte">${optionsComptesRecette(k ? compteRecette(Object.assign({ src: 'recette' }, r)) : '3600')}</select></div>
     <div class="grid2">${sel('rc-moyen', 'Moyen', r.moyen, MOYENS.map((m) => [m, m]), { name: 'moyen' })}${sel('rc-par', 'Encaissé par', r.par, persOptions(), { name: 'par' })}</div>
     ${inp('rc-just', 'Justificatif', r.justificatif, { name: 'justificatif' })}
     ${inp('rc-rem', 'Remarque', r.remarque, { name: 'remarque' })}
@@ -258,12 +230,12 @@ FORMS.rec = (v) => {
   const m = num(v.montant); if (!(m > 0) || !v.date) { toast('Date et montant sont obligatoires.'); return; }
   const c = DB.get(v.contactId);
   const k = v.key || 'rec:' + uid('r'), old = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '' };
-  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), contactId: v.contactId, client: v.client || (c ? displayName(c) : ''), moyen: v.moyen, par: v.par, justificatif: v.justificatif, remarque: v.remarque }));
+  DB.put(k, Object.assign({}, old, { date: v.date, montant: r2(m), contactId: v.contactId, client: v.client || (c ? displayName(c) : ''), moyen: v.moyen, par: v.par, justificatif: v.justificatif, remarque: v.remarque, compte: v.compte || '' }));
   closeSheet(); toast(v.key ? 'Recette mise à jour.' : 'Recette ajoutée.');
 };
 ACTIONS.recCsv = () => {
-  const rows = recettesToutes().reverse().map((r) => [fmtDate(r.date), r2(r.montant).toFixed(2), r.libelle, r.moyen, nomDe(r.par), r.src === 'facture' ? 'Facture ' + r.ref : 'Saisie directe']);
-  downloadFile(`Recettes Gamins de Talus ${todayISO()}.csv`, csv(['Date', 'Montant', 'Client / libellé', 'Moyen', 'Encaissé par', 'Origine'], rows), 'text/csv;charset=utf-8');
+  const rows = recettesToutes().reverse().map((r) => [fmtDate(r.date), r2(r.montant).toFixed(2), r.libelle, libCompte(compteRecette(r)), r.moyen, nomDe(r.par), r.src === 'facture' ? 'Facture ' + r.ref : 'Saisie directe']);
+  downloadFile(`Recettes Gamins de Talus ${todayISO()}.csv`, csv(['Date', 'Montant', 'Client / libellé', 'Compte', 'Moyen', 'Encaissé par', 'Origine'], rows), 'text/csv;charset=utf-8');
 };
 
 /* ---------- Entre associés ---------- */

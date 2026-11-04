@@ -244,6 +244,10 @@ table.irr input.cell-in { width: 84px; }
 .exp-pour { background: var(--s-finances); border-radius: 8px; padding: 8px 10px; font-size: 14px; margin: 8px 0 0; }
 .rel-l { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
 .rel-it { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; font-weight: 400; }
+.cr tr.tot td { font-weight: 700; padding-top: 10px; }
+.cr tr.sous td { color: var(--muted); font-size: 14px; padding-left: 14px; }
+.cr tr.marge td { border-top: 2px solid var(--line); }
+.bcl-l { display: flex; flex-direction: column; gap: 18px; }
 .mention-sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .msg .bubble { -webkit-user-select: text; user-select: text; -webkit-touch-callout: none; }
 .msg-menu { border: 0; background: none; color: inherit; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 3px; opacity: .75; }
@@ -895,6 +899,14 @@ table.matrix thead th .sw { display: inline-block; width: 10px; height: 10px; bo
 .pitchbox[open] summary::before { transform: rotate(90deg); }
 .pitchbox summary > span:first-child { margin-right: auto; }
 .pitchbox > .split { padding: 0 18px 18px; }
+.pitchbox summary { font-size: 16px; padding: 10px 14px; }
+.pitch-g { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 18px; padding: 0 14px 4px; font-size: 14px; }
+.pitch-g h4 { margin: 4px 0; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.pitch-g ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.pitch-prix { font-size: 13px; } .pitch-prix th, .pitch-prix td { padding: 3px 6px; }
+.pitch-memo { padding: 0 14px; } .pitchbox .row-end { padding: 0 14px 8px; }
+.prix-pour { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 13px; }
+.prix-pour .tpill.stock { border-color: var(--c-cultures); }
 .aide-liv { margin: -4px 0 10px; font-size: 13.5px; }
 .aide-liv p, .aide-liv ul { margin: 6px 0; }
 .aide-liv ul { padding-left: 18px; }
