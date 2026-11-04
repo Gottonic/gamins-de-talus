@@ -224,7 +224,7 @@ ACTIONS.taTick = (el) => {
 ACTIONS.taVoir = (el) => { const t = DB.get(el.dataset.key); if (!t) return; if (!(el.closest && el.closest('#sheet'))) PL.rafraichir = null; if (tacheOuverte(t) && !estPlanifiee(t)) ACTIONS.taPlanifier(el); else ACTIONS.taResume(el); };
 function resumeTacheHtml(t, k) {
   const c = catTache(t), j = journeeDe(t), cus = (t.cultures || []).map((k) => DB.get(k)).filter(Boolean), imp = importanceDe(t);
-  const infos = [t.responsable ? '👤 ' + esc(quiLabel(t.responsable)) : '',
+  const infos = [
     t.echeance ? `<span class="ech${t.echeance < todayISO() ? ' passee' : echeanceProche(t) ? ' proche' : ''}">⏰ avant le ${fmtDate(t.echeance)}</span>` : '',
     estPlanifiee(t) ? `📅 ${j ? esc(j.titre) + ', ' : ''}${esc(dateLongue(jourPlanifie(t)))}` : ''].filter(Boolean);
   /* Catégorie et importance : un clic pour changer */
@@ -232,7 +232,8 @@ function resumeTacheHtml(t, k) {
   const vite = `<div class="ta-vite">
       <div class="chips">${catsTaches().map((x) => `<button type="button" class="chip catchip${x.k === c.cat ? ' on' : ''}" style="--c:${esc(x.couleur)}" data-act="taSetCat" data-key="${esc(k)}" data-cat="${esc(x.k)}">${esc(x.icone || '')} ${esc(x.nom)}</button>`).join('')}</div>
       ${sous.length ? `<div class="chips ta-vite-sous">${sous.map((x) => `<button type="button" class="chip${x.k === c.sous ? ' on' : ''}" data-act="taSetSous" data-key="${esc(k)}" data-sous="${esc(x.k)}">${esc(x.nom)}</button>`).join('')}</div>` : ''}
-      <div class="chips">${IMPORTANCES.map(([n, nom, pts]) => `<button type="button" class="chip${imp === n ? ' on' : ''}" data-act="taSetImp" data-key="${esc(k)}" data-imp="${n}"><span class="imp imp${n}">${pts}</span> ${nom}</button>`).join('')}</div></div>`;
+      <div class="chips">${IMPORTANCES.map(([n, nom, pts]) => `<button type="button" class="chip${imp === n ? ' on' : ''}" data-act="taSetImp" data-key="${esc(k)}" data-imp="${n}"><span class="imp imp${n}">${pts}</span> ${nom}</button>`).join('')}</div>
+      <div class="chips ta-vite-qui"><span class="hint">Qui :</span>${persOptions(true).map(([p, nom]) => `<button type="button" class="chip${(t.responsable || '') === p ? ' on' : ''}" data-act="taSetQui" data-key="${esc(k)}" data-p="${esc(p)}">${esc(nom)}</button>`).join('')}</div></div>`;
   return `<div class="ta-resume">${vite}${infos.length ? `<p class="meta">${infos.join(' <span class="sep">·</span> ')}</p>` : ''}
     ${t.contactId && DB.get(t.contactId) ? `<p>👤 ${esc(displayName(DB.get(t.contactId)))}</p>` : ''}
     ${cus.length || t.planches ? `<p>${cus.length ? '🌿 ' + esc(cus.map((x) => x.nom).join(', ')) : ''}${cus.length && t.planches ? ' · ' : ''}${t.planches ? '▦ ' + esc(t.planches) : ''}</p>` : ''}
@@ -242,6 +243,7 @@ function resumeTacheHtml(t, k) {
 /* Changer en un clic depuis l'aperçu, puis réafficher la même fenêtre */
 const reouvrirTache = (k) => { const f = TA.fenetre === 'taPlanifier' ? ACTIONS.taPlanifier : ACTIONS.taResume; const r = PL.rafraichir; f({ dataset: { key: k } }); if (TA.fenetre === 'taPlanifier') PL.rafraichir = r; };
 ACTIONS.taSetCat = (el) => { const k = el.dataset.key, t = DB.get(k); if (!t) return; const meme = catTache(t).cat === el.dataset.cat; const o = Object.assign({}, t, { cat: meme ? '' : el.dataset.cat, sous: '' }); delete o.tag; DB.put(k, o); reouvrirTache(k); };
+ACTIONS.taSetQui = (el) => { const k = el.dataset.key, t = DB.get(k); if (!t) return; DB.put(k, Object.assign({}, t, { responsable: (t.responsable || '') === el.dataset.p ? '' : el.dataset.p })); reouvrirTache(k); };
 ACTIONS.taSetSous = (el) => { const k = el.dataset.key, t = DB.get(k); if (!t) return; const c = catTache(t); const o = Object.assign({}, t, { cat: c.cat, sous: c.sous === el.dataset.sous ? '' : el.dataset.sous }); delete o.tag; DB.put(k, o); reouvrirTache(k); };
 ACTIONS.taSetImp = (el) => { const k = el.dataset.key, t = DB.get(k); if (!t) return; const o = Object.assign({}, t, { importance: Number(el.dataset.imp) }); delete o.urgent; DB.put(k, o); reouvrirTache(k); };
 ACTIONS.taResume = (el) => {
