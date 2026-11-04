@@ -5,7 +5,7 @@
               type : recolte | vente | self (mis au stand) | retour (invendus repris) | perte | ajout | inventaire (compte : qte = total)
               Clés fixes pour ce qui découle d'autre chose : mvt:fac:<facture>:<ligne>, mvt:self:<mise>:<ligne>, mvt:ev:<événement>:<date>.
    prod:<id>  + { fiche (culture liée), dispo (en stock sans quantité), auChamp } — la vente directe prend le prix « particuliers »
-   self:<id>  mise en vente directe { date, lieu, lignes: [{ prod, qte, prix }], retours: { i: qte }, statut: ouverte | close, note }
+   self:<id>  mise en vente directe { date, lieu, lignes: [{ prod, qte, prix, recolte? }], retours: { i: qte }, statut: ouverte | close, note }
               Les encaissements sont des recettes (rec:) avec self: <id> : ils comptent dans les finances. */
 'use strict';
 
@@ -61,6 +61,11 @@ function brancherStock() {
   $('view').querySelectorAll('input[data-stk]').forEach((el) => el.addEventListener('change', () => { const p = DB.get(el.dataset.key); if (p) DB.put(el.dataset.key, Object.assign({}, p, { [el.dataset.stk]: el.checked })); }));
 }
 
+/* La culture du plan d'une saison qui donne ce produit (fiche liée, sinon même nom) */
+function cultureDuProduit(p, saison) {
+  if (!p || typeof cultures !== 'function') return null;
+  return cultures(String(saison)).find((x) => (p.fiche && ficheDe(x) === p.fiche) || sansAccentsS(x.nom) === sansAccentsS(p.nom)) || null;
+}
 /* Noter un mouvement : récolte, sortie (perte), comptage */
 ACTIONS.mvtNouveau = (el) => {
   const type = el.dataset.type || 'recolte', s = typeof saisonCourante === 'function' ? saisonCourante() : todayISO().slice(0, 4);
@@ -68,7 +73,7 @@ ACTIONS.mvtNouveau = (el) => {
   let prod = el.dataset.prod || '', cul = el.dataset.culture || '';
   const ref = el.dataset.ref || '', date = el.dataset.date || todayISO();
   if (!prod && cul) { const p = produitDeCulture(DB.get(cul)); if (p) prod = p.key; }
-  if (prod && !cul && type === 'recolte') { const p = DB.get(prod), c = culs.find((x) => p && ((p.fiche && ficheDe(x) === p.fiche) || sansAccentsS(x.nom) === sansAccentsS(p.nom))); if (c) cul = c.key; }
+  if (prod && !cul && type === 'recolte') { const c = cultureDuProduit(DB.get(prod), s); if (c) cul = c.key; }
   const titres = { recolte: 'Noter une récolte', perte: 'Sortie de stock', inventaire: 'Compter le stock', ajout: 'Ajouter au stock' };
   openSheet(`${sheetHead(titres[type] || 'Mouvement de stock')}<form class="sbody form" data-form="mvt"><input type="hidden" name="type" value="${esc(type)}"><input type="hidden" name="ref" value="${esc(ref)}">
     <div class="grid2">${inp('mv-date', 'Date', date, { name: 'date', type: 'date' })}
@@ -183,19 +188,19 @@ ACTIONS.selfNouveau = () => {
   /* Prix de vente directe = prix « Particuliers & vente directe » du produit (haut de la fourchette, ou fixé à la main) */
   const ps = produits().filter((p) => num(prixNiveau(p, 'part')) > 0), arts = articles().filter((a) => a.actif !== false);
   if (!ps.length && !arts.length) { toast('Crée d\'abord un article de vente directe, ou mets une fourchette de prix sur un produit.', 5000); return; }
-  const lgnArt = arts.map((a) => { const p = DB.get(a.prod) || {}, q = stockDe(a.prod); return `<tr><td><b>${esc(a.nom)}</b> <span class="hint">${esc(descArticle(a))}</span></td><td><input class="cell-in" name="qa_${esc(a.key)}" inputmode="numeric" placeholder="0" style="width:70px"> <span class="hint">${a.mode === 'lot' ? 'lots' : 'pièces'}</span></td><td><input class="cell-in" name="pa_${esc(a.key)}" inputmode="decimal" value="${esc(String(prixArticle(a)).replace('.', ','))}" style="width:70px"></td><td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('');
+  const lgnArt = arts.map((a) => { const p = DB.get(a.prod) || {}, q = stockDe(a.prod); return `<tr><td><b>${esc(a.nom)}</b> <span class="hint">${esc(descArticle(a))}</span></td><td><input class="cell-in" name="qa_${esc(a.key)}" inputmode="numeric" placeholder="0" style="width:70px"> <span class="hint">${a.mode === 'lot' ? 'lots' : 'pièces'}</span></td><td><input class="cell-in" name="pa_${esc(a.key)}" inputmode="decimal" value="${esc(String(prixArticle(a)).replace('.', ','))}" style="width:70px"></td><td class="r hint">${p.auChamp ? '🌱 au champ' : q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('');
   openSheet(`${sheetHead('Mise en vente directe')}<form class="sbody form" data-form="self">
     <div class="grid2">${inp('sf-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('sf-lieu', 'Où', 'Self-service', { name: 'lieu' })}</div>
     ${arts.length ? `<h3>Articles</h3><div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>${lgnArt}</tbody></table></div>` : ''}
     ${ps.length ? `<details${arts.length ? '' : ' open'}><summary class="hint" style="cursor:pointer">${arts.length ? 'Autres produits (au kg ou par calibre)' : 'Produits'}</summary>` : ''}
     <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>
-    ${ps.map((p) => { const q = stockDe(p.key), st = `<td class="r hint">${q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td>`, cs = calibresDe(p);
+    ${ps.map((p) => { const q = stockDe(p.key), st = `<td class="r hint">${p.auChamp ? '🌱 au champ' : q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td>`, cs = calibresDe(p);
       const ligne = (id, nom, unite, prix, stock) => `<tr><td>${nom}</td><td><input class="cell-in" name="q_${esc(id)}" inputmode="decimal" placeholder="0" style="width:70px"> <span class="hint">${esc(unite)}</span></td><td><input class="cell-in" name="p_${esc(id)}" inputmode="decimal" value="${esc(String(prix).replace('.', ','))}" style="width:70px"></td>${stock}</tr>`;
       return cs.map((c, j) => ligne(p.key + '|' + j, `${esc(p.nom)} <b>${esc(c.nom)}</b> <span class="hint">≈ ${fmtNum(c.poids, 2)} kg</span>`, 'pièces', prixPiece(p, c, 'part'), j === 0 ? st : '<td></td>')).join('')
         + ligne(p.key, esc(p.nom) + (cs.length ? ' <span class="hint">au ' + esc(p.unite) + '</span>' : ''), p.unite, prixNiveau(p, 'part'), cs.length ? '<td></td>' : st); }).join('')}
     </tbody></table></div>${ps.length ? '</details>' : ''}
     ${inp('sf-note', 'Note', '', { name: 'note' })}
-    <p class="hint">Prix proposé : le prix « Particuliers & vente directe » du produit, modifiable ici pour cette fois. Le stock baisse de ces quantités.</p>
+    <p class="hint">Prix proposé : le prix « Particuliers & vente directe » du produit, modifiable ici pour cette fois. Le stock baisse de ces quantités. Ce qui est 🌱 au champ est récolté pour l'occasion : c'est compté comme récolte du jour (pour la culture du plan).</p>
     <div class="row-end"><button class="btn primary" type="submit">Mettre en vente</button></div></form>`);
 };
 FORMS.self = (v) => {
@@ -206,14 +211,27 @@ FORMS.self = (v) => {
     if (num(v['q_' + p.key]) > 0) lignes.push({ prod: p.key, qte: num(v['q_' + p.key]), prix: r2(num(v['p_' + p.key])), unite: p.unite });
   }
   if (!lignes.length) { toast('Indique au moins une quantité.'); return; }
+  /* Un produit « au champ » mis en vente est récolté pour l'occasion : ça compte comme une récolte */
+  for (const l of lignes) { const p = DB.get(l.prod); if (p && p.auChamp) l.recolte = true; }
   const k = 'self:' + uid('s'), s = { date: v.date || todayISO(), lieu: v.lieu || 'Self-service', lignes, retours: {}, statut: 'ouverte', note: v.note, par: Sync.me || '', cree: new Date().toISOString() };
-  DB.put(k, s); stockPourSelf(k, s); closeSheet(); toast('Mise en vente enregistrée.');
+  DB.put(k, s); stockPourSelf(k, s); closeSheet();
+  const nr = lignes.filter((l) => l.recolte).length; toast(`Mise en vente enregistrée.${nr ? ` ${nr > 1 ? nr + ' produits au champ comptés' : 'Produit au champ compté'} comme récolte.` : ''}`, nr ? 4000 : undefined);
 };
 /* Quantité vendue exprimée dans l'unité du stock : pièces × poids moyen pour un calibre, sinon même unité seulement */
 function enUniteDeStock(p, qte, unite, poids) { if (num(poids) > 0 && (p.unite || 'kg') === 'kg') return r2(num(qte) * num(poids)); return !unite || !p.unite || unite === p.unite ? num(qte) : null; }
 function stockPourSelf(k, s) {
   (s.lignes || []).forEach((l, i) => {
-    const p = DB.get(l.prod); if (!p || stockDe(l.prod) == null) return;
+    const p = DB.get(l.prod); if (!p) return;
+    /* Récolte du jour pour un produit au champ : dans le stock s'il est suivi (puis la mise en vente l'en sort), sinon seulement comptée comme récolte */
+    const kh = `mvt:selfh:${k.slice(5)}:${i}`, h0 = DB.get(kh);
+    if (l.recolte) {
+      const q = enUniteDeStock(p, l.qte, l.unite, l.poids) ?? num(l.qte), c = cultureDuProduit(p, String(s.date).slice(0, 4));
+      const o = { date: s.date, prod: l.prod, qte: q, type: 'recolte', ref: k, par: s.par || '', note: 'Mis en vente directe' + (s.lieu ? ' · ' + s.lieu : ''), cree: (h0 && h0.cree) || s.cree || new Date().toISOString() };
+      if (c) o.culture = c.key;
+      if (h0 ? h0.horsStock : stockDe(l.prod) == null) o.horsStock = true;
+      DB.put(kh, o);
+    } else if (h0) DB.del(kh);
+    if (stockDe(l.prod) == null) return;
     const q = enUniteDeStock(p, l.qte, l.unite, l.poids); if (q == null) return;
     DB.put(`mvt:self:${k.slice(5)}:${i}`, { date: s.date, prod: l.prod, qte: -q, type: 'self', ref: k, par: s.par || '', note: num(l.poids) ? `${fmtNum(num(l.qte), 0)} pièce(s) ${l.calibre || ''}`.trim() : '' });
     const r = num((s.retours || {})[i]), kr = `mvt:selfr:${k.slice(5)}:${i}`;
