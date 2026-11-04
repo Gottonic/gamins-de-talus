@@ -108,7 +108,7 @@ function renderTaches() {
   const base = TA.vue === 'planifiees' ? pl : TA.vue === 'faites' ? fin : aP;
   const nCat = {}; for (const t of base) { const c = catTache(t).cat || '-'; nCat[c] = (nCat[c] || 0) + 1; }
   const l = base.filter(filtreCat);
-  const vues = [['', `À planifier · ${aP.length}`], ['planifiees', `Planifiées · ${pl.length}`], ['faites', 'Faites']].map(([k, n]) => `<button class="chip${TA.vue === k ? ' on' : ''}" type="button" data-act="taVue" data-k="${k}">${esc(n)}</button>`).join('');
+  const vues = [['', `À planifier · ${aP.filter((t) => !estPlusTard(t)).length}`], ['planifiees', `Planifiées · ${pl.length}`], ['faites', 'Faites']].map(([k, n]) => `<button class="chip${TA.vue === k ? ' on' : ''}" type="button" data-act="taVue" data-k="${k}">${esc(n)}</button>`).join('');
   const quiChips = [['', 'Toutes'], ['moi', 'Les miennes']].concat(persOptions(true)).map(([k, n]) => `<button class="chip${TA.qui === k ? ' on' : ''}" type="button" data-act="taQui" data-k="${k}">${esc(n)}</button>`).join('');
   const catChips = catsTaches().concat([{ k: '-', nom: 'Sans catégorie', icone: '', couleur: '#999' }]).filter((c) => nCat[c.k] || TA.cat === c.k)
     .map((c) => `<button class="chip catchip${TA.cat === c.k ? ' on' : ''}" style="--c:${esc(c.couleur)}" type="button" data-act="taCat" data-k="${esc(c.k)}">${esc(c.icone || '')} ${esc(c.nom)}<span class="n">${nCat[c.k] || 0}</span></button>`).join('');
@@ -126,12 +126,18 @@ function renderTaches() {
   </div>`;
 }
 /* La liste « À planifier » : échéance proche en haut, puis par importance */
+/* « À planifier » : à venir (échéance dans les 30 prochains jours, ou dépassée), puis quand on peut (sans échéance).
+   Une échéance plus lointaine attend, repliée dans « Plus tard ». */
+const A_VENIR_JOURS = 30;
+const estPlusTard = (t) => !!t.echeance && t.echeance > addDays(todayISO(), A_VENIR_JOURS);
 function listeAPlanifierHtml(l, o = {}) {
   if (!l.length) return `<p class="empty">${o.vide || 'Rien à planifier.'}</p>`;
-  const pasFinies = l.filter(pasTerminee), proches = l.filter((t) => !pasTerminee(t) && echeanceProche(t)), reste = l.filter((t) => !pasTerminee(t) && !echeanceProche(t));
-  const sec = (titre, xs, cls) => xs.length ? `<div class="ta-sec${cls ? ' ' + cls : ''}"><h4>${titre} · ${xs.length}</h4>${xs.map((t) => tacheHtml(t, o)).join('')}</div>` : '';
   o = Object.assign({ planifier: true }, o);
-  return sec('↩ Pas terminées ?', pasFinies, 'pasfinie') + sec('⏰ Échéance proche', proches, 'proche') + IMPORTANCES.map(([n, nom, pts]) => sec(`<span class="imp imp${n}">${pts}</span> ${nom}`, reste.filter((t) => importanceDe(t) === n))).join('');
+  const parEch = (a, b) => String(a.echeance).localeCompare(String(b.echeance)) || importanceDe(a) - importanceDe(b);
+  const aVenir = l.filter((t) => t.echeance && !estPlusTard(t)).sort(parEch), qop = l.filter((t) => !t.echeance), tard = l.filter(estPlusTard).sort(parEch);
+  const sec = (titre, xs, cls) => xs.length ? `<div class="ta-sec${cls ? ' ' + cls : ''}"><h4>${titre} · ${xs.length}</h4>${xs.map((t) => tacheHtml(t, o)).join('')}</div>` : '';
+  return (aVenir.length || qop.length ? '' : `<p class="empty">${o.vide || 'Rien à planifier.'}</p>`) + sec('⏰ À venir', aVenir, 'proche') + sec('Quand on peut', qop)
+    + (tard.length ? `<details class="ta-sec ta-tard"><summary><h4>Plus tard · ${tard.length}</h4></summary>${tard.map((t) => tacheHtml(t, o)).join('')}</details>` : '');
 }
 function tacheHtml(t, o = {}) {
   const done = !tacheOuverte(t), c = catTache(t), j = journeeDe(t), imp = importanceDe(t), today = todayISO();

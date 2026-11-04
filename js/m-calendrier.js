@@ -68,7 +68,7 @@ MODULES.calendrier = {
     /* Une journée de travail est déjà bien visible sur l'accueil (journée en cours) : pas de pastille pour elle */
     const finie = (x) => x.fait || evGenre(DB.get(x.key) || {}).genre === 'travail';
     const auj = (itemsPeriode(todayISO(), todayISO())[todayISO()] || []).filter((x) => x.kind === 'ev' && (typeof pourMoi !== 'function' || pourMoi(x.qui)) && !finie(x)).length;
-    const aP = aPlanifier().length, presse = tachesUrgentesPourMoi().length;
+    const aP = aPlanifier().filter((t) => !estPlusTard(t)).length, presse = tachesUrgentesPourMoi().length;
     const ev7 = Object.entries(itemsPeriode(todayISO(), addDays(todayISO(), 6))).reduce((a, [, xs]) => a + xs.filter((x) => x.kind === 'ev' && x.debut).length, 0);
     return { line: `${auj ? auj + " aujourd'hui · " : ''}${ev7} événement${ev7 > 1 ? 's' : ''} sur 7 jours · ${aP} tâche${aP > 1 ? 's' : ''} à planifier`, warn: !!presse, badge: auj + presse };
   },
@@ -387,7 +387,7 @@ function renderVue() {
   return `<div class="pl-cols"><div class="panel"><div class="between"><div class="row">${quiChips}</div><div class="row"><button class="btn small" type="button" data-act="icsSheet">📅 Dans mon agenda</button><button class="btn primary small" type="button" data-act="evEdit" data-date="${today}">+ Événement</button></div></div>
       <div class="pl-jours">${jours}</div>
       <div class="row"><button class="btn link" type="button" data-act="plAutreJour">+ Prévoir un autre jour…</button>${PL.jours < 42 ? `<button class="btn link" type="button" data-act="plPlus">Voir plus loin</button>` : ''}</div></div>
-    <div class="panel pl-aplan" data-jour=""><div class="between"><h2>À planifier${aPlan.length ? ' · ' + aPlan.length : ''}</h2></div>
+    <div class="panel pl-aplan" data-jour=""><div class="between"><h2>À planifier${aPlan.filter((x) => !estPlusTard(x)).length ? ' · ' + aPlan.filter((x) => !estPlusTard(x)).length : ''}</h2></div>
       ${ajoutTacheBarre({ id: 'pl-aplan-ajout' })}
       ${plan}
       <p class="hint pl-aide">Touche une tâche pour la planifier. Sur ordinateur, tu peux aussi la glisser sur un jour ou sur une journée.</p></div></div>`;

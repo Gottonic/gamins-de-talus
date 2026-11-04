@@ -1105,6 +1105,11 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .ta-sous { flex-basis: 100%; display: flex; flex-direction: column; gap: 1px; padding-left: 34px; margin-top: 2px; }
 .ta-sous .ta-li { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; cursor: pointer; }
 .ta-sous input { width: 18px; height: 18px; flex: none; }
+.ta-tard > summary { cursor: pointer; list-style: none; }
+.ta-tard > summary::-webkit-details-marker { display: none; }
+.ta-tard > summary h4 { display: inline; }
+.ta-tard > summary h4::before { content: '▸ '; }
+.ta-tard[open] > summary h4::before { content: '▾ '; }
 </style>
 </head>
 <body>
