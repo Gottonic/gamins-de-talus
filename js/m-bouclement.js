@@ -61,6 +61,9 @@ function renderBouclement() {
           ${chk(!o.ouvertes.length, o.ouvertes.length ? `${o.ouvertes.length} facture${o.ouvertes.length > 1 ? 's' : ''} pas encore payée${o.ouvertes.length > 1 ? 's' : ''} au 31.12 (${chf(o.ouvertes.reduce((a, f) => a + f.total, 0))}) : à noter comme « à recevoir »` : 'Toutes les factures émises sont payées.', '#/factures')}
           ${chk(true, `Heures ${y} : ${ps.map((p) => `${esc(p.nom)} ${fmtH(o.heures[p.k] || 0)} h`).join(', ')}.`)}
         </ul>
+        <h3>Relevés de l'année</h3>
+        ${(() => { const e = relEtat(y), R = relDe(y); const st = (k, n) => R[k] ? `✓ ${n} ajouté` : e[k] ? `${n} vérifié le ${fmtDate(String(e.le).slice(0, 10))}` : `${n} : pas encore`; return `<p class="hint">${st('twint', 'TWINT')} · ${st('banque', 'banque')}. Le relevé TWINT et le relevé bancaire de l'année vont dans l'archive et servent à vérifier les recettes, les factures et les dépenses.</p>${rapportRelevesHtml(y)}`; })()}
+        <div class="row"><button class="btn" type="button" data-act="relOuvrir">Ajouter les relevés et vérifier</button></div>
         <h3>L'archive de l'année</h3>
         <p class="hint">Un fichier .zip avec les comptes en PDF, les tableaux (dépenses, recettes, inventaire, heures), toutes les factures émises et les bulletins de livraison en PDF (avec la photo signée quand il y en a une), et tous les justificatifs joints (${o.nFichiers} fichier${o.nFichiers > 1 ? 's' : ''}).
           C'est ce qu'il faut pour la déclaration d'impôts et pour ce que la caisse AVS vous demande de déclarer. Chaque associé la télécharge une fois pour ses propres déclarations. <b>À garder 10 ans</b>, par exemple dans votre Proton Drive.</p>
@@ -177,8 +180,10 @@ async function telechargerFichier(chemin) {
   if (error) throw error; return data;
 }
 ACTIONS.bclPdf = () => { const o = comptesAnnee(BCL.annee); downloadFile(`Comptes ${cfg().nom} ${o.y}.pdf`, pdfComptes(o), 'application/pdf'); };
-ACTIONS.bclZip = async () => {
+ACTIONS.bclZip = async (el) => {
   if (BCL.enCours) return;
+  /* Avant l'archive : les relevés TWINT et bancaire de l'année (on peut continuer sans) */
+  const R0 = relDe(BCL.annee); if (!(el && el.dataset && el.dataset.sansDemander) && !R0.twint && !R0.banque) { relevesFeuille(BCL.annee, 'archive'); return; }
   if (!window.JSZip) { toast("L'outil d'archive n'est pas chargé. Recharge la page."); return; }
   const o = comptesAnnee(BCL.annee), c = cfg(), base = nomZip(`${c.nom} - Comptes ${o.y}`);
   if (o.nFichiers && !navigator.onLine && !LOCAL_MODE) { toast('Il faut du réseau pour récupérer les justificatifs.'); return; }
@@ -187,6 +192,7 @@ ACTIONS.bclZip = async () => {
   try {
     const z = new window.JSZip(), dir = z.folder(base);
     dir.file(`Comptes ${o.y}.pdf`, pdfComptes(o));
+    const releves = ajouterRelevesZip(dir, o.y);
     const t = csvAnnee(o);
     dir.file(`Tableaux/Dépenses ${o.y}.csv`, t.dep); dir.file(`Tableaux/Recettes ${o.y}.csv`, t.rec);
     dir.file(`Tableaux/Inventaire et amortissements ${o.y}.csv`, t.inv); dir.file(`Tableaux/Heures ${o.y}.csv`, t.heu);
@@ -216,7 +222,8 @@ ACTIONS.bclZip = async () => {
       `${c.nom} — archive des comptes ${o.y}`, `Établie le ${fmtDate(todayISO())} par ${nomDe(Sync.me)} depuis l'app Gamins de Talus.`, '',
       `Comptes ${o.y}.pdf : compte de résultat, part de chaque associé, inventaire et amortissements, heures, liste des recettes et des dépenses.`,
       'Tableaux/ : les mêmes données en CSV (s\'ouvrent dans un tableur).', 'Factures émises/ : chaque facture envoyée aux clients, en PDF.', 'Bulletins de livraison/ : chaque bulletin en PDF, suivi de la photo du bulletin signé par le client quand elle a été prise.',
-      'Justificatifs/ : tickets et factures des dépenses, nommés « date, n° de dépense, objet, montant ».', '',
+      'Justificatifs/ : tickets et factures des dépenses, nommés « date, n° de dépense, objet, montant ».',
+      releves.length ? 'Relevés/ : ' + releves.join(', ') + '.' : 'Relevés TWINT et bancaire : pas ajoutés à cette archive (à garder à côté).', '',
       'À conserver 10 ans (obligation légale de conservation des pièces comptables en Suisse).',
       manquants.length ? '\nFichiers qui n\'ont pas pu être ajoutés :\n- ' + manquants.join('\n- ') : '',
       o.sansJ.length ? `\nDépenses sans justificatif au moment de l'archive : ${o.sansJ.length}.` : '',
@@ -247,9 +254,10 @@ const EXP_PIECES = [
   ['jFourn', 'Justificatifs des fournitures : semences, plants, engrais, protection, emballages'],
   ['jAutres', 'Autres justificatifs de dépenses'],
   ['heures', 'Feuilles d\'heures (CSV et total par personne)'],
+  ['releves', 'Relevés TWINT et bancaire de l\'année (demandés au moment du téléchargement)'],
 ];
 const EXP_PRESETS = [
-  ['impots', 'Impôts', ['comptes', 'recettes', 'depenses', 'inventaire', 'partage'], 'Déclaration d\'indépendant : relevé des recettes et dépenses, actifs (inventaire) et tableau des amortissements, et la part de chaque associé. Les justificatifs se gardent 10 ans ; on ne les envoie que s\'ils sont demandés.'],
+  ['impots', 'Impôts', ['comptes', 'recettes', 'depenses', 'inventaire', 'partage', 'releves'], 'Déclaration d\'indépendant : relevé des recettes et dépenses, actifs (inventaire) et tableau des amortissements, et la part de chaque associé. Les justificatifs se gardent 10 ans ; on ne les envoie que s\'ils sont demandés.'],
   ['avs', 'Activité indépendante (AVS)', ['comptes', 'factures', 'clients', 'prospection', 'jInvest', 'jMateriel', 'inventaire', 'partage'], 'Pour montrer à la caisse de compensation que c\'est une vraie activité indépendante : factures à plusieurs clients en votre nom, achats de matériel et investissements (risque économique), démarches commerciales, et le partage entre associés.'],
   ['accident', 'Assurance accident', ['comptes', 'partage', 'heures'], 'Le revenu de l\'activité (pour le gain assuré ou une indemnité) et la preuve qu\'on y travaille : comptes, part de chacun, heures.'],
   ['banque', 'Banque ou crédit', ['comptes', 'recettes', 'depenses', 'inventaire', 'clients'], 'Ce qu\'une banque regarde d\'habitude : résultat, patrimoine (inventaire), régularité des recettes et clientèle.'],
@@ -293,8 +301,9 @@ async function ajouterJustifs(dir, dossier, deps, manquants, etape) {
   }
   return fich.length;
 }
-ACTIONS.expGo = async () => {
+ACTIONS.expGo = async (el) => {
   if (BCL.enCours) return; const ch = EXP.choix; if (!ch.size) { toast('Coche au moins une pièce.'); return; }
+  const R0 = relDe(BCL.annee); if (ch.has('releves') && !(el && el.dataset && el.dataset.sansDemander) && !R0.twint && !R0.banque) { relevesFeuille(BCL.annee, 'export'); return; }
   if (!window.JSZip) { toast("L'outil d'archive n'est pas chargé. Recharge la page."); return; }
   const o = comptesAnnee(BCL.annee), c = cfg(), pr = EXP_PRESETS.find((x) => x[0] === EXP.preset), base = nomZip(`${c.nom} - ${pr ? pr[1] : 'Export'} ${o.y}`);
   const b = document.querySelector('[data-act="expGo"]'), etape = (t) => { if (b) b.textContent = t; };
@@ -307,6 +316,7 @@ ACTIONS.expGo = async () => {
     if (ajoute('depenses', `Dépenses ${o.y}.csv (avec le compte de chaque dépense)`)) dir.file(`Dépenses ${o.y}.csv`, t.dep);
     if (ajoute('inventaire', `Inventaire et amortissements ${o.y}.csv`)) dir.file(`Inventaire et amortissements ${o.y}.csv`, t.inv);
     if (ajoute('partage', 'Partage entre associés.txt')) dir.file('Partage entre associés.txt', textePartage(o));
+    if (ch.has('releves')) { const l = ajouterRelevesZip(dir, o.y); contenu.push('- Relevés/ : ' + (l.length ? l.join(', ') : 'pas ajoutés (à joindre à part)')); }
     if (ajoute('heures', `Heures ${o.y}.csv`)) {
       const hs = heuresToutes().filter((h) => yearOf(h.date) === o.y && (num(h.heures) || h.off)).sort((a, x) => String(a.date).localeCompare(x.date));
       dir.file(`Heures ${o.y}.csv`, csv(['Date', 'Personne', 'Début', 'Fin', 'Pause (min)', 'Heures', 'Off'], hs.map((h) => [fmtDate(h.date), nomDe(h.personne), h.debut || '', h.fin || '', h.pause || '', h.heures ? String(h.heures).replace('.', ',') : '', h.off ? 'off' : '']))

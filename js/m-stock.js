@@ -503,7 +503,12 @@ function twTransactions() {
     .filter((t) => t.date && isFinite(t.montant) && t.montant !== 0).sort((a, b) => a.date.localeCompare(b.date));
 }
 ACTIONS.twImportOk = () => {
-  const tx = twTransactions(); let n = 0, lies = 0; const deja = new Set(DB.all('tw:').map((t) => t.cle)), vus = {};
+  const r = importerTransactionsTwint(twTransactions());
+  closeSheet(); toast(r.n ? `${r.n} paiement${r.n > 1 ? 's' : ''} TWINT importé${r.n > 1 ? 's' : ''}${r.lies ? `, dont ${r.lies} rattaché${r.lies > 1 ? 's' : ''} à des ventes` : ''}.` : 'Rien de nouveau : ces paiements étaient déjà importés.', 5000);
+};
+/* Ajoute les paiements d'un relevé TWINT (sans doublon) ; aussi utilisé par la vérification des relevés de fin d'année */
+function importerTransactionsTwint(tx) {
+  let n = 0, lies = 0; const deja = new Set(DB.all('tw:').flatMap((t) => [t.cle, t.apparie]).filter(Boolean)), vus = {};
   const ventes = factures().filter((f) => f.payeePar === 'twint' && f.statut === 'payee'), prises = new Set(DB.all('tw:').map((t) => t.utilise).filter(Boolean));
   for (const t of tx) {
     const base = t.ref || `${t.date}|${t.montant}|${t.texte}`; vus[base] = (vus[base] || 0) + 1; const cle = t.ref ? t.ref : base + '|' + vus[base];
@@ -516,8 +521,8 @@ ACTIONS.twImportOk = () => {
     if (v) { o.utilise = v.key; prises.add(v.key); lies++; }
     DB.put('tw:' + uid('w'), o); n++;
   }
-  closeSheet(); toast(n ? `${n} paiement${n > 1 ? 's' : ''} TWINT importé${n > 1 ? 's' : ''}${lies ? `, dont ${lies} rattaché${lies > 1 ? 's' : ''} à des ventes` : ''}.` : 'Rien de nouveau : ces paiements étaient déjà importés.', 5000);
-};
+  return { n, lies };
+}
 /* Paiements TWINT libres pendant une vente directe (de la mise en vente à la clôture, ou aujourd'hui) */
 function twintPourSelf(s) {
   const fin = s.closeLe || todayISO(), l = DB.all('tw:').filter((t) => (!t.utilise || !DB.get(t.utilise)) && t.montant > 0 && t.date >= s.date && t.date <= fin).sort((a, b) => a.date.localeCompare(b.date));
