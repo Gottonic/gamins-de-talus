@@ -462,11 +462,20 @@ FORMS.art = (v) => {
 const paiementsMessage = () => DB.all('ard:').sort((a, b) => String(b.date).localeCompare(String(a.date)));
 const chiffresTel = (s) => String(s || '').replace(/\D/g, '').replace(/^(0041|41)/, '0').slice(-9);
 const contactParTel = (t) => { const c = chiffresTel(t); return c.length >= 9 ? tousContacts().find((x) => chiffresTel(x.telephone) === c) : null; };
+/* Fin du mois (3 derniers jours) ou mois passé : les paiements par message pas encore facturés sont à facturer */
+function ardAFacturer() {
+  try {
+    const t = todayISO(), mois = t.slice(0, 7), finMois = addDays(addDays(mois + '-01', 32).slice(0, 7) + '-01', -1), fin = t >= addDays(finMois, -2);
+    return paiementsMessage().filter((x) => !x.facture && (String(x.date).slice(0, 7) < mois || (fin && String(x.date).slice(0, 7) === mois)));
+  } catch (e) { return []; }
+}
 function paiementsMessageHtml() {
   const l = paiementsMessage(), af = l.filter((x) => !x.facture);
   if (!l.length) return '';
   const parC = {}; for (const x of af) { (parC[x.contactId] = parC[x.contactId] || []).push(x); }
+  const du = ardAFacturer();
   return `<div class="panel"><div class="between"><h2>Payé par message · à facturer ${chf(af.reduce((a, x) => a + num(x.montant), 0))}</h2>${af.length ? '<button class="btn small primary" type="button" data-act="ardFacturer">Facturer…</button>' : ''}</div>
+    ${du.length ? `<p class="banner">🧾 Fin du mois : ${du.length} achat${du.length > 1 ? 's' : ''} payé${du.length > 1 ? 's' : ''} par message à facturer (${chf(du.reduce((a, x) => a + num(x.montant), 0))}).</p>` : ''}
     ${Object.entries(parC).map(([ck, xs]) => { const c = DB.get(ck) || {}; return `<details class="ard"><summary><b>${esc(displayName(c))}</b> <span class="hint">${esc(c.telephone || '')}</span> · ${xs.length} achat${xs.length > 1 ? 's' : ''} · <b>${chf(xs.reduce((a, x) => a + num(x.montant), 0))}</b></summary>
       ${xs.map((x) => `<div class="row ard-l"><span>${fmtDate(x.date)}</span><span style="flex:1" class="hint">${x.self && DB.get(x.self) ? esc((DB.get(x.self).lieu || 'Self-service') + ' du ' + fmtDateCourt(DB.get(x.self).date)) : ''}</span><b>${chf(x.montant)}</b><button class="btn link small" type="button" data-act="ardEdit" data-key="${esc(x.key)}">modifier</button></div>`).join('')}</details>`; }).join('') || '<p class="hint">Tout est facturé.</p>'}
     ${l.length > af.length ? `<p class="hint">${l.length - af.length} paiement(s) déjà facturé(s).</p>` : ''}</div>`;
@@ -506,7 +515,7 @@ FORMS.ard = (v) => {
   DB.put(k, Object.assign({}, DB.get(k) || { cree: new Date().toISOString(), par: Sync.me || '' }, { date: v.date || todayISO(), contactId: ck, montant: r2(m), self: v.self || '' }));
   closeSheet(); toast(`${chf(m)} noté pour ${displayName(DB.get(ck))}.`);
 };
-/* Fin de saison : une facture par personne (une ligne par mois), avec le QR pour payer */
+/* Facturer (chaque fin de mois) : une facture par personne (une ligne par mois), avec le QR pour payer */
 ACTIONS.ardFacturer = () => {
   const af = paiementsMessage().filter((x) => !x.facture), parC = {};
   for (const x of af) (parC[x.contactId] = parC[x.contactId] || []).push(x);
