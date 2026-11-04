@@ -14,16 +14,15 @@ MODULES.cultures = {
   render(sub, id) {
     creerFichesManquantes();
     const nR = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().length : 0;
-    const t = tabs('cultures', [['', 'Plan de culture'], ['frise', 'Frise'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const t = tabs('cultures', [['', 'Plan de cultures'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
     if (sub === 'recoltes') return t + renderRecoltes();
     if (sub === 'marges') return t + renderMarges();
     if (sub === 'fiches') return t + renderFiches(id);
     if (sub === 'planches') return t + renderPlanches();
-    if (sub === 'frise') return t + renderFrise();
     if (sub === 'journal') return t + renderJournal();
     return t + renderPlan();
   },
-  after(sub) { if (sub === 'planches') brancherPlanches(); else if (!sub) brancherPlan(); },
+  after(sub) { if (sub === 'planches') brancherPlanches(); else if (!sub || sub === 'frise') brancherPlan(); },
 };
 /* ---------- Récoltes : celles à noter (prévues au calendrier) et toutes celles faites, par saison ----------
    Une récolte = un mouvement mvt: de type « recolte » (avec ou sans entrée en stock). Le stock, lui, se voit dans Ventes. */
@@ -55,16 +54,21 @@ function renderRecoltes() {
         : `<p class="empty">Aucune récolte notée en ${esc(y)}. « + Récolte » pour la première ; elle compte dans la récolte réelle de la culture et, si tu veux, dans le stock (Ventes → Stock et prix).</p>`}
     </div>${prevuReelHtml(y)}`;
 }
-/* Prévu et réel, par culture du plan : récolte, rendement au m², heures (celles « champ » sans culture précise réparties selon la surface), CHF par heure */
+/* Unité de la récolte d'une culture : celle de son produit (une salade se compte en pièces), sinon kg */
+function uniteRecolte(c) { const p = typeof produitDeCulture === 'function' ? produitDeCulture(c) : null; return p && p.unite && p.unite !== 'kg' ? p.unite : 'kg'; }
+const uniteCourte = (u) => (u === 'pièce' ? 'pc' : u);
+/* Prévu et réel, par culture du plan : récolte, rendement au m², heures (celles « champ » sans culture précise réparties selon la surface), CHF par heure.
+   Une culture vendue à la pièce : prévu = nombre de plants, réel en pièces. */
 function prevuReelHtml(y) {
   const cs = cultures(y); if (!cs.length) return '';
   const P = paramsCultures(y), M = margesSaison(y), mg = {}; for (const x of M.lignes) mg[x.c.key] = x;
-  const ls = cs.map((c) => { const e = Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }), o = culture(e, P), m = mg[c.key] || {}; return { c, o, reel: num(e.recolteReelle), m }; });
-  const t = (f) => ls.reduce((a, x) => a + f(x), 0);
-  return `<div class="panel"><h2>Prévu et réel ${esc(y)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévu kg</th><th class="r">Réel kg</th><th class="r">Écart</th><th class="r">kg/m² réel</th><th class="r">Heures</th><th class="r">CHF/h</th></tr></thead><tbody>
-    ${ls.map(({ c, o, reel, m }) => `<tr><td>${esc(c.nom)}</td><td class="r num">${f0(o.recolte)}</td><td class="r num">${reel ? f0(reel) : '—'}</td><td class="r num ${reel && o.recolte ? (reel >= o.recolte ? 'good' : 'bad') : ''}">${reel && o.recolte ? Math.round((reel / o.recolte - 1) * 100) + ' %' : '—'}</td><td class="r num">${reel && o.surface ? fmtNum(reel / o.surface, 2) : '—'}</td><td class="r num">${m.hDirect ? fmtH(r2(m.hDirect)) : '—'}</td><td class="r num">${m.chfH != null ? money(m.chfH) : '—'}</td></tr>`).join('')}
-    </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(t((x) => x.o.recolte))}</td><td class="r num">${f0(t((x) => x.reel))}</td><td></td><td></td><td class="r num">${fmtH(r2(t((x) => num(x.m.hDirect))))}</td><td></td></tr></tfoot></table></div>
-    <p class="hint">Heures : celles notées pour chaque culture, et celles « champ » sans culture précise réparties selon la surface. CHF/h : la marge de la culture (onglet Marges) par heure. Le rendement prévu se règle dans la fiche, où la moyenne de vos 5 dernières saisons est proposée.</p></div>`;
+  const ls = cs.map((c) => { const e = Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }), o = culture(e, P), m = mg[c.key] || {}, u = uniteRecolte(c);
+    return { c, o, u, prevu: u === 'kg' ? o.recolte : Math.round(o.plantons), reel: num(e.recolteReelle), m }; });
+  const kg = ls.filter((x) => x.u === 'kg'), t = (l, f) => l.reduce((a, x) => a + f(x), 0), pc = ls.some((x) => x.u !== 'kg');
+  return `<div class="panel"><h2>Prévu et réel ${esc(y)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévu</th><th class="r">Réel</th><th class="r">Écart</th><th class="r">Réel au m²</th><th class="r">Heures</th><th class="r">CHF/h</th></tr></thead><tbody>
+    ${ls.map(({ c, o, u, prevu, reel, m }) => `<tr><td>${esc(c.nom)}</td><td class="r num">${prevu ? f0(prevu) + ' ' + esc(uniteCourte(u)) : '—'}</td><td class="r num">${reel ? f0(reel) + ' ' + esc(uniteCourte(u)) : '—'}</td><td class="r num ${reel && prevu ? (reel >= prevu ? 'good' : 'bad') : ''}">${reel && prevu ? Math.round((reel / prevu - 1) * 100) + ' %' : '—'}</td><td class="r num">${reel && o.surface ? fmtNum(reel / o.surface, 2) + ' ' + esc(uniteCourte(u)) + '/m²' : '—'}</td><td class="r num">${m.hDirect ? fmtH(r2(m.hDirect)) : '—'}</td><td class="r num">${m.chfH != null ? money(m.chfH) : '—'}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td>Total${pc ? ' (kg)' : ''}</td><td class="r num">${f0(t(kg, (x) => x.prevu))} kg</td><td class="r num">${f0(t(kg, (x) => x.reel))} kg</td><td></td><td></td><td class="r num">${fmtH(r2(t(ls, (x) => num(x.m.hDirect))))}</td><td></td></tr></tfoot></table></div>
+    <p class="hint">Heures : celles notées pour chaque culture, et celles « champ » sans culture précise réparties selon la surface. CHF/h : la marge de la culture (onglet Marges) par heure. Le rendement prévu se règle dans la fiche, où la moyenne de vos 5 dernières saisons est proposée.${pc ? ' Cultures vendues à la pièce (pc) : le prévu est le nombre de plants du plan, elles ne comptent pas dans le total en kg.' : ''}</p></div>`;
 }
 ACTIONS.rcAnnee = (el) => { RC.annee = el.dataset.y; RC.culture = ''; render(); };
 ACTIONS.rcCulture = (el) => { RC.culture = RC.culture === el.dataset.n ? '' : el.dataset.n; render(); };
@@ -74,9 +78,10 @@ function renderPlan() {
     const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
     const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="plantonsSheet">Semences et plants</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture » : tu peux la choisir dans « Nos cultures », avec ses données des années passées.</p></div>';
-    const eff = list.map((c) => Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }));
+    /* Une culture vendue à la pièce : sa récolte réelle (en pièces) n'entre pas dans les kg */
+    const eff = list.map((c) => { const u = uniteRecolte(c), r = recolteReelleDe(c); return Object.assign({}, avecPrixProduit(c), u === 'kg' ? { recolteReelle: r } : { recolteReelle: 0, reelPieces: r, uniteRec: u }); });
     const os = eff.map((c) => culture(c, P)), T = totauxCultures(eff, P), cols = list.length;
-    const coul = list.map((c, i) => couleurCulture(c, i));
+    const coul = list.map((c, i) => (DB.get(ficheDe(c)) || {}).couleur || couleurCulture(c, i));
     let gi = 0;
     const grp = (t, n) => { const id = t.toLowerCase().replace(/[^a-z]+/g, '-'); const closed = CU.fermes.includes(id); return `${gi++ ? '</tbody>' : ''}<tbody class="${closed ? 'closed' : ''}"><tr class="grp" data-act="cuToggle" data-g="${id}" tabindex="0" aria-expanded="${!closed}"><td>${t}<span class="cnt">${closed ? n + ' lignes' : ''}</span></td>${'<td></td>'.repeat(cols + 1)}</tr>`; };
     /* Ligne calculée (lecture seule) */
@@ -96,7 +101,7 @@ function renderPlan() {
       ${grp('Récolte et ventes', 9)}
       ${fic('Rendement kg/m²', 'rendement')}
       ${calc('Récolte prévue kg', (c, o) => f0(o.recolte), f0(T.recolte))}
-      ${calc('Récolte réelle kg', (c) => (num(c.recolteReelle) ? f0(c.recolteReelle) : '—'), T.recolteReelle ? f0(T.recolteReelle) : '—')}
+      ${calc('Récolte réelle kg', (c) => (c.uniteRec ? (c.reelPieces ? f0(c.reelPieces) + ' ' + esc(uniteCourte(c.uniteRec)) : '—') : num(c.recolteReelle) ? f0(c.recolteReelle) : '—'), T.recolteReelle ? f0(T.recolteReelle) : '—')}
       ${fic('Prix direct CHF/kg', 'prixDirect', { prix: true, fmt: (v) => (v ? money(v) : '—') })}
       ${calc('Ventes directes CHF', (c, o) => f0(o.ventesDirect), f0(T.ventesDirect))}
       ${calc('CHF/m² direct', (c, o) => money(o.chfM2Direct))}
@@ -125,19 +130,14 @@ function renderPlan() {
     </tbody></table></div>
     <div class="row"><button class="btn small" type="button" data-act="cuToutes" data-v="ouvrir">Tout ouvrir</button><button class="btn small" type="button" data-act="cuToutes" data-v="fermer">Tout fermer</button></div>`;
 
-    /* ---- Planning de la saison (semaines) ---- */
-    const y = Number(s), wk = (d) => { const w = semaineISO(d); return w.annee < y ? 1 : w.annee > y ? 53 : w.semaine; };
-    const moisCols = MOIS_COURT.map((m, i) => [m, wk(`${y}-${String(i + 1).padStart(2, '0')}-01`)]);
-    const todayW = String(new Date().getFullYear()) === s ? semaineISO(todayISO()).semaine : 0;
-    const gantt = `<div class="gantt"><div class="g-head"><span></span><span class="g-weeks">${moisCols.map(([m, w], i) => `<span style="grid-column:${w} / ${i < 11 ? moisCols[i + 1][1] : 54}">${m}</span>`).join('')}</span></div>
-      ${list.map((c, i) => { const p = periodeCulture(c); if (!p) return `<div class="g-row"><span class="g-name"><span class="sw" style="background:${coul[i]}"></span><span>${esc(c.nom)}</span></span><span class="hint">Semaines à remplir</span></div>`;
-        const a = wk(p.debut), b = wk(p.fin), r = p.recolteDebut ? wk(p.recolteDebut) : null;
-        return `<div class="g-row"><span class="g-name"><span class="sw" style="background:${coul[i]}"></span><span>${esc(c.nom)}</span></span><span class="g-weeks g-track">
-          ${!r || r > a ? `<span class="g-bar" style="grid-column:${a} / ${r ? r : b + 1};background:${coul[i]}22;border-color:${coul[i]};color:${coul[i]}">${r && r - a > 3 ? 'en place' : ''}</span>` : ''}
-          ${r ? `<span class="g-bar harvest" style="grid-column:${r} / ${b + 1};background:${coul[i]}">${b - r >= 2 ? 'récolte' : ''}</span>` : ''}
-          ${todayW ? `<span class="g-today" style="grid-column:${todayW}"></span>` : ''}</span></div>`; }).join('')}</div>`;
-    /* ---- Planches ---- */
-    const blocks = list.map((c, i) => Array.from({ length: Math.min(200, Math.round(num(c.planches))) }, () => `<span class="blk" style="background:${coul[i]}" title="${esc(c.nom)}"></span>`).join('')).join('');
+    /* ---- Planches : par secteur, chaque planche à la couleur de sa ou ses cultures ---- */
+    const secs = parcelle().secteurs, occ = {}; list.forEach((c, i) => { for (const e of c.emplacements || []) (occ[e] = occ[e] || []).push(i); });
+    const cartePl = secs.map((sec) => `<div class="cp-sec"><div class="cp-nom"><b>${esc(sec.nom)}</b> <span class="hint">${f0(sec.planches)} pl.</span></div><div class="cp-pl">${Array.from({ length: Math.round(num(sec.planches)) }, (_, j) => {
+        const e = `${sec.k}:${j + 1}`, is = occ[e] || [], fond = is.length ? `linear-gradient(90deg, ${is.map((ci, m) => `${coul[ci]} ${m / is.length * 100}% ${(m + 1) / is.length * 100}%`).join(', ')})` : '';
+        return `<span class="cp-p${is.length ? ' on' : ''}"${fond ? ` style="background:${fond}"` : ''} title="${esc(sec.nom + ' ' + (j + 1) + ' : ' + (is.length ? is.map((ci) => list[ci].nom).join(' puis ') : 'libre'))}">${j + 1}</span>`; }).join('')}</div></div>`).join('');
+    const aPlacer = list.map((c, i) => [i, Math.max(0, Math.round(num(c.planches)) - (c.emplacements || []).length)]).filter(([, n]) => n > 0);
+    const cartePlanches = `${secs.length ? cartePl : '<p class="hint">Pas encore de secteurs : créez-les dans l\'onglet Planches.</p>'}
+      ${aPlacer.length ? `<div class="cp-sec"><div class="cp-nom"><b>À placer</b></div><div class="cp-pl">${aPlacer.map(([i, n]) => Array.from({ length: Math.min(60, n) }, () => `<span class="cp-p on vide" style="--c:${coul[i]}" title="${esc(list[i].nom)} : pas encore placée"></span>`).join('')).join('')}</div></div>` : ''}`;
     const legend = list.map((c, i) => `<span><i style="background:${coul[i]}"></i>${esc(c.nom)} · ${f0(c.planches)} pl. · ${Math.round(T.surface ? os[i].surface / T.surface * 100 : 0)} %</span>`).join('');
     /* ---- Récolte et ventes ---- */
     const maxK = Math.max(1, ...os.map((o, i) => Math.max(o.recolte, num(eff[i].recolteReelle))));
@@ -154,9 +154,9 @@ function renderPlan() {
         <div class="stat"><span class="k">Plantons</span><span class="v">${f0(T.plantons)}</span></div>
         <div class="stat"><span class="k">Compost</span><span class="v">${fmtNum(T.compostM3, 1)} m³</span></div>
       </div>
-      <div class="panel"><h2>Planning ${s}</h2>${gantt}<p class="hint">Clair : en place depuis la plantation · foncé : semaines de récolte. Le trait rouge marque cette semaine.</p></div>
+      ${friseHtml(s)}
       <div class="split">
-        <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Où ?</a></div><div class="blocks">${blocks}</div><div class="legend">${legend}</div></div>
+        <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Placer</a></div>${cartePlanches}<div class="legend">${legend}</div></div>
         <div class="panel"><h2>Récolte prévue et réelle (kg)</h2>${bars}<h2 style="margin-top:8px">Ventes directes prévues (CHF)</h2>${ventes}</div>
       </div>
       <div class="panel"><h2>Fumure ${s} : à apporter</h2>
@@ -306,7 +306,7 @@ function historiqueFiche(k) {
   return DB.all('cul:').filter((c) => ficheDe(c) === k).sort((a, b) => String(b.saison).localeCompare(String(a.saison))).map((c) => {
     const P = paramsCultures(c.saison), reel = recolteReelleDe(c);
     const o = culture(Object.assign({}, c, { recolteReelle: reel }), P);
-    return { saison: c.saison, planches: num(c.planches), surface: o.surface, prevu: o.recolte, reel, rdtReel: reel && o.surface ? reel / o.surface : 0, rdtPrevu: num(c.rendement) };
+    return { saison: c.saison, planches: num(c.planches), surface: o.surface, prevu: o.recolte, reel, rdtReel: reel && o.surface ? reel / o.surface : 0, rdtPrevu: num(c.rendement), unite: uniteRecolte(c) };
   });
 }
 function renderFiches(id) {
@@ -336,8 +336,8 @@ function renderFiches(id) {
       <p class="hint">Données de la saison ${esc(sel.saison || '—')}${sel.majLe ? ', mises à jour le ' + fmtDate(sel.majLe) : ''}.</p>
       ${(() => { const js = journal().filter((j) => jnlFiches(j).includes(sel.key)).slice(0, 6); return `<div class="between"><h3>Journal</h3><button class="btn small" type="button" data-act="jnlNouveau" data-fiche="${esc(sel.key)}">+ Note</button></div>${js.length ? js.map((j) => `<p class="hint" style="margin:4px 0"><b>${fmtDate(j.date)}</b> ${esc(typeJnl(j.type))} · ${esc(trunc(j.texte, 140))}</p>`).join('') : '<p class="hint">Aucune note.</p>'}`; })()}
       <h3>Saison après saison</h3>
-      ${h.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Saison</th><th class="r">Planches</th><th class="r">Surface m²</th><th class="r">Prévu kg</th><th class="r">Réel kg</th><th class="r">Rendement réel</th></tr></thead><tbody>
-        ${h.map((x) => `<tr><td>${esc(x.saison)}</td><td class="r num">${f0(x.planches)}</td><td class="r num">${f1(x.surface)}</td><td class="r num">${f0(x.prevu)}</td><td class="r num">${x.reel ? f0(x.reel) : '—'}</td><td class="r num">${x.rdtReel ? fmtNum(x.rdtReel, 2) + ' kg/m²' : '—'}${x.rdtReel && x.rdtPrevu ? ` <span class="hint">(prévu ${fmtNum(x.rdtPrevu, 1)})</span>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+      ${h.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Saison</th><th class="r">Planches</th><th class="r">Surface m²</th><th class="r">Prévu kg</th><th class="r">Réel</th><th class="r">Rendement réel</th></tr></thead><tbody>
+        ${h.map((x) => `<tr><td>${esc(x.saison)}</td><td class="r num">${f0(x.planches)}</td><td class="r num">${f1(x.surface)}</td><td class="r num">${f0(x.prevu)}</td><td class="r num">${x.reel ? f0(x.reel) + (x.unite !== 'kg' ? ' ' + esc(uniteCourte(x.unite)) : '') : '—'}</td><td class="r num">${x.rdtReel ? fmtNum(x.rdtReel, 2) + ' ' + esc(uniteCourte(x.unite)) + '/m²' : '—'}${x.rdtReel && x.rdtPrevu ? ` <span class="hint">(prévu ${fmtNum(x.rdtPrevu, 1)})</span>` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="hint">Pas encore cultivée dans un plan.</p>'}
     </div>`;
   }

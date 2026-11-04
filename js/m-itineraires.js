@@ -123,7 +123,7 @@ setTimeout(() => { if (!(Sync.me || LOCAL_MODE) || ls.get('gdt-cu-synchro') === 
 
 /* ---------- Rendement : moyenne des 5 dernières saisons récoltées ---------- */
 function rendementMoyen(ficheKey) {
-  const h = historiqueFiche(ficheKey).filter((x) => x.rdtReel > 0 && String(x.saison) < todayISO().slice(0, 4) + '9').slice(0, 5);
+  const h = historiqueFiche(ficheKey).filter((x) => x.rdtReel > 0 && x.unite === 'kg' && String(x.saison) < todayISO().slice(0, 4) + '9').slice(0, 5);
   if (!h.length) return null;
   return { v: Math.round(h.reduce((a, x) => a + x.rdtReel, 0) / h.length * 100) / 100, n: h.length, de: h[h.length - 1].saison, a: h[0].saison };
 }
@@ -164,9 +164,9 @@ function chargePrevue(s) {
 }
 
 /* ---------- Onglet Frise : l'année de chaque culture, puis la charge de travail ---------- */
-function renderFrise() {
-  const s = saisonCourante(), ss = saisons(), list = cultures(s), y = Number(s), today = todayISO();
-  const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
+/* Frise de la saison et charge de travail : dans « Plan de cultures » */
+function friseHtml(s) {
+  const list = cultures(s), y = Number(s), today = todayISO();
   const deb = `${y}-01-01`, fin = `${y}-12-31`, tot = jours0(deb, fin) + 1, pc = (d) => Math.max(0, Math.min(100, jours0(deb, d) / tot * 100));
   const mois = MOIS_COURT.map((m, i) => `<span style="left:${pc(`${y}-${String(i + 1).padStart(2, '0')}-01`)}%">${m}</span>`).join('');
   const barre = (a, b, cls, titre) => (a && b && b >= deb && a <= fin ? `<span class="fr-b ${cls}" style="left:${pc(a < deb ? deb : a)}%;width:${Math.max(0.6, pc(b > fin ? fin : b) - pc(a < deb ? deb : a))}%" title="${esc(titre)}"></span>` : '');
@@ -184,8 +184,7 @@ function renderFrise() {
   const max = Math.max(1, ...Object.values(C.sem), ...Object.values(reel)), wNow = today.slice(0, 4) === s ? semaineISO(today).semaine : 0;
   const barres = Array.from({ length: 52 }, (_, i) => i + 1).map((w) => `<span class="ch-w${w === wNow ? ' now' : ''}" title="Semaine ${w} : prévu ${fmtH(r2(C.sem[w] || 0))} h${reel[w] ? ', réel ' + fmtH(r2(reel[w])) + ' h' : ''}"><i class="p" style="height:${(C.sem[w] || 0) / max * 100}%"></i><i class="r" style="height:${(reel[w] || 0) / max * 100}%"></i></span>`).join('');
   const totP = Object.values(C.sem).reduce((a, x) => a + x, 0);
-  return `<div class="between"><div class="row">${chips}</div><button class="btn small primary" type="button" data-act="cuTaches">Créer / mettre à jour les tâches</button></div>
-    <div class="panel"><h2>Frise ${s}</h2>
+  return `<div class="panel"><div class="between"><h2>Frise ${s}</h2><button class="btn small" type="button" data-act="cuTaches">Créer / mettre à jour les tâches</button></div>
       ${list.length ? `<div class="frise"><div class="fr-l fr-mois"><span class="fr-n"></span><span class="fr-t">${mois}</span></div>${lignes}</div>
       <p class="hint fr-leg"><span class="fr-b pep"></span> pépinière <span class="fr-b sol"></span> en terre <span class="fr-b rec"></span> récolte <span class="fr-e"></span> étape d'un itinéraire · Les dates viennent des semaines de la fiche de chaque culture.</p>` : '<p class="empty">Aucune culture dans ce plan.</p>'}</div>
     <div class="panel"><h2>Charge de travail prévue · cultures</h2>

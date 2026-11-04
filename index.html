@@ -1078,6 +1078,15 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .biblio .row { margin-top: 6px; }
 .jtags .row { gap: 6px; margin: 4px 0; }
 .jtags details summary { cursor: pointer; }
+.cp-sec { display: grid; grid-template-columns: 120px 1fr; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
+.cp-sec:first-child { border-top: 0; padding-top: 0; }
+.cp-nom { font-size: 13.5px; line-height: 1.2; min-width: 0; overflow-wrap: anywhere; }
+.cp-nom .hint { font-size: 12px; }
+.cp-pl { display: flex; flex-wrap: wrap; gap: 3px; }
+.cp-p { width: 22px; height: 30px; border-radius: 4px; border: 1px dashed var(--line); background: var(--bg); font-size: 10px; color: var(--muted); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 2px; box-sizing: border-box; }
+.cp-p.on { border: 0; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.6); }
+.cp-p.vide { background: transparent; border: 2px dashed var(--c); }
+@media (max-width: 500px) { .cp-sec { grid-template-columns: 1fr; gap: 4px; } }
 </style>
 </head>
 <body>

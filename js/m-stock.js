@@ -161,7 +161,36 @@ function bilanSelf(s) {
   const enc = recettesDirectes().filter((r) => r.self === s.key).reduce((a, r) => a + num(r.montant), 0) + msg;
   return { mis, vendu, enc, msg, ecart: vendu - enc, taux: vendu > 0 ? (vendu - enc) / vendu : 0 };
 }
+/* Mises en vente d'avant le comptage automatique : les produits d'une culture du plan, pas encore comptés comme récolte (ni écartés) */
+function rattrapagesRecolte() {
+  const out = [];
+  for (const s of misesEnVente()) (s.lignes || []).forEach((l, i) => {
+    if (l.recolte != null) return; const p = DB.get(l.prod), c = p && cultureDuProduit(p, String(s.date).slice(0, 4)); if (!c) return;
+    out.push({ s, i, l, p, c });
+  });
+  return out;
+}
+ACTIONS.selfRattrapage = () => {
+  const r = rattrapagesRecolte(); if (!r.length) { toast('Rien à rattraper.'); return; }
+  openSheet(`${sheetHead('Compter comme récolte')}<form class="sbody form" data-form="selfRattrapage">
+    <p class="hint">Mises en vente enregistrées avant le comptage automatique. Coche ce qui a été récolté pour l'occasion (les produits marqués 🌱 au champ sont cochés d'office). Décoche ce qui venait d'une récolte déjà notée, pour ne pas la compter deux fois.</p>
+    <div class="table-wrap"><table class="list"><thead><tr><th></th><th>Date</th><th>Produit</th><th class="r">Quantité</th><th>Culture</th></tr></thead><tbody>
+    ${r.map((x) => `<tr><td><input type="checkbox" name="r_${esc(x.s.key)}|${x.i}"${x.p.auChamp ? ' checked' : ''} aria-label="Compter"></td><td class="num">${fmtDate(x.s.date)}</td><td>${esc(x.l.nom || x.p.nom)}${x.l.calibre && !x.l.nom ? ' ' + esc(String(x.l.calibre).toLowerCase()) : ''}</td><td class="r num">${esc(fmtQ(num(x.l.qte), x.l.unite))}</td><td>${esc(x.c.nom)} ${esc(x.c.saison)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+};
+FORMS.selfRattrapage = (v) => {
+  const r = rattrapagesRecolte(), parS = {}; let n = 0;
+  for (const x of r) { const on = !!v['r_' + x.s.key + '|' + x.i]; (parS[x.s.key] = parS[x.s.key] || {})[x.i] = on; if (on) n++; }
+  for (const [k, m] of Object.entries(parS)) {
+    const s = DB.get(k); if (!s) continue;
+    const s2 = Object.assign({}, s, { lignes: (s.lignes || []).map((l, i) => (i in m ? Object.assign({}, l, { recolte: m[i] }) : l)) });
+    DB.put(k, s2); stockPourSelf(k, s2);
+  }
+  closeSheet(); toast(n ? `${n} vente${n > 1 ? 's' : ''} comptée${n > 1 ? 's' : ''} comme récolte.` : 'Noté : rien à compter.');
+};
 function renderSelfService() {
+  const rat = rattrapagesRecolte().length;
   const l = misesEnVente(), ouv = l.filter((s) => s.statut !== 'close'), clo = l.filter((s) => s.statut === 'close');
   const tot = clo.reduce((a, s) => { const b = bilanSelf(Object.assign({ key: s.key }, s)); return { v: a.v + b.vendu, e: a.e + b.enc }; }, { v: 0, e: 0 });
   const carte = (s) => {
@@ -181,6 +210,7 @@ function renderSelfService() {
       <div class="stat blue"><span class="k">Encaissé (TWINT, espèces)</span><span class="v">${chf(tot.e)}</span></div>
       <div class="stat ${tot.v && (tot.v - tot.e) / tot.v > 0.1 ? 'bad' : ''}"><span class="k">Manque (vol, erreurs)</span><span class="v">${tot.v ? Math.round(Math.max(0, tot.v - tot.e) / tot.v * 100) + ' %' : '—'}</span><span class="s">${chf(Math.max(0, tot.v - tot.e))}</span></div></div>
     <p class="hint">1. « Mise en vente » : ce qui part au stand, au prix de vente directe (le stock baisse). 2. « Encaissement » à chaque relevé TWINT ou de la caisse : il entre dans les recettes. 3. « Boucler » : on compte les invendus (ils reviennent au stock) et l'app compare ce qui est parti à ce qui a été payé.</p>
+    ${rat ? `<div class="panel between"><span>🌱 ${rat} produit${rat > 1 ? 's' : ''} d'anciennes mises en vente peu${rat > 1 ? 'vent' : 't'} être compté${rat > 1 ? 's' : ''} comme récolte.</span><button class="btn primary small" type="button" data-act="selfRattrapage">Voir et compter</button></div>` : ''}
     ${ouv.map(carte).join('')}${clo.slice(0, 12).map(carte).join('')}${!l.length ? '<div class="panel"><p class="empty">Aucune mise en vente pour l\'instant.</p></div>' : ''}
     ${paiementsMessageHtml()}`;
 }
@@ -212,7 +242,7 @@ FORMS.self = (v) => {
   }
   if (!lignes.length) { toast('Indique au moins une quantité.'); return; }
   /* Un produit « au champ » mis en vente est récolté pour l'occasion : ça compte comme une récolte */
-  for (const l of lignes) { const p = DB.get(l.prod); if (p && p.auChamp) l.recolte = true; }
+  for (const l of lignes) { const p = DB.get(l.prod); l.recolte = !!(p && p.auChamp); }
   const k = 'self:' + uid('s'), s = { date: v.date || todayISO(), lieu: v.lieu || 'Self-service', lignes, retours: {}, statut: 'ouverte', note: v.note, par: Sync.me || '', cree: new Date().toISOString() };
   DB.put(k, s); stockPourSelf(k, s); closeSheet();
   const nr = lignes.filter((l) => l.recolte).length; toast(`Mise en vente enregistrée.${nr ? ` ${nr > 1 ? nr + ' produits au champ comptés' : 'Produit au champ compté'} comme récolte.` : ''}`, nr ? 4000 : undefined);
