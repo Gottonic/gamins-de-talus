@@ -1041,6 +1041,43 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .theme-ch.t-systeme { background: linear-gradient(90deg, #F8F8F3 50%, #1C211D 50%); }
 .theme-ch.t-systeme span { background: linear-gradient(90deg, #1B231E 50%, #E6EAE3 50%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .theme-ch.t-crazy { background: linear-gradient(90deg, #FF00C8, #FF6A00, #FFC800, #00C878, #0066FF, #8B00FF); color: #fff; border: 0; text-shadow: 1px 1px 0 rgba(0, 0, 0, .45); }
+.frise { display: grid; gap: 3px; overflow-x: auto; }
+.fr-l { display: grid; grid-template-columns: 132px minmax(480px, 1fr); align-items: center; gap: 8px; min-height: 20px; }
+.fr-n { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); text-decoration: none; }
+.fr-t { position: relative; height: 16px; background: repeating-linear-gradient(90deg, transparent 0 calc(100% / 12 - 1px), var(--line) calc(100% / 12 - 1px) calc(100% / 12)); border-radius: 3px; }
+.fr-mois .fr-t { background: none; }
+.fr-mois .fr-t span { position: absolute; top: 0; font-size: 11px; color: var(--muted); }
+.fr-b { position: absolute; top: 3px; height: 10px; border-radius: 3px; background: var(--c, var(--accent)); }
+.fr-b.pep { opacity: .35; background: repeating-linear-gradient(45deg, var(--c, var(--accent)) 0 3px, transparent 3px 6px); opacity: .7; }
+.fr-b.sol { opacity: .45; }
+.fr-b.rec { opacity: 1; }
+.fr-e { position: absolute; top: 4px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--surface); border: 2px solid var(--ink); box-sizing: border-box; }
+.fr-auj { position: absolute; top: -2px; bottom: -3px; width: 2px; background: var(--late); z-index: 1; }
+.frise { position: relative; }
+.fr-leg .fr-b, .fr-leg .fr-e { position: relative; display: inline-block; top: 1px; width: 18px; margin: 0 2px 0 8px; --c: var(--accent); }
+.fr-leg .fr-e { width: 8px; margin-left: 10px; }
+.charge { display: flex; align-items: flex-end; gap: 1px; height: 120px; border-bottom: 1px solid var(--line); }
+.ch-w { flex: 1; position: relative; height: 100%; }
+.ch-w i { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 2px 2px 0 0; }
+.ch-w i.p { background: var(--s-cultures); border: 1px solid var(--c-cultures); border-bottom: 0; }
+.ch-w i.r { left: 30%; right: 30%; background: var(--c-cultures); }
+.ch-w.now { background: var(--late-soft); }
+.charge-ax { position: relative; height: 15px; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.charge-ax span { position: absolute; top: 0; }
+.lg { display: inline-block; width: 12px; height: 10px; border-radius: 2px; vertical-align: -1px; margin: 0 3px 0 6px; }
+.lg.p { background: var(--s-cultures); border: 1px solid var(--c-cultures); }
+.lg.r { background: var(--c-cultures); }
+.et-ed { display: grid; gap: 6px; margin-bottom: 6px; }
+.et-l { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.et-l input[data-ef="t"] { flex: 1 1 160px; min-width: 0; }
+.chip-cb { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; cursor: pointer; }
+.chip-cb:has(input:checked) { background: var(--soft); border-color: var(--accent); color: var(--ink); }
+.col-g { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.rdt-moy { margin: 4px 0 0; }
+.biblio summary { cursor: pointer; margin-top: 8px; }
+.biblio .row { margin-top: 6px; }
+.jtags .row { gap: 6px; margin: 4px 0; }
+.jtags details summary { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -1096,6 +1133,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="js/m-irrigation.js"></script>
 <script src="js/m-stock.js"></script>
 <script src="js/m-parcelle.js"></script>
+<script src="js/m-itineraires.js"></script>
 <script src="js/m-drive.js"></script>
 <script src="js/main.js"></script>
 </body>

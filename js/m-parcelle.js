@@ -1,7 +1,7 @@
 /* Gamins de Talus — secteurs et planches numérotées, journal de cultures et rapport de fin d'année.
    cfg:parcelle  { secteurs: [{ k, nom, planches (nombre), longueur? }] }
    cul:<id>      + emplacements: ['<secteur>:<n°>', …] : où la culture est placée cette saison
-   jnl:<id>      { date, par, texte, type, fiche?, culture?, emplacement?, photo? } */
+   jnl:<id>      { date, par, texte, type, fiches: [], emplacements: [], photo? } (ancien format : fiche, emplacement) */
 'use strict';
 
 const PARC = { peindre: '', jFiche: '', jType: '', jAnnee: '' };
@@ -112,38 +112,59 @@ FORMS.paSecteurs = (v) => {
 const JNL_TYPES = [['observation', 'Observation'], ['maladie', 'Maladie'], ['ravageur', 'Ravageur'], ['meteo', 'Météo'], ['travail', 'Travail fait'], ['recolte', 'Récolte'], ['idee', 'Idée / à changer'], ['autre', 'Autre']];
 const journal = () => DB.all('jnl:').sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || '')));
 const typeJnl = (k) => (JNL_TYPES.find((t) => t[0] === k) || ['', k || ''])[1];
+/* Une note peut concerner plusieurs cultures et plusieurs planches (fiches: [], emplacements: []) ; ancien format : fiche, emplacement */
+const jnlFiches = (j) => [...new Set((j.fiches || []).concat(j.fiche ? [j.fiche] : []))];
+const jnlPlanches = (j) => [...new Set((j.emplacements || []).concat(j.emplacement ? [j.emplacement] : []))];
+const toutesPlanches = () => parcelle().secteurs.flatMap((s) => Array.from({ length: Math.round(num(s.planches)) }, (_, i) => [`${s.k}:${i + 1}`, `${s.nom} ${i + 1}`]));
+/* Choix des cultures et des planches par puces (dans la saisie rapide et dans la fiche d'une note) */
+function jnlTagsHtml(id, fs, es) {
+  const s = saisonCourante(), auPlan = new Set(cultures(s).map((c) => ficheDe(c))), lf = fiches().sort((a, b) => (auPlan.has(b.key) ? 1 : 0) - (auPlan.has(a.key) ? 1 : 0));
+  const pl = toutesPlanches();
+  return `<div class="jtags" id="${id}"><input type="hidden" name="fiches" value="${esc(JSON.stringify(fs))}"><input type="hidden" name="emplacements" value="${esc(JSON.stringify(es))}">
+    <div class="row">${lf.map((f) => `<button type="button" class="chip${fs.includes(f.key) ? ' on' : ''}" data-jtag="fiches" data-v="${esc(f.key)}"><span class="sw" style="background:${f.couleur || '#999'}"></span>${esc(f.nom)}</button>`).join('')}</div>
+    ${pl.length ? `<details${es.length ? ' open' : ''}><summary class="hint">Planches${es.length ? ' · ' + es.length : ''}</summary><div class="row">${pl.map(([k, n]) => `<button type="button" class="chip${es.includes(k) ? ' on' : ''}" data-jtag="emplacements" data-v="${esc(k)}">${esc(n)}</button>`).join('')}</div></details>` : ''}</div>`;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-jtag]'); if (!b) return; e.preventDefault();
+  const box = b.closest('.jtags'), inpt = box.querySelector(`input[name="${b.dataset.jtag}"]`); let l = []; try { l = JSON.parse(inpt.value || '[]'); } catch (x) { l = []; }
+  l = l.includes(b.dataset.v) ? l.filter((x) => x !== b.dataset.v) : l.concat([b.dataset.v]); inpt.value = JSON.stringify(l); b.classList.toggle('on');
+});
+const lireListe = (t) => { try { const l = JSON.parse(t || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } };
 function renderJournal() {
   const all = journal(), ans = [...new Set(all.map((j) => String(j.date).slice(0, 4)).concat([todayISO().slice(0, 4)]))].sort().reverse();
   const an = PARC.jAnnee || ans[0];
   let l = all.filter((j) => String(j.date).slice(0, 4) === an);
-  if (PARC.jFiche) l = l.filter((j) => j.fiche === PARC.jFiche);
+  if (PARC.jFiche) l = l.filter((j) => jnlFiches(j).includes(PARC.jFiche));
   if (PARC.jType) l = l.filter((j) => j.type === PARC.jType);
-  const fs = fiches();
-  const ligne = (j) => { const f = DB.get(j.fiche); return `<div class="jnl"><div class="between"><span><b>${fmtDate(j.date)}</b> · <span class="tpill">${esc(typeJnl(j.type))}</span>${f ? ` <span class="sw" style="background:${f.couleur || '#999'}"></span>${esc(f.nom)}` : ''}${j.emplacement ? ` · ${esc(nomPlanche(j.emplacement))}` : ''}</span><span class="hint">${esc(nomDe(j.par))} <button class="msg-menu" type="button" data-act="jnlEdit" data-key="${esc(j.key)}" aria-label="Modifier">⋯</button></span></div>
+  const ligne = (j) => { const fs = jnlFiches(j).map((k) => DB.get(k)).filter(Boolean), es = jnlPlanches(j);
+    return `<div class="jnl" data-act="jnlEdit" data-key="${esc(j.key)}" role="button" tabindex="0"><div class="between"><span><b>${fmtDate(j.date)}</b> · <span class="tpill">${esc(typeJnl(j.type))}</span>${fs.map((f) => ` <span class="sw" style="background:${f.couleur || '#999'}"></span>${esc(f.nom)}`).join(',')}${es.length ? ` · ${es.map((e) => esc(nomPlanche(e))).join(', ')}` : ''}</span><span class="hint">${esc(nomDe(j.par))}</span></div>
       ${j.photo && j.photo.chemin ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(j.photo.chemin)}"><img data-fichier="${esc(j.photo.chemin)}" alt="Photo" style="max-height:160px"></button>` : ''}<p style="white-space:pre-wrap;margin:4px 0 0">${esc(j.texte)}</p></div>`; };
+  const fsF = [...new Set(all.flatMap(jnlFiches))].map((k) => DB.get(k) && Object.assign({ key: k }, DB.get(k))).filter(Boolean);
   return `<div class="panel"><form class="form" data-form="jnlRapide">
-      <div class="grid2">${sel('jr-type', 'Type', 'observation', JNL_TYPES, { name: 'type' })}${sel('jr-fiche', 'Culture', PARC.jFiche, [['', 'Général']].concat(fs.map((f) => [f.key, f.nom])), { name: 'fiche' })}</div>
       ${txt('jr-txt', 'Note', '', { name: 'texte', rows: 3 })}
-      <div class="row-end"><span class="hint">Date : aujourd'hui (modifiable ensuite)</span><button class="btn primary" type="submit">Ajouter au journal</button></div></form></div>
+      <div class="field"><span class="flabel">Concerne <span class="hint">(facultatif : rien = général)</span></span>${jnlTagsHtml('jr-tags', PARC.jFiche ? [PARC.jFiche] : [], [])}</div>
+      <div class="row-end">${sel('jr-type', 'Type', 'observation', JNL_TYPES, { name: 'type' })}<button class="btn primary" type="submit">Ajouter au journal</button></div></form></div>
     <div class="between"><div class="row">${ans.map((x) => `<button class="chip${x === an ? ' on' : ''}" type="button" data-act="jnlAn" data-y="${x}">${x}</button>`).join('')}</div><button class="btn primary small" type="button" data-act="jnlRapport" data-y="${an}">Rapport ${an}</button></div>
     <div class="chips"><button class="chip${!PARC.jType ? ' on' : ''}" type="button" data-act="jnlType" data-k="">Tout</button>${JNL_TYPES.map(([k, t]) => `<button class="chip${PARC.jType === k ? ' on' : ''}" type="button" data-act="jnlType" data-k="${k}">${t}</button>`).join('')}</div>
+    ${fsF.length ? `<div class="chips"><button class="chip${!PARC.jFiche ? ' on' : ''}" type="button" data-act="jnlFiche" data-k="">Toutes les cultures</button>${fsF.map((f) => `<button class="chip${PARC.jFiche === f.key ? ' on' : ''}" type="button" data-act="jnlFiche" data-k="${esc(f.key)}">${esc(f.nom)}</button>`).join('')}</div>` : ''}
     <div class="panel">${l.length ? l.map(ligne).join('') : '<p class="empty">Pas encore de note pour ce filtre.</p>'}</div>`;
 }
 ACTIONS.jnlAn = (el) => { PARC.jAnnee = el.dataset.y; render(); };
 ACTIONS.jnlType = (el) => { PARC.jType = el.dataset.k; render(); };
+ACTIONS.jnlFiche = (el) => { PARC.jFiche = el.dataset.k; render(); };
 FORMS.jnlRapide = (v) => {
   if (!v.texte) { toast('Écris la note.'); return; }
-  DB.put('jnl:' + uid('j'), { date: todayISO(), par: Sync.me || '', texte: v.texte, type: v.type, fiche: v.fiche || '', cree: new Date().toISOString() });
-  PARC.jFiche = v.fiche || ''; toast('Note ajoutée.');
+  DB.put('jnl:' + uid('j'), { date: todayISO(), par: Sync.me || '', texte: v.texte, type: v.type, fiches: lireListe(v.fiches), emplacements: lireListe(v.emplacements), cree: new Date().toISOString() });
+  toast('Note ajoutée.');
 };
 ACTIONS.jnlNouveau = (el) => ACTIONS.jnlEdit({ dataset: { e: el.dataset.e || '', fiche: el.dataset.fiche || '' } });
 ACTIONS.jnlEdit = (el) => {
-  const k = el.dataset.key || '', j = k ? DB.get(k) : { date: todayISO(), type: 'observation', fiche: el.dataset.fiche || '', emplacement: el.dataset.e || '' };
-  const empl = [['', '—']].concat(parcelle().secteurs.flatMap((s) => Array.from({ length: Math.round(num(s.planches)) }, (_, i) => [`${s.k}:${i + 1}`, `${s.nom} ${i + 1}`])));
+  if (el.closest && el.closest('.msg-photo')) return;
+  const k = el.dataset.key || '', j = k ? DB.get(k) : { date: todayISO(), type: 'observation', fiches: el.dataset.fiche ? [el.dataset.fiche] : [], emplacements: el.dataset.e ? [el.dataset.e] : [] };
   openSheet(`${sheetHead(k ? 'Note du journal' : 'Nouvelle note')}<form class="sbody form" data-form="jnl"><input type="hidden" name="key" value="${esc(k)}">
-    <div class="grid2">${inp('jn-d', 'Date', j.date, { name: 'date', type: 'date' })}${sel('jn-t', 'Type', j.type, JNL_TYPES, { name: 'type' })}
-      ${sel('jn-f', 'Culture', j.fiche || '', [['', 'Général']].concat(fiches().map((f) => [f.key, f.nom])), { name: 'fiche' })}${sel('jn-e', 'Planche', j.emplacement || '', empl, { name: 'emplacement' })}</div>
+    <div class="grid2">${inp('jn-d', 'Date', j.date, { name: 'date', type: 'date' })}${sel('jn-t', 'Type', j.type, JNL_TYPES, { name: 'type' })}</div>
     ${txt('jn-x', 'Note', j.texte, { name: 'texte', rows: 5 })}
+    <div class="field"><span class="flabel">Concerne</span>${jnlTagsHtml('jn-tags', jnlFiches(j), jnlPlanches(j))}</div>
     <label class="btn justif-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>${j.photo ? 'Changer la photo' : 'Ajouter une photo'}<input id="jn-ph" type="file" accept="image/*" hidden></label><span class="hint" id="jn-ph-etat">${j.photo ? 'Une photo est jointe.' : ''}</span>
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette note">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   PARC.photo = j.photo || null;
@@ -156,7 +177,8 @@ ACTIONS.jnlEdit = (el) => {
 FORMS.jnl = (v) => {
   if (!v.texte) { toast('Écris la note.'); return; }
   const k = v.key || 'jnl:' + uid('j'), old = DB.get(k) || { par: Sync.me || '', cree: new Date().toISOString() };
-  const o = Object.assign({}, old, { date: v.date || todayISO(), type: v.type, fiche: v.fiche, emplacement: v.emplacement, texte: v.texte });
+  const o = Object.assign({}, old, { date: v.date || todayISO(), type: v.type, fiches: lireListe(v.fiches), emplacements: lireListe(v.emplacements), texte: v.texte });
+  delete o.fiche; delete o.emplacement;
   if (PARC.photo) o.photo = PARC.photo;
   DB.put(k, o); closeSheet(); toast('Note enregistrée.');
 };
@@ -172,12 +194,12 @@ function rapportAnnee(y) {
     lignes.push(`- **${c.nom}** : ${f0(c.planches)} planches (${f1(o.surface)} m²)${c.emplacements && c.emplacements.length ? ', ' + resumeEmplacements(c.emplacements) : ''} · plantation sem. ${c.semPlantation || '?'}, récolte sem. ${c.semRecolte || '?'} · variété ${c.variete || '?'}`);
     lignes.push(`  récolte prévue ${f0(o.recolte)} kg, réelle ${reel ? f0(reel) + ' kg' : 'non notée'}${reel && o.surface ? ` (${fmtNum(reel / o.surface, 2)} kg/m² pour ${fmtNum(c.rendement, 1)} prévus)` : ''} · prix direct ${money(c.prixDirect)} CHF/kg`);
   }
-  const parFiche = {}; for (const j of notes) (parFiche[j.fiche || ''] = parFiche[j.fiche || ''] || []).push(j);
+  const parFiche = {}; for (const j of notes) { const fs = jnlFiches(j); for (const f of fs.length ? fs : ['']) (parFiche[f] = parFiche[f] || []).push(j); }
   lignes.push('', '## Journal', '');
   if (!notes.length) lignes.push('Aucune note dans le journal cette année.');
   for (const [fk, js] of Object.entries(parFiche).sort(([a], [b]) => (a ? 1 : 0) - (b ? 1 : 0) || String((DB.get(a) || {}).nom).localeCompare(String((DB.get(b) || {}).nom)))) {
     lignes.push(`### ${fk ? (DB.get(fk) || {}).nom || 'Culture' : 'Général'}`, '');
-    for (const j of js) lignes.push(`- ${fmtDate(j.date)} [${typeJnl(j.type)}]${j.emplacement ? ' (' + nomPlanche(j.emplacement) + ')' : ''} ${j.texte.replace(/\s*\n\s*/g, ' / ')} — ${nomDe(j.par)}`);
+    for (const j of js) lignes.push(`- ${fmtDate(j.date)} [${typeJnl(j.type)}]${jnlPlanches(j).length ? ' (' + jnlPlanches(j).map(nomPlanche).join(', ') + ')' : ''} ${j.texte.replace(/\s*\n\s*/g, ' / ')} — ${nomDe(j.par)}`);
     lignes.push('');
   }
   lignes.push('## À demander à une IA', '', `« Voici le rapport de saison ${y} de notre maraîchage (Marly, Suisse). Dégage les points importants : ce qui a bien marché, les problèmes qui reviennent (maladies, ravageurs, météo, organisation), les écarts entre prévu et réel, et propose 5 à 10 changements concrets pour la saison ${Number(y) + 1}. »`);

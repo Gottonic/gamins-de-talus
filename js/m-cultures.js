@@ -14,11 +14,12 @@ MODULES.cultures = {
   render(sub, id) {
     creerFichesManquantes();
     const nR = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().length : 0;
-    const t = tabs('cultures', [['', 'Plan de culture'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const t = tabs('cultures', [['', 'Plan de culture'], ['frise', 'Frise'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
     if (sub === 'recoltes') return t + renderRecoltes();
     if (sub === 'marges') return t + renderMarges();
     if (sub === 'fiches') return t + renderFiches(id);
     if (sub === 'planches') return t + renderPlanches();
+    if (sub === 'frise') return t + renderFrise();
     if (sub === 'journal') return t + renderJournal();
     return t + renderPlan();
   },
@@ -52,7 +53,18 @@ function renderRecoltes() {
       ${l.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Culture</th><th class="r">Quantité</th><th>Par</th><th>Note</th><th></th></tr></thead><tbody>
         ${l.map((x) => `<tr><td class="num">${fmtDate(x.date)}</td><td>${esc(nomCul(x))}${x.horsStock ? '' : ' <span class="tpill" title="Ajoutée au stock">stock</span>'}</td><td class="r num">${esc(fmtQ(x.qte, unite(x)))}</td><td>${esc(x.par ? quiLabel(x.par) : '')}</td><td class="hint">${esc(x.note)}</td><td>${x.key ? `<button class="btn small" type="button" data-act="delItem" data-key="${esc(x.key)}" data-what="cette récolte" aria-label="Supprimer">×</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : `<p class="empty">Aucune récolte notée en ${esc(y)}. « + Récolte » pour la première ; elle compte dans la récolte réelle de la culture et, si tu veux, dans le stock (Ventes → Stock et prix).</p>`}
-    </div>`;
+    </div>${prevuReelHtml(y)}`;
+}
+/* Prévu et réel, par culture du plan : récolte, rendement au m², heures (celles « champ » sans culture précise réparties selon la surface), CHF par heure */
+function prevuReelHtml(y) {
+  const cs = cultures(y); if (!cs.length) return '';
+  const P = paramsCultures(y), M = margesSaison(y), mg = {}; for (const x of M.lignes) mg[x.c.key] = x;
+  const ls = cs.map((c) => { const e = Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }), o = culture(e, P), m = mg[c.key] || {}; return { c, o, reel: num(e.recolteReelle), m }; });
+  const t = (f) => ls.reduce((a, x) => a + f(x), 0);
+  return `<div class="panel"><h2>Prévu et réel ${esc(y)}</h2><div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Prévu kg</th><th class="r">Réel kg</th><th class="r">Écart</th><th class="r">kg/m² réel</th><th class="r">Heures</th><th class="r">CHF/h</th></tr></thead><tbody>
+    ${ls.map(({ c, o, reel, m }) => `<tr><td>${esc(c.nom)}</td><td class="r num">${f0(o.recolte)}</td><td class="r num">${reel ? f0(reel) : '—'}</td><td class="r num ${reel && o.recolte ? (reel >= o.recolte ? 'good' : 'bad') : ''}">${reel && o.recolte ? Math.round((reel / o.recolte - 1) * 100) + ' %' : '—'}</td><td class="r num">${reel && o.surface ? fmtNum(reel / o.surface, 2) : '—'}</td><td class="r num">${m.hDirect ? fmtH(r2(m.hDirect)) : '—'}</td><td class="r num">${m.chfH != null ? money(m.chfH) : '—'}</td></tr>`).join('')}
+    </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(t((x) => x.o.recolte))}</td><td class="r num">${f0(t((x) => x.reel))}</td><td></td><td></td><td class="r num">${fmtH(r2(t((x) => num(x.m.hDirect))))}</td><td></td></tr></tfoot></table></div>
+    <p class="hint">Heures : celles notées pour chaque culture, et celles « champ » sans culture précise réparties selon la surface. CHF/h : la marge de la culture (onglet Marges) par heure. Le rendement prévu se règle dans la fiche, où la moyenne de vos 5 dernières saisons est proposée.</p></div>`;
 }
 ACTIONS.rcAnnee = (el) => { RC.annee = el.dataset.y; RC.culture = ''; render(); };
 ACTIONS.rcCulture = (el) => { RC.culture = RC.culture === el.dataset.n ? '' : el.dataset.n; render(); };
@@ -60,7 +72,7 @@ function renderPlan() {
   {
     const s = saisonCourante(), ss = saisons(), list = cultures(s), P = paramsCultures(s);
     const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
-    const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="plantonsSheet">Commande de plantons</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
+    const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="plantonsSheet">Semences et plants</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture » : tu peux la choisir dans « Nos cultures », avec ses données des années passées.</p></div>';
     const eff = list.map((c) => Object.assign({}, avecPrixProduit(c), { recolteReelle: recolteReelleDe(c) }));
     const os = eff.map((c) => culture(c, P)), T = totauxCultures(eff, P), cols = list.length;
@@ -266,7 +278,7 @@ ACTIONS.cuDupOk = (el) => {
    Les cultures se créent ici ; le plan d'une saison les place (planches, longueur, récolte réelle, ordre, remarque) et garde une copie
    de leurs données. Modifier une fiche met à jour les plans de l'année en cours et des suivantes, jamais les plans passés.
    Les corrections d'analyse de sol sont liées au champ : elles sont dans les hypothèses de la saison. */
-const FICHE_CHAMPS = ['couleur', 'rendement', 'prixDirect', 'prixRevendeur', 'semPlantation', 'semRecolte', 'lignes', 'interplant', 'variete', 'fournisseur', 'besoins', 'compost'];
+const FICHE_CHAMPS = ['couleur', 'rendement', 'prixDirect', 'prixRevendeur', 'semPlantation', 'semRecolte', 'lignes', 'interplant', 'variete', 'fournisseur', 'besoins', 'compost', 'mode', 'joursRecolte', 'dureeRecolte', 'dureePep', 'semis'];
 const fiches = () => DB.all('fiche:').sort((a, b) => String(a.nom).localeCompare(b.nom, 'fr'));
 const cleFiche = (nom) => 'fiche:' + (String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'culture');
 function valeursFiche(f) { const o = { nom: f.nom }; for (const k of FICHE_CHAMPS) if (f[k] !== undefined) o[k] = JSON.parse(JSON.stringify(f[k])); return o; }
@@ -312,7 +324,8 @@ function renderFiches(id) {
       <table class="list"><tbody>
         <tr><td>Rendement</td><td class="r">${v(sel.rendement, 'kg/m²')}</td></tr>
         <tr><td>Prix direct / revendeur</td><td class="r">${(() => { const x = produitPrixDeFiche(sel.key, sel.nom); return x ? `${v(x.prixDirect, 'CHF/kg')} / ${x.prixRevendeur == null ? '—' : v(x.prixRevendeur, 'CHF/kg')}<br><a href="#" class="hint" data-act="prodEdit" data-key="${esc(x.p.key)}">du produit ${esc(x.p.nom)}</a>` : `${v(sel.prixDirect, 'CHF/kg')} / ${sel.prixRevendeur == null || sel.prixRevendeur === '' ? 'auto' : v(sel.prixRevendeur, 'CHF/kg')}`; })()}</td></tr>
-        <tr><td>Semaine de plantation · de récolte</td><td class="r">${v(sel.semPlantation)} · ${v(sel.semRecolte)}</td></tr>
+        <tr><td>Mise en place · plantation · récolte</td><td class="r">${esc((MODES.find((m) => m[0] === (sel.mode || 'achete')) || ['', ''])[1])} · sem. ${v(sel.semPlantation)} · sem. ${v(sel.semRecolte)}</td></tr>
+        <tr><td>Itinéraires</td><td class="r">${(sel.itin || []).map((x) => (itineraires().find((it) => it.k === x) || {}).nom).filter(Boolean).map(esc).join(', ') || '—'}${(sel.etapes || []).length ? ` + ${sel.etapes.length} travaux propres` : ''}</td></tr>
         <tr><td>Lignes par planche · interplant</td><td class="r">${v(sel.lignes)} · ${v(sel.interplant, 'cm')}</td></tr>
         <tr><td>Variété · fournisseur</td><td class="r">${v(sel.variete)} · ${v(sel.fournisseur)}</td></tr>
         <tr><td>Famille</td><td class="r">${(() => { const fm = familleDe(Object.assign({ key: sel.key }, sel)); return fm ? esc(familleNom(fm)) + (sel.famille ? '' : ' <span class="hint">(devinée)</span>') : '—'; })()}</td></tr>
@@ -321,16 +334,18 @@ function renderFiches(id) {
       </tbody></table>
       ${sel.notes ? `<h3>Notes</h3><p style="white-space:pre-wrap">${esc(sel.notes)}</p>` : ''}
       <p class="hint">Données de la saison ${esc(sel.saison || '—')}${sel.majLe ? ', mises à jour le ' + fmtDate(sel.majLe) : ''}.</p>
-      ${(() => { const js = journal().filter((j) => j.fiche === sel.key).slice(0, 6); return `<div class="between"><h3>Journal</h3><button class="btn small" type="button" data-act="jnlNouveau" data-fiche="${esc(sel.key)}">+ Note</button></div>${js.length ? js.map((j) => `<p class="hint" style="margin:4px 0"><b>${fmtDate(j.date)}</b> ${esc(typeJnl(j.type))} · ${esc(trunc(j.texte, 140))}</p>`).join('') : '<p class="hint">Aucune note.</p>'}`; })()}
+      ${(() => { const js = journal().filter((j) => jnlFiches(j).includes(sel.key)).slice(0, 6); return `<div class="between"><h3>Journal</h3><button class="btn small" type="button" data-act="jnlNouveau" data-fiche="${esc(sel.key)}">+ Note</button></div>${js.length ? js.map((j) => `<p class="hint" style="margin:4px 0"><b>${fmtDate(j.date)}</b> ${esc(typeJnl(j.type))} · ${esc(trunc(j.texte, 140))}</p>`).join('') : '<p class="hint">Aucune note.</p>'}`; })()}
       <h3>Saison après saison</h3>
       ${h.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Saison</th><th class="r">Planches</th><th class="r">Surface m²</th><th class="r">Prévu kg</th><th class="r">Réel kg</th><th class="r">Rendement réel</th></tr></thead><tbody>
         ${h.map((x) => `<tr><td>${esc(x.saison)}</td><td class="r num">${f0(x.planches)}</td><td class="r num">${f1(x.surface)}</td><td class="r num">${f0(x.prevu)}</td><td class="r num">${x.reel ? f0(x.reel) : '—'}</td><td class="r num">${x.rdtReel ? fmtNum(x.rdtReel, 2) + ' kg/m²' : '—'}${x.rdtReel && x.rdtPrevu ? ` <span class="hint">(prévu ${fmtNum(x.rdtPrevu, 1)})</span>` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : '<p class="hint">Pas encore cultivée dans un plan.</p>'}
     </div>`;
   }
-  return `<div class="split"><div class="panel"><div class="between"><h2>Nos cultures</h2><button class="btn primary small" type="button" data-act="ficheEdit">+ Fiche</button></div>
+  return `<div class="split"><div class="col-g"><div class="panel"><div class="between"><h2>Nos cultures</h2><button class="btn primary small" type="button" data-act="ficheEdit">+ Fiche</button></div>
       <p class="hint">Chaque culture se crée ici, avec ses données. Dans le plan de culture, on la place et on indique ses planches pour la saison.</p>
-      ${l.length ? `<div class="items">${l.map(ligne).join('')}</div>` : '<p class="empty">Aucune fiche pour l\'instant.</p>'}</div>
+      ${l.length ? `<div class="items">${l.map(ligne).join('')}</div>` : '<p class="empty">Aucune fiche pour l\'instant.</p>'}
+      ${(() => { const autres = BIBLIO.filter((x) => !DB.get(cleFiche(x.nom))); return autres.length ? `<details class="biblio"><summary class="hint">Autres cultures connues (${autres.length}) : créer une fiche à partir de repères</summary><div class="row">${autres.map((x) => `<button type="button" class="chip" data-act="ficheEdit" data-biblio="${esc(x.nom)}">${esc(x.nom)}</button>`).join('')}</div></details>` : ''; })()}</div>
+      ${itinerairesHtml()}</div>
     <div id="ct-right">${droite}</div></div>`;
 }
 /* « + Culture » : on choisit une culture de « Nos cultures » et on la place dans le plan */
@@ -354,20 +369,37 @@ FORMS.cuPlacer = (v) => {
   const f = DB.get(v.fiche); if (!f) { toast('Choisis une culture dans la liste.'); return; }
   const s = v.saison;
   const o = Object.assign({ saison: s, fiche: v.fiche, ordre: cultures(s).length + 1, recolteReelle: null }, valeursFiche(f), { planches: num(v.planches), longueur: v.longueur === '' ? null : num(v.longueur) });
-  DB.put('cul:' + uid('c'), o); closeSheet(); toast(`${f.nom} placé dans le plan ${s}.`);
+  DB.put('cul:' + uid('c'), o); closeSheet(); const r = s >= todayISO().slice(0, 4) ? synchroTachesCultures(s) : { n: 0 };
+  toast(`${f.nom} placé dans le plan ${s}.${r.n ? ` ${r.n} tâche${r.n > 1 ? 's' : ''} créée${r.n > 1 ? 's' : ''} dans Planification.` : ''}`, 4500);
 };
 ACTIONS.ficheNouvelle = () => { closeSheet(); go('#/cultures/fiches'); setTimeout(() => ACTIONS.ficheEdit({ dataset: {} }), 60); };
 ACTIONS.ficheEdit = (el) => {
-  const k = el.dataset.key || '', f = k ? DB.get(k) : { lignes: 1, besoins: {} }, b = f.besoins || {}, s = saisonCourante(), pp = k ? produitPrixDeFiche(k, f.nom) : null;
+  const k = el.dataset.key || '', base = el.dataset.biblio ? BIBLIO.find((x) => x.nom === el.dataset.biblio) : null;
+  const f = k ? DB.get(k) : base ? { nom: base.nom, famille: base.famille, mode: base.mode, semPlantation: String(base.sem), joursRecolte: base.jours, dureeRecolte: base.duree, semRecolte: semRecolteCalculee(base.sem, base.jours, base.duree), rendement: base.rdt, lignes: base.lignes, interplant: base.interplant, besoins: {}, itin: itineraires().map((x) => x.k) } : { lignes: 1, besoins: {}, mode: 'achete', itin: itineraires().map((x) => x.k) };
+  const b = f.besoins || {}, s = saisonCourante(), pp = k ? produitPrixDeFiche(k, f.nom) : null, moy = k ? rendementMoyen(k) : null;
   const n = (id, label, val, name) => inp(id, label, val ?? '', { name, type: 'number', attrs: { step: 'any', inputmode: 'decimal' } });
   openSheet(`${sheetHead(k ? 'Fiche ' + f.nom : 'Nouvelle fiche de culture')}<form class="sbody form" data-form="fiche"><input type="hidden" name="key" value="${esc(k)}">
+    ${k ? '' : `<div class="field"><label for="fi-bib">Partir d'une culture connue (facultatif)</label><select id="fi-bib"><option value="">—</option>${BIBLIO.filter((x) => !DB.get(cleFiche(x.nom))).map((x) => `<option${base && base.nom === x.nom ? ' selected' : ''}>${esc(x.nom)}</option>`).join('')}</select><span class="sub">Remplit des repères (plateau suisse, plein champ) : à ajuster.</span></div>`}
     ${inp('fi-nom', 'Culture', f.nom, { name: 'nom', req: true })}
     <div class="field"><span class="flabel">Couleur</span><div class="seg">${CULT_PALETTE.map((x) => `<label style="--c:${x}"><input type="radio" name="couleur" value="${x}"${f.couleur === x ? ' checked' : ''}> <span class="blk" style="background:${x};width:18px;height:18px"></span></label>`).join('')}</div></div>
+    ${moy ? `<p class="hint rdt-moy">📈 Moyenne de ${moy.n > 1 ? `vos ${moy.n} dernières saisons` : 'votre dernière saison'} (${esc(moy.de)}${moy.n > 1 ? '–' + esc(moy.a) : ''}) : <b>${fmtNum(moy.v, 2)} kg/m²</b> <button type="button" class="btn small" data-act="rdtMoyen" data-v="${moy.v}">Utiliser</button></p>` : ''}
     <div class="grid2">${n('fi-r', 'Rendement kg/m²', f.rendement, 'rendement')}${n('fi-c', 'Compost L/m²', f.compost, 'compost')}
       ${pp ? `<input type="hidden" name="prixDirect" value="${esc(f.prixDirect ?? '')}"><input type="hidden" name="prixRevendeur" value="${esc(f.prixRevendeur ?? '')}"><div class="field"><span class="flabel">Prix</span><span class="hint">${money(pp.prixDirect)} CHF/kg direct${pp.prixRevendeur != null ? ' · ' + money(pp.prixRevendeur) + ' revendeur' : ''} : ceux du produit <a href="#" data-act="prodEdit" data-key="${esc(pp.p.key)}">${esc(pp.p.nom)}</a> (Stock et prix).</span></div><div></div>` : n('fi-pd', 'Prix direct CHF/kg', f.prixDirect, 'prixDirect') + n('fi-pr', 'Prix revendeur CHF/kg', f.prixRevendeur, 'prixRevendeur')}
-      ${inp('fi-sp', 'Semaine de plantation', f.semPlantation, { name: 'semPlantation', attrs: { placeholder: 'ex. 20' } })}${inp('fi-sr', 'Semaines de récolte', f.semRecolte, { name: 'semRecolte', attrs: { placeholder: 'ex. 40-46' } })}
+    </div>
+    <h3>Itinéraire</h3>
+    <div class="field"><span class="flabel">Mise en place</span><div class="seg">${MODES.map(([m, l]) => `<label><input type="radio" name="mode" value="${m}"${(f.mode || 'achete') === m ? ' checked' : ''}> ${l}</label>`).join('')}</div></div>
+    <div class="grid2">
+      ${inp('fi-sp', 'Semaine de plantation ou de semis', f.semPlantation, { name: 'semPlantation', attrs: { placeholder: 'ex. 20' } })}${n('fi-pep', 'Pépinière (semaines, plant maison)', f.dureePep, 'dureePep')}
+      ${n('fi-jr', 'Jours jusqu\'à la 1re récolte', f.joursRecolte, 'joursRecolte')}${n('fi-dr', 'Durée de récolte (semaines)', f.dureeRecolte, 'dureeRecolte')}
+      ${inp('fi-sr', 'Semaines de récolte', f.semRecolte, { name: 'semRecolte', attrs: { placeholder: 'ex. 40-46' }, sub: '<button type="button" class="btn link small" data-act="ficheCalcRecolte">Calculer depuis la plantation</button> · modifiable' })}${n('fi-sem', 'Semences g/m² (semis direct)', f.semis, 'semis')}
+    </div>
+    <div class="field"><span class="flabel">Itinéraires de travail</span><div class="row">${itineraires().map((it) => `<label class="chip-cb"><input type="checkbox" name="itin_${esc(it.k)}"${(f.itin || []).includes(it.k) ? ' checked' : ''}> ${esc(it.nom)}</label>`).join('') || '<span class="hint">Aucun : crée-en dans « Nos cultures ».</span>'}</div></div>
+    <div class="field"><span class="flabel">Travaux propres à cette culture</span>${etapesEditeurHtml('fi-et', f.etapes || [])}</div>
+    <p class="hint">Les tâches (plantation, récolte, étapes des itinéraires et de la culture) se créent dans Planification pour chaque saison où la culture est au plan.</p>
+    <div class="grid2">
       ${n('fi-l', 'Lignes par planche', f.lignes, 'lignes')}${n('fi-i', 'Interplant cm', f.interplant, 'interplant')}
-      ${inp('fi-v', 'Variété', f.variete, { name: 'variete' })}${inp('fi-f', 'Fournisseur', f.fournisseur, { name: 'fournisseur' })}</div>
+      ${inp('fi-v', 'Variété', f.variete, { name: 'variete' })}${inp('fi-f', 'Fournisseur', f.fournisseur, { name: 'fournisseur', attrs: { list: 'fi-four' } })}</div>
+    <datalist id="fi-four">${(typeof contacts === 'function' ? contacts() : []).filter((c) => c.type === 'fournisseur').map((c) => `<option value="${esc(displayName(c))}">`).join('')}</datalist>
     ${typeof FAMILLES !== 'undefined' ? sel('fi-fam', 'Famille (rotation)', f.famille || (k ? familleDe(Object.assign({ key: k }, f)) : ''), [['', '—']].concat(FAMILLES.map(([x, l, d]) => [x, l + (d ? ` · retour après ${d} ans` : '')])), { name: 'famille' }) : ''}
     <div class="grid2">${NUTR.map((x) => n('fi-b' + x, 'Besoin brut ' + x + ' g/m²', b[x], 'b_' + x)).join('')}</div>
     ${txt('fi-notes', 'Notes de culture', f.notes, { name: 'notes', rows: 4 })}
@@ -380,15 +412,18 @@ FORMS.fiche = (v) => {
   const k = v.key || cleFiche(v.nom);
   if (!v.key && DB.get(k)) { toast('Une fiche porte déjà ce nom.'); return; }
   const old = DB.get(k) || { cree: new Date().toISOString() }, s = saisonCourante();
-  const o = Object.assign({}, old, { nom: v.nom, couleur: v.couleur || old.couleur || CULT_PALETTE[fiches().length % CULT_PALETTE.length], semPlantation: v.semPlantation, semRecolte: v.semRecolte, variete: v.variete, fournisseur: v.fournisseur, famille: v.famille || '', notes: v.notes, majLe: todayISO(), saison: old.saison || s });
-  for (const f of ['rendement', 'compost', 'prixDirect', 'lignes', 'interplant']) o[f] = num(v[f]);
+  const o = Object.assign({}, old, { mode: v.mode || 'achete', itin: itineraires().filter((it) => v['itin_' + it.k]).map((it) => it.k), etapes: lireEtapes('fi-et'), nom: v.nom, couleur: v.couleur || old.couleur || CULT_PALETTE[fiches().length % CULT_PALETTE.length], semPlantation: v.semPlantation, semRecolte: v.semRecolte, variete: v.variete, fournisseur: v.fournisseur, famille: v.famille || '', notes: v.notes, majLe: todayISO(), saison: old.saison || s });
+  for (const f of ['rendement', 'compost', 'prixDirect', 'lignes', 'interplant', 'joursRecolte', 'dureeRecolte', 'dureePep', 'semis']) o[f] = num(v[f]);
   o.prixRevendeur = v.prixRevendeur === '' ? null : num(v.prixRevendeur);
   o.besoins = {}; for (const x of NUTR) o.besoins[x] = num(v['b_' + x]);
   DB.put(k, o);
   const an = todayISO().slice(0, 4);
   for (const c of DB.all('cul:')) if (ficheDe(c) === k && String(c.saison) >= an) DB.put(c.key, Object.assign({}, DB.get(c.key), valeursFiche(o), { fiche: k }));
-  closeSheet(); toast('Fiche enregistrée.'); go('#/cultures/fiches/' + encodeURIComponent(k));
+  closeSheet(); synchroTachesCultures(); toast('Fiche enregistrée.'); go('#/cultures/fiches/' + encodeURIComponent(k));
 };
+ACTIONS.ficheCalcRecolte = () => { const r = semRecolteCalculee(($('fi-sp') || {}).value, ($('fi-jr') || {}).value, ($('fi-dr') || {}).value); if (!r) { toast('Indique la semaine de plantation et les jours jusqu\'à la récolte.'); return; } $('fi-sr').value = r; };
+ACTIONS.rdtMoyen = (el) => { const i = $('fi-r'); if (i) { i.value = el.dataset.v; toast('Rendement repris de la moyenne (modifiable).'); } };
+document.addEventListener('change', (e) => { if (e.target.id !== 'fi-bib' || !e.target.value) return; ACTIONS.ficheEdit({ dataset: { biblio: e.target.value } }); });
 
 /* ---------- Commande de plantons : depuis le plan, par fournisseur, avec la date limite de commande ----------
    Quantité = plantons du plan + marge (pertes, remplacements), arrondie à la dizaine. Commander « délai » semaines avant la plantation.
@@ -397,29 +432,42 @@ const reglagesPlantons = () => Object.assign({ marge: 0.1, delai: 6 }, DB.get('c
 function commandesPlantons(s) {
   const R = reglagesPlantons(), P = paramsCultures(s), parF = {};
   for (const c of cultures(s)) {
-    const o = culture(c, P); if (!(o.plantons > 0)) continue;
+    const o = culture(c, P), fi = DB.get(ficheDe(c)) || {}, mode = fi.mode || c.mode || 'achete';
     const sem = parseSemaines(c.semPlantation), date = sem ? lundiSemaine(Number(s), sem[0]) : '';
-    const f = (c.fournisseur || '').trim() || 'Sans fournisseur';
-    (parF[f] = parF[f] || []).push({ c, n: Math.ceil(o.plantons * (1 + num(R.marge)) / 10) * 10, plan: Math.round(o.plantons), date, semaine: sem ? sem[0] : null, avant: date ? addDays(date, -7 * num(R.delai)) : '' });
+    const f = (fi.fournisseur || c.fournisseur || '').trim() || 'Sans fournisseur';
+    /* Semis direct (ou plant maison) : des semences, en grammes, selon la dose par m² ; plant acheté : des plantons */
+    if (mode !== 'achete' && num(fi.semis || c.semis) > 0) { const g = o.surface * num(fi.semis || c.semis) * (1 + num(R.marge)); (parF[f] = parF[f] || []).push({ c, sem: true, n: g >= 1000 ? r2(g / 1000) : Math.ceil(g), u: g >= 1000 ? 'kg' : 'g', plan: Math.round(o.surface * num(fi.semis || c.semis)), date, semaine: sem ? sem[0] : null, avant: date ? addDays(date, -7 * num(R.delai)) : '' }); continue; }
+    if (!(o.plantons > 0) || mode !== 'achete') continue;
+    (parF[f] = parF[f] || []).push({ c, n: Math.ceil(o.plantons * (1 + num(R.marge)) / 10) * 10, u: 'plantons', plan: Math.round(o.plantons), date, semaine: sem ? sem[0] : null, avant: date ? addDays(date, -7 * num(R.delai)) : '' });
   }
   return Object.entries(parF).map(([f, l]) => ({ fournisseur: f, lignes: l.sort((a, b) => String(a.date || '9').localeCompare(String(b.date || '9'))), avant: l.map((x) => x.avant).filter(Boolean).sort()[0] || '' })).sort((a, b) => String(a.avant || '9').localeCompare(String(b.avant || '9')));
 }
-const textePlantons = (g) => [`Commande de plantons — ${cfg().nom || 'Gamins de Talus'}`, '', ...g.lignes.map((x) => `- ${x.c.nom}${x.c.variete ? ' (' + x.c.variete + ')' : ''} : ${x.n} plantons${x.date ? ', livraison semaine ' + x.semaine + ' (dès le ' + fmtDate(x.date) + ')' : ''}`), '', 'Merci !'].join('\n');
+const textePlantons = (g) => [`Commande — ${cfg().nom || 'Gamins de Talus'}`, '', ...g.lignes.map((x) => `- ${x.c.nom}${x.c.variete ? ' (' + x.c.variete + ')' : ''} : ${x.n} ${x.sem ? x.u + ' de semences' : 'plantons'}${x.date ? (x.sem ? ', semis' : ', livraison') + ' semaine ' + x.semaine + ' (dès le ' + fmtDate(x.date) + ')' : ''}`), '', 'Merci !'].join('\n');
+/* Commande passée chez un fournisseur (pour la saison) : cfg:commande:<saison>:<fournisseur> = { le, par } */
+const cleCommande = (s, f) => `cfg:commande:${s}:${normMot(f).replace(/[^a-z0-9]+/g, '-')}`;
 ACTIONS.plantonsSheet = () => {
   const s = saisonCourante(), R = reglagesPlantons(), gs = commandesPlantons(s), today = todayISO();
-  openSheet(`${sheetHead('Commande de plantons', 'Plan ' + s)}<div class="sbody">
+  openSheet(`${sheetHead('Semences et plants à commander', 'Plan ' + s)}<div class="sbody">
     <form class="grid2" data-form="plantonsReglages">${inp('pl-m', 'Marge (pertes, remplacements) %', Math.round(num(R.marge) * 100), { name: 'marge', type: 'number' })}${inp('pl-d', 'Commander combien de semaines avant', R.delai, { name: 'delai', type: 'number' })}<div class="row-end" style="grid-column:1/-1"><button class="btn small" type="submit">Recalculer</button></div></form>
     ${gs.length ? gs.map((g, i) => `<div class="panel" style="margin:10px 0"><div class="between"><h3 style="margin:0">${esc(g.fournisseur)}</h3>${g.avant ? `<span class="${g.avant < today ? 'err' : 'hint'}">commander avant le ${fmtDate(g.avant)}</span>` : ''}</div>
-      <div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Plantons</th><th>Plantation</th></tr></thead><tbody>${g.lignes.map((x) => `<tr><td>${esc(x.c.nom)}${x.c.variete ? `<br><span class="hint">${esc(x.c.variete)}</span>` : ''}</td><td class="r num">${x.n}<br><span class="hint">plan ${x.plan}</span></td><td>${x.date ? `sem. ${x.semaine} · ${fmtDate(x.date)}` : '<span class="hint">semaine à fixer dans la fiche</span>'}</td></tr>`).join('')}</tbody></table></div>
-      <div class="row"><button class="btn small" type="button" data-act="plantonsCopier" data-i="${i}">Copier la commande</button><button class="btn small" type="button" data-act="plantonsTache" data-i="${i}">Créer la tâche « commander »</button></div></div>`).join('')
-      : '<p class="empty">Aucune culture avec des plantons dans ce plan (il faut l\'interplant dans la fiche).</p>'}
-    <p class="hint">Plantons = longueur ÷ interplant × lignes × planches (comme dans le plan), plus la marge, arrondi à la dizaine. Le fournisseur et la variété viennent de la fiche de chaque culture.</p></div>`);
+      <div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Quantité</th><th>Mise en place</th></tr></thead><tbody>${g.lignes.map((x) => `<tr><td>${esc(x.c.nom)}${x.c.variete ? `<br><span class="hint">${esc(x.c.variete)}</span>` : ''}</td><td class="r num">${x.n} ${x.sem ? x.u : ''}<br><span class="hint">${x.sem ? 'semences' : 'plantons'}, plan ${x.plan}${x.sem ? ' g' : ''}</span></td><td>${x.date ? 'sem. ' + x.semaine + '<br><span class="hint">' + fmtDate(x.date) + '</span>' : '—'}</td></tr>`).join('')}</tbody></table></div>
+      ${(() => { const cm = DB.get(cleCommande(s, g.fournisseur)); return cm ? `<p class="hint">✓ Commandé le ${fmtDate(String(cm.le).slice(0, 10))} par ${esc(nomDe(cm.par))}.</p><div class="row"><button class="btn small" type="button" data-act="cmdFacture" data-f="${esc(g.fournisseur)}">Saisir la facture (dépense)</button><button class="btn small" type="button" data-act="plantonsCopier" data-i="${i}">Copier la commande</button></div>`
+        : `<div class="row"><button class="btn small" type="button" data-act="plantonsCopier" data-i="${i}">Copier la commande</button><button class="btn small" type="button" data-act="plantonsTache" data-i="${i}">Créer la tâche « commander »</button><button class="btn small primary" type="button" data-act="cmdFaite" data-i="${i}">Commandé ✓</button></div>`; })()}</div>`).join('')
+      : '<p class="empty">Rien à commander : il faut l\'interplant (plantons) ou la dose de semences (semis direct) dans la fiche.</p>'}
+    <p class="hint">Plantons = longueur ÷ interplant × lignes × planches ; semences = surface × dose par m². Plus la marge. Le fournisseur et la variété viennent de la fiche (un contact de type « Fournisseur » se propose tout seul).</p></div>`);
 };
 FORMS.plantonsReglages = (v) => { DB.put('cfg:plantons', { marge: Math.max(0, num(v.marge)) / 100, delai: Math.max(0, Math.round(num(v.delai))) }); ACTIONS.plantonsSheet(); };
 ACTIONS.plantonsCopier = async (el) => {
   const g = commandesPlantons(saisonCourante())[Number(el.dataset.i)]; if (!g) return;
   try { await navigator.clipboard.writeText(textePlantons(g)); toast('Commande copiée : colle-la dans un mail au fournisseur.'); } catch (e) { toast("Copie impossible sur cet appareil."); }
 };
+ACTIONS.cmdFaite = (el) => {
+  const s = saisonCourante(), g = commandesPlantons(s)[Number(el.dataset.i)]; if (!g) return;
+  DB.put(cleCommande(s, g.fournisseur), { le: new Date().toISOString(), par: Sync.me || '', fournisseur: g.fournisseur });
+  DB.put('t:' + uid('t'), { titre: `Facture de ${g.fournisseur} (semences / plants) : saisir la dépense`, statut: 'afaire', importance: 2, echeance: addDays(todayISO(), 21), cat: 'admin', sous: '', remarques: textePlantons(g), cree: new Date().toISOString(), creePar: Sync.me || '' });
+  toast('Commande notée. Une tâche te rappellera de saisir la facture.'); ACTIONS.plantonsSheet();
+};
+ACTIONS.cmdFacture = (el) => { const f = el.dataset.f; closeSheet(); ACTIONS.depEdit({ dataset: {}, _pre: { objet: `Semences et plants · ${f}`, compte: '4000' } }); };
 ACTIONS.plantonsTache = (el) => {
   const g = commandesPlantons(saisonCourante())[Number(el.dataset.i)]; if (!g) return;
   DB.put('t:' + uid('t'), { titre: `Commander les plantons chez ${g.fournisseur}`, statut: 'afaire', echeance: g.avant || '', responsable: '', tag: 'agri', remarques: textePlantons(g), cree: new Date().toISOString(), creePar: Sync.me || '' });
