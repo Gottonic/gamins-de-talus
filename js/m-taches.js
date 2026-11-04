@@ -214,7 +214,7 @@ ACTIONS.taTick = (el) => {
   /* Les heures déjà notées ce jour-là se répartissent d'après les tâches faites : on recalcule */
   if (typeof majPourAuto === 'function') { const dj = t.journee ? t.journee.split('|')[1] : t.jour || todayISO(); majPourAuto(dj); if (dj !== todayISO()) majPourAuto(todayISO()); }
   if (!done) {
-    if (t.rep) repeterSiBesoin(el.dataset.key, t); else toast('Tâche faite. 👍');
+    if (t.rep) repeterSiBesoin(el.dataset.key, t);
     /* Une récolte faite : on note tout de suite la quantité (sinon elle reste dans « Récoltes à noter ») */
     if (catTache(t).sous === 'recolte' && typeof ACTIONS.mvtNouveau === 'function') { setTimeout(() => ACTIONS.recolteEv({ dataset: { key: el.dataset.key } }), 50); return; }
   }
