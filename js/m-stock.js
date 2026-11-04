@@ -480,7 +480,12 @@ ACTIONS.ardEdit = (el) => {
     ${inp('ad-tel', 'Numéro de téléphone', c ? c.telephone : '', { name: 'tel', type: 'tel', req: true, attrs: { list: 'ad-tels', autocomplete: 'off', placeholder: '079 123 45 67', autofocus: k ? undefined : '' } })}
     <datalist id="ad-tels">${avecTel.map((t) => `<option value="${esc(t.telephone)}">${esc(displayName(t))}</option>`).join('')}</datalist>
     <p class="hint" id="ad-qui">${c ? '👤 ' + esc(displayName(c)) : ''}</p>
-    <div class="grid2" id="ad-nouveau" hidden>${inp('ad-pre', 'Prénom (nouveau contact)', '', { name: 'prenom' })}${inp('ad-nom', 'Nom', '', { name: 'nomFamille' })}</div>
+    <fieldset class="ta-partie" id="ad-nouveau" hidden><legend>Nouveau contact</legend>
+      <div class="grid2">${inp('ad-pre', 'Prénom', '', { name: 'prenom' })}${inp('ad-nom', 'Nom', '', { name: 'nomFamille' })}</div>
+      <div class="grid2">${inp('ad-rue', 'Rue', '', { name: 'rue' })}${inp('ad-no', 'N°', '', { name: 'numero' })}${inp('ad-npa', 'NPA', '', { name: 'npa', attrs: { inputmode: 'numeric' } })}${inp('ad-loc', 'Localité', '', { name: 'localite' })}</div>
+      ${inp('ad-mail', 'E-mail', '', { name: 'email', type: 'email' })}
+      ${txt('ad-rem', 'Remarque (facultatif)', '', { name: 'remarque', rows: 2 })}
+      <p class="hint">Adresse et e-mail : pour lui envoyer la facture en fin de saison.</p></fieldset>
     <div class="grid2">${inp('ad-m', 'Montant CHF', x.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}${inp('ad-d', 'Date', x.date, { name: 'date', type: 'date' })}</div>
     <input type="hidden" name="self" value="${esc(x.self || '')}">
     ${x.facture ? `<p class="hint">Déjà facturé (${esc((DB.get(x.facture) || {}).numero || '')}).</p>` : ''}
@@ -492,7 +497,11 @@ FORMS.ard = (v) => {
   const m = num(v.montant); if (!(m > 0)) { toast('Indique le montant.'); return; }
   if (chiffresTel(v.tel).length < 9) { toast('Indique un numéro de téléphone complet.'); return; }
   let c = contactParTel(v.tel), ck = c ? c.key : '';
-  if (!c) { ck = 'ct:' + uid('c'); const nom = nomComplet(v.prenom, v.nomFamille) || String(v.tel).trim(); DB.put(ck, { prenom: v.prenom || '', nomFamille: v.nomFamille || '', nom, telephone: String(v.tel).trim(), type: 'particulier', notes: 'Créé depuis un paiement par message (vente directe).', cree: new Date().toISOString() }); }
+  if (!c) {
+    const manque = [!String(v.prenom || v.nomFamille || '').trim() && 'le nom', !String(v.rue || '').trim() && 'la rue', !String(v.npa || '').trim() && 'le NPA', !String(v.localite || '').trim() && 'la localité', !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v.email || '').trim()) && 'un e-mail valide'].filter(Boolean);
+    if (manque.length) { toast('Nouveau contact : il manque ' + manque.join(', ') + '.', 5000); return; }
+  }
+  if (!c) { ck = 'ct:' + uid('c'); const nom = nomComplet(v.prenom, v.nomFamille) || String(v.tel).trim(); DB.put(ck, { prenom: v.prenom || '', nomFamille: v.nomFamille || '', nom, telephone: String(v.tel).trim(), rue: String(v.rue || '').trim(), numero: String(v.numero || '').trim(), npa: String(v.npa || '').trim(), localite: String(v.localite || '').trim(), email: String(v.email || '').trim(), type: 'particulier', notes: (v.remarque ? v.remarque.trim() + '\n' : '') + 'Créé depuis un paiement par message (self-service).', cree: new Date().toISOString() }); }
   const k = v.key || 'ard:' + uid('d');
   DB.put(k, Object.assign({}, DB.get(k) || { cree: new Date().toISOString(), par: Sync.me || '' }, { date: v.date || todayISO(), contactId: ck, montant: r2(m), self: v.self || '' }));
   closeSheet(); toast(`${chf(m)} noté pour ${displayName(DB.get(ck))}.`);
