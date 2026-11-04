@@ -64,7 +64,10 @@ function brancherStock() {
 /* La culture du plan d'une saison qui donne ce produit (fiche liée, sinon même nom) */
 function cultureDuProduit(p, saison) {
   if (!p || typeof cultures !== 'function') return null;
-  return cultures(String(saison)).find((x) => (p.fiche && ficheDe(x) === p.fiche) || sansAccentsS(x.nom) === sansAccentsS(p.nom)) || null;
+  const cs = cultures(String(saison)), n = sansAccentsS(p.nom);
+  /* La fiche liée au produit, sinon le produit que la culture désigne, sinon le même nom (« Courge butternut » → Courge) */
+  return cs.find((x) => p.fiche && ficheDe(x) === p.fiche) || cs.find((x) => { const pr = produitDeCulture(x); return pr && pr.key === p.key; })
+    || cs.find((x) => sansAccentsS(x.nom) === n) || cs.find((x) => n.startsWith(sansAccentsS(x.nom)) || sansAccentsS(x.nom).startsWith(n)) || null;
 }
 /* Noter un mouvement : récolte, sortie (perte), comptage */
 ACTIONS.mvtNouveau = (el) => {
@@ -165,26 +168,28 @@ function bilanSelf(s) {
 function rattrapagesRecolte() {
   const out = [];
   for (const s of misesEnVente()) (s.lignes || []).forEach((l, i) => {
-    if (l.recolte != null) return; const p = DB.get(l.prod), c = p && cultureDuProduit(p, String(s.date).slice(0, 4)); if (!c) return;
-    out.push({ s, i, l, p, c });
+    if (l.recolte != null) return; const p = DB.get(l.prod); if (!p) return;
+    out.push({ s, i, l, p, c: cultureDuProduit(p, String(s.date).slice(0, 4)) });
   });
   return out;
 }
 ACTIONS.selfRattrapage = () => {
   const r = rattrapagesRecolte(); if (!r.length) { toast('Rien à rattraper.'); return; }
   openSheet(`${sheetHead('Compter comme récolte')}<form class="sbody form" data-form="selfRattrapage">
-    <p class="hint">Mises en vente enregistrées avant le comptage automatique. Coche ce qui a été récolté pour l'occasion (les produits marqués 🌱 au champ sont cochés d'office). Décoche ce qui venait d'une récolte déjà notée, pour ne pas la compter deux fois.</p>
+    <p class="hint">Mises en vente enregistrées avant le comptage automatique. Coche ce qui a été récolté pour l'occasion (les produits 🌱 au champ dont la culture est trouvée sont cochés d'office) et vérifie la culture. Décoche ce qui venait d'une récolte déjà notée, pour ne pas la compter deux fois.</p>
     <div class="table-wrap"><table class="list"><thead><tr><th></th><th>Date</th><th>Produit</th><th class="r">Quantité</th><th>Culture</th></tr></thead><tbody>
-    ${r.map((x) => `<tr><td><input type="checkbox" name="r_${esc(x.s.key)}|${x.i}"${x.p.auChamp ? ' checked' : ''} aria-label="Compter"></td><td class="num">${fmtDate(x.s.date)}</td><td>${esc(x.l.nom || x.p.nom)}${x.l.calibre && !x.l.nom ? ' ' + esc(String(x.l.calibre).toLowerCase()) : ''}</td><td class="r num">${esc(fmtQ(num(x.l.qte), x.l.unite))}</td><td>${esc(x.c.nom)} ${esc(x.c.saison)}</td></tr>`).join('')}
+    ${r.map((x) => { const y = String(x.s.date).slice(0, 4), cs = typeof cultures === 'function' ? cultures(y) : [];
+      return `<tr><td><input type="checkbox" name="r_${esc(x.s.key)}|${x.i}"${x.p.auChamp && x.c ? ' checked' : ''} aria-label="Compter"></td><td class="num">${fmtDate(x.s.date)}</td><td>${esc(x.l.nom || x.p.nom)}${x.l.calibre && !x.l.nom ? ' ' + esc(String(x.l.calibre).toLowerCase()) : ''}${x.p.auChamp ? ' 🌱' : ''}</td><td class="r num">${esc(fmtQ(num(x.l.qte), x.l.unite === 'pièce' ? 'pc' : x.l.unite))}</td>
+        <td>${cs.length ? `<select class="cell-in" name="c_${esc(x.s.key)}|${x.i}" aria-label="Culture"><option value="">— aucune —</option>${cs.map((c) => `<option value="${esc(c.key)}"${x.c && x.c.key === c.key ? ' selected' : ''}>${esc(c.nom)}</option>`).join('')}</select>` : `<span class="hint">pas de plan ${esc(y)}</span>`}</td></tr>`; }).join('')}
     </tbody></table></div>
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.selfRattrapage = (v) => {
   const r = rattrapagesRecolte(), parS = {}; let n = 0;
-  for (const x of r) { const on = !!v['r_' + x.s.key + '|' + x.i]; (parS[x.s.key] = parS[x.s.key] || {})[x.i] = on; if (on) n++; }
+  for (const x of r) { const on = !!v['r_' + x.s.key + '|' + x.i], cu = v['c_' + x.s.key + '|' + x.i] || ''; (parS[x.s.key] = parS[x.s.key] || {})[x.i] = { on, cu }; if (on) n++; }
   for (const [k, m] of Object.entries(parS)) {
     const s = DB.get(k); if (!s) continue;
-    const s2 = Object.assign({}, s, { lignes: (s.lignes || []).map((l, i) => (i in m ? Object.assign({}, l, { recolte: m[i] }) : l)) });
+    const s2 = Object.assign({}, s, { lignes: (s.lignes || []).map((l, i) => (i in m ? Object.assign({}, l, { recolte: m[i].on }, m[i].on && m[i].cu ? { culture: m[i].cu } : {}) : l)) });
     DB.put(k, s2); stockPourSelf(k, s2);
   }
   closeSheet(); toast(n ? `${n} vente${n > 1 ? 's' : ''} comptée${n > 1 ? 's' : ''} comme récolte.` : 'Noté : rien à compter.');
@@ -227,12 +232,12 @@ function renderSelfService() {
   const aggL = [...agg.values()].sort((a, b) => b.v - a.v);
   return `${articlesHtml()}
     <div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Remplir le stand</button><button class="btn" type="button" data-act="selfEnc">+ Encaissement</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button><button class="btn" type="button" data-act="standPoint">Faire le point</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button>${DB.all('tw:').length ? `<button class="btn" type="button" data-act="twListe">Paiements TWINT (${DB.all('tw:').length})</button>` : ''}</div>
+    ${rat ? `<div class="panel between"><span>🌱 ${rat} produit${rat > 1 ? 's' : ''} d'anciennes mises en vente : à compter comme récolte, ou pas.</span><button class="btn primary small" type="button" data-act="selfRattrapage">Voir et compter</button></div>` : ''}
     <div class="panel stand${E.aRemplir ? ' a-remplir' : ''}"><div class="between"><h2>Sur le stand</h2><span class="v-stand">≈ ${chf(Math.max(0, E.estime))}</span></div>
       ${E.aRemplir ? `<p class="banner">🧺 Le stand est presque vide (moins de ${chf(R.seuil)} de marchandise) : il est temps de le remplir.</p>` : ''}
       <p class="hint">${E.p ? `Compté le ${fmtDate(E.p.date)} : ${chf(E.base)}` : 'Pas encore de point'} + mis depuis ${chf(E.mis)} − encaissé ${chf(E.enc)}${E.msg ? ` − payé par message ${chf(E.msg)}` : ''}. Les paiements TWINT reçus par mail comptent dès qu'on les enregistre. Un vol ou une perte n'est pas visible : « Faire le point » remet le compteur juste.</p>
       <form class="row stand-seuil" data-form="standSeuil"><label for="st-seuil" class="hint">Prévenir sous</label><input id="st-seuil" name="seuil" class="cell-in" inputmode="decimal" value="${esc(String(R.seuil))}" style="width:80px"><span class="hint">CHF</span><button class="btn small" type="submit">OK</button></form></div>
     ${tl.length ? `<div class="banner">💳 ${tl.length} paiement${tl.length > 1 ? 's' : ''} TWINT importé${tl.length > 1 ? 's' : ''} pas encore compté${tl.length > 1 ? 's' : ''} (${chf(tl.reduce((a, t) => a + t.montant, 0))}). <button class="btn small primary" type="button" data-act="twLibresVD">Voir et compter</button></div>` : ''}
-    ${rat ? `<div class="panel between"><span>🌱 ${rat} produit${rat > 1 ? 's' : ''} d'anciennes mises en vente peu${rat > 1 ? 'vent' : 't'} être compté${rat > 1 ? 's' : ''} comme récolte.</span><button class="btn primary small" type="button" data-act="selfRattrapage">Voir et compter</button></div>` : ''}
     <div class="panel"><div class="between"><h2>Vente directe ${y}</h2>${ys.length > 1 ? `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="sdAn" data-y="${x}">${x}</button>`).join('')}</div>` : ''}</div>
       <div class="stats"><div class="stat"><span class="k">Mis en vente</span><span class="v">${chf(tMis)}</span><span class="s">${misY.length} remplissage${misY.length > 1 ? 's' : ''}</span></div>
         <div class="stat blue"><span class="k">Encaissé (TWINT, espèces)</span><span class="v">${chf(tEnc)}</span><span class="s">${encY.length} paiement${encY.length > 1 ? 's' : ''}</span></div>
@@ -343,7 +348,7 @@ function stockPourSelf(k, s) {
     /* Récolte du jour pour un produit au champ : dans le stock s'il est suivi (puis la mise en vente l'en sort), sinon seulement comptée comme récolte */
     const kh = `mvt:selfh:${k.slice(5)}:${i}`, h0 = DB.get(kh);
     if (l.recolte) {
-      const q = enUniteDeStock(p, l.qte, l.unite, l.poids) ?? num(l.qte), c = cultureDuProduit(p, String(s.date).slice(0, 4));
+      const q = enUniteDeStock(p, l.qte, l.unite, l.poids) ?? num(l.qte), c = (l.culture && DB.get(l.culture) ? Object.assign({ key: l.culture }, DB.get(l.culture)) : null) || cultureDuProduit(p, String(s.date).slice(0, 4));
       const o = { date: s.date, prod: l.prod, qte: q, type: 'recolte', ref: k, par: s.par || '', note: 'Mis en vente directe' + (s.lieu ? ' · ' + s.lieu : ''), cree: (h0 && h0.cree) || s.cree || new Date().toISOString() };
       if (c) o.culture = c.key;
       if (h0 ? h0.horsStock : stockDe(l.prod) == null) o.horsStock = true;
