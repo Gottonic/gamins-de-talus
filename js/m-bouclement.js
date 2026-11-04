@@ -6,10 +6,12 @@
 
 const BCL = { annee: '', enCours: false, etape: '' };
 const anneeBouclement = () => { const t = todayISO(), y = Number(t.slice(0, 4)); return String(Number(t.slice(5, 7)) <= 6 ? y - 1 : y); };
-/* Qui a téléchargé l'archive de l'année y : { personne: { le, … } } */
-function archivesDe(y) {
-  const o = {}; for (const a of DB.all('cfg:archive:' + y + ':')) o[a.key.split(':').pop()] = a;
-  const vieux = DB.get('cfg:archive:' + y); if (vieux && vieux.par && !o[vieux.par]) o[vieux.par] = vieux;
+/* Qui a téléchargé l'archive de l'année y : { personne: { le, … } }. Seule compte une archive téléchargée après la fin de l'année
+   (dès le 1er janvier suivant) : une archive faite pendant l'année est provisoire, le rappel de janvier reste. */
+function archivesDe(y, avecProvisoires) {
+  const o = {}, fin = (Number(y) + 1) + '-01-01', ok = (a) => avecProvisoires || String(a.le || '') >= fin;
+  for (const a of DB.all('cfg:archive:' + y + ':')) if (ok(a)) o[a.key.split(':').pop()] = a;
+  const vieux = DB.get('cfg:archive:' + y); if (vieux && vieux.par && !o[vieux.par] && ok(vieux)) o[vieux.par] = vieux;
   return o;
 }
 const archiveDe = (y) => Object.keys(archivesDe(y)).length > 0;
@@ -50,7 +52,7 @@ function comptesAnnee(y) {
 
 function renderBouclement() {
   const ys = anneesFin(); if (!BCL.annee) BCL.annee = ys.includes(anneeBouclement()) ? anneeBouclement() : ys[0];
-  const y = BCL.annee, o = comptesAnnee(y), ar = archivesDe(y), manque = archiveManquePour(y), ps = personnes();
+  const y = BCL.annee, o = comptesAnnee(y), ar = archivesDe(y, true), manque = archiveManquePour(y), ps = personnes(), finY = (Number(y) + 1) + '-01-01';
   const fini = y < todayISO().slice(0, 4);
   const chk = (ok, txt, lien, act) => `<li class="${ok ? 'ok' : 'todo'}"><span class="ck">${ok ? '✓' : '!'}</span><span>${txt}</span>${!ok && lien ? `<a class="btn small" href="${lien}"${act ? ` data-act="${act}"` : ''}>Voir</a>` : ''}</li>`;
   return `    <div class="bcl-l">
@@ -71,7 +73,7 @@ function renderBouclement() {
         <div class="row"><button class="btn primary" type="button" data-act="bclZip"${BCL.enCours ? ' disabled' : ''}>${BCL.enCours ? esc(BCL.etape || 'Préparation…') : `Télécharger l'archive ${y}`}</button>
           <button class="btn" type="button" data-act="bclPdf"${BCL.enCours ? ' disabled' : ''}>Seulement le PDF des comptes</button>
         <button class="btn" type="button" data-act="expAutre"${BCL.enCours ? ' disabled' : ''}>Exportation autre…</button></div>
-        <p class="hint">${Object.keys(ar).length ? 'Téléchargée par ' + Object.entries(ar).map(([k, a]) => `${esc(nomDe(k))} le ${fmtDate(String(a.le).slice(0, 10))}${a.manquants ? ` (${a.manquants} fichier(s) manquant(s))` : ''}`).join(', ') + '.' : "L'archive de cette année n'a encore été téléchargée par personne."}
+        <p class="hint">${Object.keys(ar).length ? 'Téléchargée par ' + Object.entries(ar).map(([k, a]) => `${esc(nomDe(k))} le ${fmtDate(String(a.le).slice(0, 10))}${String(a.le || '') < finY ? ' (provisoire : à refaire dès le 1er janvier)' : ''}${a.manquants ? ` (${a.manquants} fichier(s) manquant(s))` : ''}`).join(', ') + '.' : "L'archive de cette année n'a encore été téléchargée par personne."}
           ${manque.length ? `<b>Pas encore téléchargée par ${esc(manque.map((p) => p.nom).join(', '))}.</b>` : ''}
           Conservation dans l'app : photos des messages 6 mois ; justificatifs et bulletins signés 2 ans, et seulement une fois l'archive de leur année téléchargée.</p>
       </div>
