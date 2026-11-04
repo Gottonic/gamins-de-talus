@@ -47,7 +47,8 @@ MODULES.inventaire = {
 };
 
 function renderInventaire() {
-  const l = inventaire(), des = !!cfg().amortirDesAchat, now = Number(todayISO().slice(0, 4));
+  /* Du plus cher au moins cher (valeur d'achat) */
+  const l = inventaire().sort((a, b) => num(b.valeur) - num(a.valeur) || String(a.nom).localeCompare(b.nom, 'fr')), des = !!cfg().amortirDesAchat, now = Number(todayISO().slice(0, 4));
   const y0 = Math.min(now, ...l.map((i) => Number(yearOf(i.dateAchat)) || now));
   const years = Array.from({ length: 5 }, (_, i) => y0 + i);
   const tot = years.map((y) => l.reduce((a, i) => a + valeurFinAnnee(i, y, des), 0));
