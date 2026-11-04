@@ -715,11 +715,27 @@ ACTIONS.heuresJour = (el) => {
     <h3>Tâches${e ? ' de la journée' : ' du jour'}${ts.length ? ` · ${faites}/${ts.length} faites` : ''}</h3>
     ${ts.length ? `<div class="tri-taches">${ts.map((t) => tacheHtml(t, { court: true, sansDate: true })).join('')}</div>` : '<p class="hint">Aucune tâche cochée ce jour-là.</p>'}
     <details class="hj-plus"${ts.length ? '' : ' open'}><summary>Autres tâches effectuées ?</summary>${ajoutTacheBarre({ id: 'hj-ajout', fait: d, placeholder: 'Ex. désherbé les carottes' })}</details>
+    <div id="hj-conf"></div>
     <div class="row-end"><button class="btn primary" type="button" data-act="hjOk" data-d="${d}" data-j="${esc(j)}">Enregistrer les heures</button></div></div>`);
   const sh = $('hj-sheet'); brancherLignes(sh); sh.querySelectorAll('[data-hl]').forEach(majTotal);
 };
 ACTIONS.hjOk = (el) => {
   const d = el.dataset.d, j = el.dataset.j || '', sk = j || '', notes = [];
+  /* Des heures déjà notées ce jour-là (pour un autre événement, ou hors événement) : on demande avant d'ajouter */
+  if (!el.dataset.force) {
+    const deja = [];
+    for (const r of document.querySelectorAll('#hj-sheet [data-hl]')) {
+      const v = lireLigne(r); if (!v.debut && !v.fin) continue;
+      const segs = segmentsDe(DB.get(hKey(d, r.dataset.hl))); if (segs[sk] && num(segs[sk].heures) > 0) continue;
+      const h = Object.entries(segs).filter(([k, g]) => k !== sk && num(g.heures) > 0).reduce((a, [, g]) => a + num(g.heures), 0);
+      if (h > 0) deja.push([r.dataset.hl, h]);
+    }
+    if (deja.length) {
+      const txt = deja.map(([p, h]) => (p === Sync.me ? `Vous avez déjà ${fmtH(r2(h))} heure${h > 1 ? 's' : ''}` : `${esc(nomDe(p))} a déjà ${fmtH(r2(h))} heure${h > 1 ? 's' : ''}`) + ` enregistrée${h > 1 ? 's' : ''} ${d === todayISO() ? "aujourd'hui" : 'le ' + fmtDate(d)}`).join('. ') + '.';
+      const z = $('hj-conf'); if (z) { z.innerHTML = `<div class="banner hj-conf"><p>${txt}</p><div class="row"><button class="btn primary" type="button" data-act="hjOk" data-force="1" data-d="${esc(d)}" data-j="${esc(j)}">Ajouter quand même</button><button class="btn" type="button" data-act="hjAnnuler">Annuler l'enregistrement</button></div></div>`; z.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+      return;
+    }
+  }
   /* Le jour d'une personne : ses segments (un par événement) ; total, début et fin de la journée en découlent */
   const ecrire = (k, old, segs) => {
     const o = Object.assign({}, old, { date: d, personne: k.split(':')[2], segments: segs }), l = Object.values(segs);
@@ -742,6 +758,7 @@ ACTIONS.hjOk = (el) => {
   if (notes.length) toast('Heures notées : ' + notes.join(', ') + '.'); else toast('Rien de noté (indique le début et la fin).');
   if (notes.length && reste.length) tachesRestantes(j, reste, reste.every((t) => !(DB.get(t.key) || {}).journee)); else closeSheet();
 };
+ACTIONS.hjAnnuler = () => { HJ.brouillon = null; PL.rafraichir = null; closeSheet(); toast("Rien n'a été enregistré."); };
 /* Les anciens boutons « Enregistrer mes heures » (tableau de la semaine…) ouvrent la même fiche */
 ACTIONS.mesHeures = (el) => ACTIONS.heuresJour({ dataset: { d: (el && el.dataset && el.dataset.d) || todayISO(), p: (el && el.dataset && el.dataset.p) || '' } });
 
