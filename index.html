@@ -1087,6 +1087,16 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .cp-p.on { border: 0; color: #fff; text-shadow: 0 0 2px rgba(0,0,0,.6); }
 .cp-p.vide { background: transparent; border: 2px dashed var(--c); }
 @media (max-width: 500px) { .cp-sec { grid-template-columns: 1fr; gap: 4px; } }
+.art-box > summary { list-style: none; cursor: pointer; }
+.art-box > summary::-webkit-details-marker { display: none; }
+.art-box > summary h2::before { content: '▸ '; color: var(--muted); }
+.art-box[open] > summary h2::before { content: '▾ '; }
+.art-box[open] > summary { margin-bottom: 8px; }
+.v-stand { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.panel.stand.a-remplir { border-color: var(--late); }
+.panel.stand.a-remplir .v-stand { color: var(--late); }
+.stand-seuil { gap: 6px; align-items: center; margin-top: 6px; }
+.sd-hist > summary { cursor: pointer; margin-top: 10px; }
 </style>
 </head>
 <body>

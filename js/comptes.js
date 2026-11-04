@@ -63,10 +63,12 @@ const AIDE_COMPTES = `<details class="aide-comptes"><summary>Comment choisir le 
     <li>Pas sûr ? <b>6700 Autres charges</b>, et une remarque : la fiduciaire corrigera.</li>
   </ul></details>`;
 
+/* Une recette de la vente directe (stand) : liée à une mise en vente, marquée vd, ou d'avant (libellé « Vente directe… ») */
+const estVenteDirecte = (r) => !!(r && (r.self || r.vd || /^Vente directe/i.test(r.libelle || '')));
 /* Le compte d'une recette : choisi à la main, sinon d'après sa source (une vente directe → 3200 ; une facture → selon le type du client) */
 function compteRecette(r) {
   if (r.compte) return String(r.compte);
-  if (r.self) return '3200';
+  if (estVenteDirecte(r)) return '3200';
   const c = r.contactId && DB.get(r.contactId), t = c ? c.type || '' : '';
   if (r.src === 'facture') return t === 'particulier' ? '3200' : '3000';
   return t && t !== 'particulier' && t !== 'autre' ? '3000' : /twint|esp/i.test(r.moyen || '') && !c ? '3200' : '3400';

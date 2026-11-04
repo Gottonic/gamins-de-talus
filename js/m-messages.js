@@ -551,7 +551,7 @@ function montantDansTexte(t) {
 const payeurDansTexte = (t) => { const r = /(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/u.exec(String(t || '')); return r ? r[1] : ''; };
 function twintMailHtml(m) {
   const tw = DB.all('tw:').find((t) => t.mail === m.key), r = tw && tw.utilise && DB.get(tw.utilise);
-  if (r) return `<p class="twint-fait">✓ Enregistré : ${chf(r.montant)} · ${esc(r.self ? 'vente directe' : 'autre vente')} <a href="#" data-act="recEdit" data-key="${esc(tw.utilise)}">voir</a></p>`;
+  if (r) return `<p class="twint-fait">✓ Enregistré : ${chf(r.montant)} · ${esc(estVenteDirecte(r) ? 'vente directe' : 'autre vente')} <a href="#" data-act="recEdit" data-key="${esc(tw.utilise)}">voir</a></p>`;
   const mt = montantDansTexte((m.objet || '') + ' ' + (m.extrait || ''));
   return `<div class="row twint-acts"><span class="hint">💳 Paiement TWINT${mt ? ' de <b>' + chf(mt) + '</b>' : ''} :</span><button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="self">Enregistrer comme vente directe</button><button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="autre">Enregistrer comme autre vente</button></div>`;
 }
@@ -574,7 +574,7 @@ function enregistrerTwintMail(k, quoi, date, montant, payeur) {
   const m = DB.get(k) || {}, rk = 'rec:' + uid('r'), par = (typeof titulaireCompte === 'function' && titulaireCompte()) || Sync.me || '';
   const s = quoi === 'self' && typeof misesEnVente === 'function' ? misesEnVente().find((x) => x.date <= date && (!x.closeLe || x.closeLe >= date)) : null;
   DB.put(rk, Object.assign({ date, montant, moyen: 'TWINT', par, client: quoi === 'self' ? (s ? s.lieu || 'Self-service' : 'Vente directe') : payeur || 'Paiement TWINT',
-    libelle: quoi === 'self' ? `Vente directe${s ? ' du ' + fmtDate(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}` : `Paiement TWINT${payeur ? ' de ' + payeur : ''}`, remarque: 'Depuis le mail TWINT : ' + trunc(m.objet || '', 80), cree: new Date().toISOString(), creePar: Sync.me || '' }, s ? { self: s.key } : {}));
+    libelle: quoi === 'self' ? `Vente directe${s ? ' du ' + fmtDate(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}` : `Paiement TWINT${payeur ? ' de ' + payeur : ''}`, remarque: 'Depuis le mail TWINT : ' + trunc(m.objet || '', 80), cree: new Date().toISOString(), creePar: Sync.me || '' }, quoi === 'self' ? { vd: true } : {}, s ? { self: s.key } : {}));
   DB.put('tw:' + uid('w'), { cle: 'mail:' + k, src: 'mail', mail: k, date, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' });
   majMail(k, { statut: 'traite', traitePar: Sync.me || '' });
   toast(`${chf(montant)} enregistrés comme ${quoi === 'self' ? 'vente directe' + (s ? ' (' + (s.lieu || 'self-service') + ')' : '') : 'autre vente'}. Mail marqué traité.`, 5000);

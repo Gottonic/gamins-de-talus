@@ -14,15 +14,16 @@ MODULES.cultures = {
   render(sub, id) {
     creerFichesManquantes();
     const nR = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().length : 0;
-    const t = tabs('cultures', [['', 'Plan de cultures'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const t = tabs('cultures', [['', 'Plan de cultures'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['fumure', 'Fumure'], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
     if (sub === 'recoltes') return t + renderRecoltes();
     if (sub === 'marges') return t + renderMarges();
     if (sub === 'fiches') return t + renderFiches(id);
     if (sub === 'planches') return t + renderPlanches();
     if (sub === 'journal') return t + renderJournal();
+    if (sub === 'fumure') return t + renderPlan('fumure');
     return t + renderPlan();
   },
-  after(sub) { if (sub === 'planches') brancherPlanches(); else if (!sub || sub === 'frise') brancherPlan(); },
+  after(sub) { if (sub === 'planches') brancherPlanches(); else if (!sub || sub === 'frise' || sub === 'fumure') brancherPlan(); },
 };
 /* ---------- Récoltes : celles à noter (prévues au calendrier) et toutes celles faites, par saison ----------
    Une récolte = un mouvement mvt: de type « recolte » (avec ou sans entrée en stock). Le stock, lui, se voit dans Ventes. */
@@ -72,11 +73,11 @@ function prevuReelHtml(y) {
 }
 ACTIONS.rcAnnee = (el) => { RC.annee = el.dataset.y; RC.culture = ''; render(); };
 ACTIONS.rcCulture = (el) => { RC.culture = RC.culture === el.dataset.n ? '' : el.dataset.n; render(); };
-function renderPlan() {
+function renderPlan(vue) {
   {
     const s = saisonCourante(), ss = saisons(), list = cultures(s), P = paramsCultures(s);
     const chips = ss.map((x) => `<button class="chip${x === s ? ' on' : ''}" type="button" data-act="cuSaison" data-s="${x}">${x}</button>`).join('');
-    const head = `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuParams">Hypothèses</button><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="plantonsSheet">Semences et plants</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
+    const head = vue === 'fumure' ? `<div class="between"><div class="row">${chips}</div><button class="btn small" type="button" data-act="cuParams">Données</button></div>` : `<div class="between"><div class="row">${chips}</div><div class="row"><button class="btn small" type="button" data-act="cuDupliquer">Préparer ${Number(s) + 1}</button><button class="btn small" type="button" data-act="plantonsSheet">Semences et plants</button><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte">+ Récolte</button><button class="btn primary small" type="button" data-act="cuAjouter">+ Culture</button></div></div>`;
     if (!list.length) return head + '<div class="panel"><p class="empty">Aucune culture dans ce plan. Ajoute la première avec « + Culture » : tu peux la choisir dans « Nos cultures », avec ses données des années passées.</p></div>';
     /* Une culture vendue à la pièce : sa récolte réelle (en pièces) n'entre pas dans les kg */
     const eff = list.map((c) => { const u = uniteRecolte(c), r = recolteReelleDe(c); return Object.assign({}, avecPrixProduit(c), u === 'kg' ? { recolteReelle: r } : { recolteReelle: 0, reelPieces: r, uniteRec: u }); });
@@ -116,7 +117,11 @@ function renderPlan() {
       ${calc('Plantons', (c, o) => f0(o.plantons), f0(T.plantons))}
       ${fic('Variété', 'variete')}
       ${fic('Fournisseur', 'fournisseur')}
-      ${grp('Fumure', 18 + 2 * engr.length)}
+    </tbody></table></div>
+    <div class="row"><button class="btn small" type="button" data-act="cuToutes" data-v="ouvrir">Tout ouvrir</button><button class="btn small" type="button" data-act="cuToutes" data-v="fermer">Tout fermer</button></div>`;
+    gi = 0;
+    const tableFumure = `<div class="table-wrap"><table class="matrix"><thead><tr><th></th>${list.map((c, i) => `<th><button type="button" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button></th>`).join('')}<th>Total</th></tr></thead>
+      ${grp('Détail par culture', 18 + 2 * engr.length)}
       ${NUTR.map((n) => fic(`Besoin brut ${n} g/m²`, 'besoins.' + n)).join('')}
       ${NUTR.map((n) => calc(`Besoin net ${n} g/m²`, (c, o) => f1(o.net[n]))).join('')}
       ${fic('Compost L/m²', 'compost')}
@@ -127,8 +132,7 @@ function renderPlan() {
       ${engr.map((e) => calc(`${esc(e.nom)} kg`, (c, o) => fmtNum(o.engrais[e.k] ? o.engrais[e.k].kg : 0, 1), fmtNum(T.engrais[e.k] || 0, 1))).join('')}
       ${engr.map((e) => calc(`${esc(e.nom)} kg/planche`, (c, o) => fmtNum(o.engrais[e.k] ? o.engrais[e.k].kgParPlanche : 0, 2))).join('')}
       ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).map((n) => calc(`${n} non couvert par les engrais kg`, (c, o) => (o.nonCouvert[n] > 0.5 ? fmtNum(o.nonCouvert[n] / 1000, 2) : '—'), fmtNum(T.nonCouvert[n] / 1000, 2), (c, o) => (o.nonCouvert[n] > 0.5 ? 'neg' : ''))).join('')}
-    </tbody></table></div>
-    <div class="row"><button class="btn small" type="button" data-act="cuToutes" data-v="ouvrir">Tout ouvrir</button><button class="btn small" type="button" data-act="cuToutes" data-v="fermer">Tout fermer</button></div>`;
+    </tbody></table></div>`;
 
     /* ---- Planches : par secteur, chaque planche à la couleur de sa ou ses cultures ---- */
     const secs = parcelle().secteurs, occ = {}; list.forEach((c, i) => { for (const e of c.emplacements || []) (occ[e] = occ[e] || []).push(i); });
@@ -145,6 +149,14 @@ function renderPlan() {
     const bars = `<div class="bars">${list.map((c, i) => `<div class="bar-row"><span>${esc(c.nom)}</span><span class="bar-track" style="position:relative"><span class="bar-fill" style="width:${(os[i].recolte / maxK * 100).toFixed(1)}%;background:${coul[i]}44"></span>${num(eff[i].recolteReelle) ? `<span class="bar-fill" style="position:absolute;top:0;left:0;height:100%;width:${(num(eff[i].recolteReelle) / maxK * 100).toFixed(1)}%;background:${coul[i]}"></span>` : ''}</span><span class="num">${num(eff[i].recolteReelle) ? f0(eff[i].recolteReelle) + ' / ' : ''}${f0(os[i].recolte)} kg</span></div>`).join('')}</div>`;
     const ventes = `<div class="bars">${list.map((c, i) => `<div class="bar-row"><span>${esc(c.nom)}</span><span class="bar-track"><span class="bar-fill" style="width:${(os[i].ventesDirect / maxV * 100).toFixed(1)}%;background:${coul[i]}"></span></span><span class="num">${f0(os[i].ventesDirect)}</span></div>`).join('')}</div>`;
 
+    if (vue === 'fumure') return `${head}
+      <div class="panel"><h2>Fumure ${s} : à apporter</h2>
+        <div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Planches</th><th class="r">Compost L/planche</th>${engr.map((e) => `<th class="r">${esc(e.nom)} kg/planche</th>`).join('')}${engr.map((e) => `<th class="r">${esc(e.nom)} kg</th>`).join('')}</tr></thead><tbody>
+          ${list.map((c, i) => `<tr><td style="white-space:nowrap"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</td><td class="r num">${f0(c.planches)}</td><td class="r num">${f0(os[i].compostLParPlanche)}</td>${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kgParPlanche || 0, 2)}</td>`).join('')}${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kg || 0, 1)}</td>`).join('')}</tr>`).join('')}
+        </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(list.reduce((a, c) => a + num(c.planches), 0))}</td><td class="r num">${fmtNum(T.compostM3, 1)} m³</td>${engr.map(() => '<td></td>').join('')}${engr.map((e) => `<td class="r num">${fmtNum(T.engrais[e.k] || 0, 1)}</td>`).join('')}</tr></tfoot></table></div>
+        ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).length ? `<p class="banner">Pas couvert par vos engrais : ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).map((n) => `${n} ${fmtNum(T.nonCouvert[n] / 1000, 1)} kg`).join(', ')}. Ajoute un engrais qui en contient dans les hypothèses, ou augmente le compost.</p>` : ''}
+        <p class="hint">Une planche = ${fmtNum(P.longueur, 1)} m × ${fmtNum(P.facteurSurface, 2)} m (avec le passe-pied) = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m². Besoin brut × correction du sol − compost (${Math.round(num(P.dispoCompost) * 100)} % disponible la 1re année) = reste à couvrir par les engrais, dans l'ordre de la liste des engrais (Données). Corrections d'analyse de sol : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Un excédent de compost (en gris) compte pour 0 ; ce qu'un engrais apporte en plus de son nutriment principal (ex. Mg) est déduit des autres.</p></div>
+      <div class="panel"><h2>Détail par culture ${s}</h2><p class="hint">Lignes vertes : besoins et compost de la fiche de chaque culture (touche une case pour la modifier). Lignes grisées : calculées. « Données » : corrections d'analyse de sol, teneur du compost, engrais.</p>${tableFumure}</div>`;
     return `${head}
       <div class="stats">
         <div class="stat good"><span class="k">Surface cultivée</span><span class="v">${f0(T.surface)} m²</span><span class="s">${list.reduce((a, c) => a + num(c.planches), 0)} planches de ${fmtNum(P.longueur, 1)} m</span></div>
@@ -159,16 +171,10 @@ function renderPlan() {
         <div class="panel"><div class="between"><h2>Planches</h2><a class="btn small" href="#/cultures/planches">Placer</a></div>${cartePlanches}<div class="legend">${legend}</div></div>
         <div class="panel"><h2>Récolte prévue et réelle (kg)</h2>${bars}<h2 style="margin-top:8px">Ventes directes prévues (CHF)</h2>${ventes}</div>
       </div>
-      <div class="panel"><h2>Fumure ${s} : à apporter</h2>
-        <div class="table-wrap"><table class="list"><thead><tr><th>Culture</th><th class="r">Planches</th><th class="r">Compost L/planche</th>${engr.map((e) => `<th class="r">${esc(e.nom)} kg/planche</th>`).join('')}${engr.map((e) => `<th class="r">${esc(e.nom)} kg</th>`).join('')}</tr></thead><tbody>
-          ${list.map((c, i) => `<tr><td style="white-space:nowrap"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</td><td class="r num">${f0(c.planches)}</td><td class="r num">${f0(os[i].compostLParPlanche)}</td>${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kgParPlanche || 0, 2)}</td>`).join('')}${engr.map((e) => `<td class="r num">${fmtNum((os[i].engrais[e.k] || {}).kg || 0, 1)}</td>`).join('')}</tr>`).join('')}
-        </tbody><tfoot><tr><td>Total</td><td class="r num">${f0(list.reduce((a, c) => a + num(c.planches), 0))}</td><td class="r num">${fmtNum(T.compostM3, 1)} m³</td>${engr.map(() => '<td></td>').join('')}${engr.map((e) => `<td class="r num">${fmtNum(T.engrais[e.k] || 0, 1)}</td>`).join('')}</tr></tfoot></table></div>
-        ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).length ? `<p class="banner">Pas couvert par vos engrais : ${NUTR.filter((n) => T.nonCouvert[n] > 0.5).map((n) => `${n} ${fmtNum(T.nonCouvert[n] / 1000, 1)} kg`).join(', ')}. Ajoute un engrais qui en contient dans les hypothèses, ou augmente le compost.</p>` : ''}
-        <p class="hint">Une planche = ${fmtNum(P.longueur, 1)} m × ${fmtNum(P.facteurSurface, 2)} m (avec le passe-pied) = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m². Besoin brut × correction du sol − compost (${Math.round(num(P.dispoCompost) * 100)} % disponible la 1re année) = reste à couvrir par les engrais, dans l'ordre de la liste des hypothèses.</p></div>
       <div class="panel"><h2>Plan ${s}</h2>
         <p class="hint">Cases blanches : propres à cette saison (planches, longueur), elles se modifient directement. Lignes vertes : données de la culture, qui viennent de « Nos cultures » ; touche une case pour modifier la fiche. Lignes grisées : calculées. Touche le nom d'une culture pour ses réglages de saison ou pour la retirer du plan. Récolte réelle : la somme des récoltes enregistrées avec « + Récolte ».</p>
         ${table}
-        <p class="hint">Surface = planches × longueur × largeur avec passe-pied (${fmtNum(P.facteurSurface, 2)} m). Plantons = longueur ÷ interplant × lignes × planches. Prix : ceux du produit lié dans Ventes → Stock et prix (direct = particuliers, revendeur = grossiste) ; sans produit, ceux de la fiche (revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du direct). Corrections d'analyse de sol (hypothèses) : ${NUTR.map((n) => n + ' ' + fmtNum((P.correction || {})[n] ?? 1, 2)).join(', ')}. Le compost couvre ${Math.round(num(P.dispoCompost) * 100)} % de sa teneur la première année ; un excédent (en gris) compte pour 0. Chaque engrais couvre le reste de son nutriment principal ; ce qu'il apporte en plus (ex. Mg) est déduit des autres.</p></div>`;
+        <p class="hint">Surface = planches × longueur × largeur avec passe-pied (${fmtNum(P.facteurSurface, 2)} m). Plantons = longueur ÷ interplant × lignes × planches. Prix : ceux du produit lié dans Ventes → Stock et prix (direct = particuliers, revendeur = grossiste) ; sans produit, ceux de la fiche (revendeur vide : ${Math.round(num(P.partRevendeur) * 100)} % du direct). La fumure a son onglet.</p></div>`;
   }
 }
 function brancherPlan() {
@@ -213,7 +219,7 @@ ACTIONS.cuEdit = (el) => {
   const c = DB.get(k), fk = ficheDe(c), n = (id, label, val, step) => inp(id, label, val ?? '', { name: id.slice(3), type: 'number', attrs: { step: step || 'any', inputmode: 'decimal' } });
   openSheet(`${sheetHead(c.nom, 'Saison ' + c.saison)}<form class="sbody form" data-form="cu"><input type="hidden" name="key" value="${esc(k)}">
     <div class="grid2">${n('cu-planches', 'Planches', c.planches, '1')}${n('cu-longueur', 'Longueur de planche m', c.longueur)}${n('cu-ordre', "Ordre d'affichage", c.ordre, '1')}</div>
-    <p class="hint">Longueur vide : celle des hypothèses (${fmtNum(paramsCultures(c.saison).longueur, 1)} m). Récolte réelle de cette saison : ${f0(recolteReelleDe(c, k))} kg (somme des récoltes enregistrées).</p>
+    <p class="hint">Longueur vide : celle des données de la saison (Fumure → Données) (${fmtNum(paramsCultures(c.saison).longueur, 1)} m). Récolte réelle de cette saison : ${f0(recolteReelleDe(c, k))} kg (somme des récoltes enregistrées).</p>
     <div class="row"><button class="btn small" type="button" data-act="mvtNouveau" data-type="recolte" data-culture="${esc(k)}">+ Récolte de ${esc(c.nom)}</button></div>
     ${txt('cu-rem', 'Remarque pour cette saison', c.remarque, { name: 'remarque' })}
     <p class="hint">Rendement, prix, semaines, espacements, variété, fumure : dans la fiche de la culture. <a href="#/cultures/fiches/${encodeURIComponent(fk)}" data-act="go" data-href="#/cultures/fiches/${encodeURIComponent(fk)}">Ouvrir la fiche ${esc(c.nom)}</a></p>
@@ -229,7 +235,7 @@ FORMS.cu = (v) => {
 ACTIONS.cuParams = () => {
   const s = saisonCourante(), P = paramsCultures(s);
   const n = (id, label, val, name, sub) => inp(id, label, val ?? '', { name, type: 'number', attrs: { step: 'any', inputmode: 'decimal' }, sub });
-  openSheet(`${sheetHead('Hypothèses ' + s)}<form class="sbody form" data-form="cuParams"><input type="hidden" name="saison" value="${esc(s)}">
+  openSheet(`${sheetHead('Données ' + s)}<form class="sbody form" data-form="cuParams"><input type="hidden" name="saison" value="${esc(s)}">
     <div class="grid2">${n('cp-l', 'Longueur de planche m', P.longueur, 'longueur')}${n('cp-f', 'Largeur planche + passe-pied m', P.facteurSurface, 'facteurSurface', `Une planche = longueur × largeur = ${fmtNum(num(P.longueur) * num(P.facteurSurface), 1)} m²`)}
       ${n('cp-r', 'Prix revendeur (part du direct)', P.partRevendeur, 'partRevendeur', '0,6 = 60 %')}${n('cp-d', 'Compost disponible 1re année', r2(P.dispoCompost * 1000) / 1000, 'dispoCompost', '0,333 = un tiers')}</div>
     <h3>Corrections d'analyse de sol</h3>
@@ -257,7 +263,7 @@ FORMS.cuParams = (v) => {
     while (o.engrais.some((x) => x.k === k)) k += '2';
     o.engrais.push({ k, nom, nutriment: nu, teneur: num(teneurs[nu]), teneurs });
   }
-  DB.put('cfg:cultures:' + v.saison, o); closeSheet(); toast('Hypothèses enregistrées.');
+  DB.put('cfg:cultures:' + v.saison, o); closeSheet(); toast('Données enregistrées.');
 };
 ACTIONS.cuDupliquer = () => {
   const s = saisonCourante(), ns = String(Number(s) + 1);
@@ -361,7 +367,7 @@ ACTIONS.cuAjouter = (el) => {
   openSheet(`${sheetHead('Ajouter une culture', 'Plan ' + s)}<form class="sbody form" data-form="cuPlacer"><input type="hidden" name="saison" value="${esc(s)}">
     ${sel('cu-fiche', 'Culture', choisie, [['', 'Choisir…']].concat(dispo.map((f) => [f.key, f.nom])), { name: 'fiche' })}
     <div class="grid2">${n('cu-planches', 'Planches', '', '1')}${n('cu-longueur', 'Longueur de planche m', '')}</div>
-    <p class="hint">Rendement, prix, semaines, espacements et fumure viennent de la fiche. Longueur vide : celle des hypothèses (${fmtNum(paramsCultures(s).longueur, 1)} m).
+    <p class="hint">Rendement, prix, semaines, espacements et fumure viennent de la fiche. Longueur vide : celle des données de la saison (Fumure → Données) (${fmtNum(paramsCultures(s).longueur, 1)} m).
       Culture absente de la liste ? <a href="#" data-act="ficheNouvelle">Crée-la dans « Nos cultures »</a>.</p>
     <div class="row-end"><button class="btn primary" type="submit">Placer dans le plan</button></div></form>`);
 };
@@ -532,10 +538,14 @@ function margesSaison(s) {
     if (yearOf(f.date) !== s) continue; const st = facStatut(f); if (st === 'annulee' || st === 'groupee') continue;
     for (const l of f.lignes || []) { const v = num(l.quantite) * num(l.prix), k = prodCul[l.produitId]; if (k) R[k].ventes += v; else nonAttr += v; }
   }
-  for (const m of misesEnVente()) {
-    if (yearOf(m.date) !== s) continue; const b = bilanSelf(m), ret = m.retours || {}, close = m.statut === 'close';
-    const vals = (m.lignes || []).map((l, i) => (close ? Math.max(0, num(l.qte) - num(ret[i])) : num(l.qte)) * num(l.prix)), tot = vals.reduce((a, x) => a + x, 0);
-    (m.lignes || []).forEach((l, i) => { const v = tot ? b.enc * vals[i] / tot : 0, k = prodCul[l.prod]; if (k) R[k].ventes += v; else nonAttr += v; });
+  /* Vente directe : l'argent encaissé dans l'année (TWINT, espèces, payé par message pas encore facturé), réparti selon la valeur de ce qui a été mis sur le stand */
+  {
+    const encVD = recettesDirectes().filter((r) => estVenteDirecte(r) && yearOf(r.date) === s).reduce((a, r) => a + num(r.montant), 0)
+      + (typeof paiementsMessage === 'function' ? paiementsMessage().filter((x) => !x.facture && yearOf(x.date) === s).reduce((a, x) => a + num(x.montant), 0) : 0);
+    const parProd = {}; let tot = 0;
+    for (const m of misesEnVente()) { if (yearOf(m.date) !== s) continue; (m.lignes || []).forEach((l, i) => { const v = Math.max(0, num(l.qte) - num((m.retours || {})[i])) * num(l.prix); parProd[l.prod] = (parProd[l.prod] || 0) + v; tot += v; }); }
+    if (tot) for (const [pk, v] of Object.entries(parProd)) { const x = encVD * v / tot, k = prodCul[pk]; if (k) R[k].ventes += x; else nonAttr += x; }
+    else nonAttr += encVD;
   }
   for (const d of depenses()) {
     if (yearOf(d.date) !== s || d.type === 'investissement') continue; const r = repartir(num(d.montant), d.pour, surf); depTot += num(d.montant);
@@ -549,7 +559,7 @@ function margesSaison(s) {
     hAdmin += r.admin; hVentes += r.ventes; hNon += r.commun; hCommun += r.admin + r.ventes + r.commun;
   }
   const lignes = cs.map((c) => { const x = R[c.key], part = x.surface / totSurf; x.partFrais = commun * part; x.partH = hCommun * part; x.marge = x.ventes - x.direct - x.partFrais; x.heures = x.hDirect + x.partH; x.chfH = x.heures ? x.marge / x.heures : null; x.chfM2 = x.surface ? x.marge / x.surface : null; return x; });
-  const autres = recettesDirectes().filter((r) => !r.self && yearOf(r.date) === s).reduce((a, r) => a + num(r.montant), 0);
+  const autres = recettesDirectes().filter((r) => !estVenteDirecte(r) && yearOf(r.date) === s).reduce((a, r) => a + num(r.montant), 0);
   return { s, lignes, nonAttr, autres, commun, amort, hCommun, hAdmin, hVentes, hNon, hTot, depTot, depDir, hDir: hTot - hCommun };
 }
 function renderMarges() {

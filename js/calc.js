@@ -35,7 +35,7 @@ function factureTotal(inv) { return r2((inv.lignes || []).reduce((a, l) => a + r
 /* Toutes les recettes, qu'elles viennent d'une facture payée ou d'une saisie directe. */
 function recettesUnifiees(recettes, factures, cfg) {
   const out = [];
-  for (const r of recettes) out.push({ src: 'recette', key: r.key, date: r.date, montant: r2(r.montant), par: r.par, libelle: r.client || r.libelle || '', moyen: r.moyen || '', ref: r.justificatif || '', compte: r.compte || '', self: r.self || '', contactId: r.contactId || '' });
+  for (const r of recettes) out.push({ src: 'recette', key: r.key, date: r.date, montant: r2(r.montant), par: r.par, libelle: r.client || r.libelle || '', moyen: r.moyen || '', ref: r.justificatif || '', compte: r.compte || '', self: r.self || '', vd: !!r.vd, contactId: r.contactId || '' });
   for (const f of factures) {
     if (f.statut !== 'payee') continue;
     out.push({ src: 'facture', key: f.key, date: f.payeeLe || f.date, montant: r2(f.total), par: f.encaissePar || (cfg && cfg.compteDe) || 'nicolas', libelle: (f.client && f.client.nom) || '', moyen: f.payeePar === 'especes' ? 'Espèces' : f.payeePar === 'twint' ? 'TWINT' : 'Virement', ref: f.numero || f.blNumero || 'vente', compte: f.compteRecette || '', contactId: (f.client && f.client.id) || '' });

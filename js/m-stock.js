@@ -43,7 +43,7 @@ function renderStock() {
       <div class="stk-q num">${q != null ? fmtQ(q, p.unite) : '—'}</div>
       <div class="row stk-act"><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="recolte">+ Récolte</button><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="perte">− Sortie</button><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="inventaire">Compter</button><button class="btn small" type="button" data-act="stkHist" data-prod="${esc(p.key)}" aria-label="Historique">⋯</button></div></div>`;
   const recents = ms.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || ''))).slice(0, 8);
-  return `<div class="row"><button class="btn primary" type="button" data-act="mvtNouveau" data-type="recolte">+ Noter une récolte</button><a class="btn" href="#/factures/selfservice">Vente directe (self-service)</a><button class="btn" type="button" data-act="grilleSheet">Grille de prix (PDF)</button></div>
+  return `<div class="row"><button class="btn primary" type="button" data-act="mvtNouveau" data-type="recolte">+ Noter une récolte</button><button class="btn" type="button" data-act="grilleSheet">Grille de prix (PDF)</button></div>
     <div class="split">
       <div class="panel"><h2>En stock${enStock.length ? ' · ' + enStock.length : ''}</h2>
         ${enStock.length ? enStock.map(ligne).join('') : '<p class="empty">Rien en stock. Note une récolte, ou marque un produit « disponible » ou « au champ » dans la liste plus bas.</p>'}
@@ -189,31 +189,119 @@ FORMS.selfRattrapage = (v) => {
   }
   closeSheet(); toast(n ? `${n} vente${n > 1 ? 's' : ''} comptée${n > 1 ? 's' : ''} comme récolte.` : 'Noté : rien à compter.');
 };
+/* ---------- Le stand (vente directe en continu) ----------
+   Sur le stand ≈ dernier point compté + ce qu'on y a mis depuis − ce qui a été payé depuis (TWINT, espèces, par message).
+   stp:<id> = point du stand { date, cree, lignes: [{ prod, art, nom, reste, repris, prix, unite, poids }], valeur (restée sur le stand), estime (avant), manque }
+   cfg:stand = { seuil } : en dessous, l'onglet Vente directe prévient qu'il faut remplir le stand. */
+const reglagesStand = () => Object.assign({ seuil: 350 }, DB.get('cfg:stand') || {});
+const encaissementsVD = () => recettesDirectes().filter(estVenteDirecte);
+const pointsStand = () => DB.all('stp:').sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.cree || '').localeCompare(String(b.cree || '')));
+const valeurMise = (s) => (s.lignes || []).reduce((a, l, i) => a + Math.max(0, num(l.qte) - num((s.retours || {})[i])) * num(l.prix), 0);
+const apresPoint = (x, p) => !p || String(x.date) > p.date || (String(x.date) === p.date && String(x.cree || '') > String(p.cree || ''));
+function etatStand(avant) {
+  const ps = pointsStand().filter((p) => !avant || (p.key !== avant.key && !apresPoint(p, avant))), p = ps[ps.length - 1];
+  const dans = (x) => apresPoint(x, p) && (!avant || !apresPoint(x, avant));
+  const mis = misesEnVente().filter(dans).reduce((a, x) => a + valeurMise(x), 0);
+  const enc = encaissementsVD().filter(dans).reduce((a, r) => a + num(r.montant), 0), msg = paiementsMessage().filter(dans).reduce((a, x) => a + num(x.montant), 0);
+  const base = p ? num(p.valeur) : 0, estime = r2(base + mis - enc - msg);
+  return { p, base, mis: r2(mis), enc: r2(enc), msg: r2(msg), estime, aRemplir: (misesEnVente().length > 0) && estime < num(reglagesStand().seuil) };
+}
+const standARemplir = () => { try { return etatStand().aRemplir; } catch (e) { return false; } };
+/* Paiements TWINT pas encore comptés nulle part, depuis la première mise en vente */
+const twLibresVD = () => { const d0 = (misesEnVente().slice(-1)[0] || {}).date; return d0 ? DB.all('tw:').filter((t) => (!t.utilise || !DB.get(t.utilise)) && t.montant > 0 && t.date >= d0).sort((a, b) => a.date.localeCompare(b.date)) : []; };
+const SD = { an: '' };
+/* Une boîte qu'on ouvre ou ferme et qui s'en souvient (data-garde = clé) */
+document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('summary [data-act]')) e.preventDefault(); }, true);
+document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.dataset && d.dataset.garde) ls.set(d.dataset.garde, d.open ? '1' : '0'); }, true);
+ACTIONS.sdAn = (el) => { SD.an = el.dataset.y; render(); };
 function renderSelfService() {
-  const rat = rattrapagesRecolte().length;
-  const l = misesEnVente(), ouv = l.filter((s) => s.statut !== 'close'), clo = l.filter((s) => s.statut === 'close');
-  const tot = clo.reduce((a, s) => { const b = bilanSelf(Object.assign({ key: s.key }, s)); return { v: a.v + b.vendu, e: a.e + b.enc }; }, { v: 0, e: 0 });
-  const carte = (s) => {
-    const b = bilanSelf(s), recs = recettesDirectes().filter((r) => r.self === s.key).sort((a, c) => String(a.date).localeCompare(c.date));
-    return `<div class="panel self${s.statut === 'close' ? ' close' : ''}"><div class="between"><h3 style="margin:0">${esc(s.lieu || 'Self-service')} · ${fmtDate(s.date)}</h3><span class="tpill">${s.statut === 'close' ? 'bouclée' : 'en cours'}</span></div>
-      <div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Mis</th><th class="r">Prix</th>${s.statut === 'close' ? '<th class="r">Invendus</th><th class="r">Vendus</th>' : ''}<th class="r">Valeur</th></tr></thead><tbody>
-      ${(s.lignes || []).map((x, i) => { const p = DB.get(x.prod) || {}, r = num((s.retours || {})[i]), v = Math.max(0, num(x.qte) - r); return `<tr><td>${esc(x.nom || p.nom || '?')}${x.calibre && !x.nom ? ' ' + esc(String(x.calibre).toLowerCase()) : ''}</td><td class="r num">${fmtQ(num(x.qte), x.unite || p.unite)}</td><td class="r num">${money(x.prix)}</td>${s.statut === 'close' ? `<td class="r num">${fmtNum(r, 0)}</td><td class="r num">${fmtNum(v, 0)}</td>` : ''}<td class="r num">${money((s.statut === 'close' ? v : num(x.qte)) * num(x.prix))}</td></tr>`; }).join('')}
-      </tbody></table></div>
-      <p>Encaissé : <b>${chf(b.enc)}</b>${b.msg ? ` <span class="hint">(dont ${chf(b.msg)} payés par message, à facturer)</span>` : ''}${s.statut === 'close' ? ` sur ${chf(b.vendu)} vendus · <b class="${b.taux > 0.1 ? 'bad' : ''}">${b.ecart > 0 ? `${chf(b.ecart)} manquants (${Math.round(b.taux * 100)} %)` : 'rien ne manque'}</b>` : ` · au plus ${chf(b.mis)} si tout part`}</p>
-      ${recs.length ? `<p class="hint">${recs.map((r) => `${fmtDate(r.date)} ${esc(r.moyen || '')} ${money(r.montant)}`).join(' · ')}</p>` : ''}
-      ${(() => { const t = twintPourSelf(s); return t.n ? `<div class="banner">TWINT importé pendant cette vente : <b>${chf(t.total)}</b> (${t.n} paiement${t.n > 1 ? 's' : ''}, du ${fmtDateCourt(t.de)} au ${fmtDateCourt(t.a)}). <button class="btn small primary" type="button" data-act="twEncaisser" data-key="${esc(s.key)}">Ajouter comme encaissement</button></div>` : ''; })()}
-      <div class="row">${s.statut !== 'close' ? `<button class="btn primary small" type="button" data-act="selfEnc" data-key="${esc(s.key)}">+ Encaissement</button><button class="btn small" type="button" data-act="ardNouveau" data-self="${esc(s.key)}">+ Payé par message</button><button class="btn small" type="button" data-act="selfClore" data-key="${esc(s.key)}">Boucler (invendus)</button>` : `<button class="btn small" type="button" data-act="selfRouvrir" data-key="${esc(s.key)}">Rouvrir</button>`}<button class="btn small" type="button" data-act="delItem" data-key="${esc(s.key)}" data-what="cette mise en vente">Supprimer</button></div></div>`;
-  };
-  return `${articlesHtml()}<div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Mise en vente directe</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button>${DB.all('tw:').length ? `<button class="btn" type="button" data-act="twListe">Paiements TWINT (${DB.all('tw:').length})</button>` : ''}</div>
-    <div class="stats"><div class="stat"><span class="k">Ventes directes bouclées</span><span class="v">${clo.length}</span></div>
-      <div class="stat good"><span class="k">Vendu (selon les invendus)</span><span class="v">${chf(tot.v)}</span></div>
-      <div class="stat blue"><span class="k">Encaissé (TWINT, espèces)</span><span class="v">${chf(tot.e)}</span></div>
-      <div class="stat ${tot.v && (tot.v - tot.e) / tot.v > 0.1 ? 'bad' : ''}"><span class="k">Manque (vol, erreurs)</span><span class="v">${tot.v ? Math.round(Math.max(0, tot.v - tot.e) / tot.v * 100) + ' %' : '—'}</span><span class="s">${chf(Math.max(0, tot.v - tot.e))}</span></div></div>
-    <p class="hint">1. « Mise en vente » : ce qui part au stand, au prix de vente directe (le stock baisse). 2. « Encaissement » à chaque relevé TWINT ou de la caisse : il entre dans les recettes. 3. « Boucler » : on compte les invendus (ils reviennent au stock) et l'app compare ce qui est parti à ce qui a été payé.</p>
+  const rat = rattrapagesRecolte().length, E = etatStand(), R = reglagesStand(), tl = twLibresVD();
+  const ys = [...new Set(misesEnVente().map((x) => yearOf(x.date)).concat([todayISO().slice(0, 4)]))].sort().reverse(), y = SD.an && ys.includes(SD.an) ? SD.an : ys[0];
+  const misY = misesEnVente().filter((x) => yearOf(x.date) === y), encY = encaissementsVD().filter((r) => yearOf(r.date) === y), msgY = paiementsMessage().filter((x) => yearOf(x.date) === y);
+  const tMis = misY.reduce((a, x) => a + valeurMise(x), 0), tEnc = encY.reduce((a, r) => a + num(r.montant), 0), tMsg = msgY.reduce((a, x) => a + num(x.montant), 0);
+  const ptsY = pointsStand().filter((p) => yearOf(p.date) === y), manque = ptsY.reduce((a, p) => a + Math.max(0, num(p.manque)), 0);
+  /* Tous les articles mis en vente cette année, cumulés */
+  const agg = new Map();
+  for (const m of misY) (m.lignes || []).forEach((l, i) => { const p = DB.get(l.prod) || {}, nom = l.nom || ((p.nom || '?') + (l.calibre ? ' ' + String(l.calibre).toLowerCase() : '')), u = l.nom ? (l.unite || 'pièce') : (l.unite || p.unite || ''), k = nom + '|' + u;
+    const o = agg.get(k) || { nom, u, q: 0, v: 0 }, q = Math.max(0, num(l.qte) - num((m.retours || {})[i])); o.q += q; o.v += q * num(l.prix); agg.set(k, o); });
+  const aggL = [...agg.values()].sort((a, b) => b.v - a.v);
+  return `${articlesHtml()}
+    <div class="row"><button class="btn primary" type="button" data-act="selfNouveau">+ Remplir le stand</button><button class="btn" type="button" data-act="selfEnc">+ Encaissement</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button><button class="btn" type="button" data-act="standPoint">Faire le point</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button>${DB.all('tw:').length ? `<button class="btn" type="button" data-act="twListe">Paiements TWINT (${DB.all('tw:').length})</button>` : ''}</div>
+    <div class="panel stand${E.aRemplir ? ' a-remplir' : ''}"><div class="between"><h2>Sur le stand</h2><span class="v-stand">≈ ${chf(Math.max(0, E.estime))}</span></div>
+      ${E.aRemplir ? `<p class="banner">🧺 Le stand est presque vide (moins de ${chf(R.seuil)} de marchandise) : il est temps de le remplir.</p>` : ''}
+      <p class="hint">${E.p ? `Compté le ${fmtDate(E.p.date)} : ${chf(E.base)}` : 'Pas encore de point'} + mis depuis ${chf(E.mis)} − encaissé ${chf(E.enc)}${E.msg ? ` − payé par message ${chf(E.msg)}` : ''}. Les paiements TWINT reçus par mail comptent dès qu'on les enregistre. Un vol ou une perte n'est pas visible : « Faire le point » remet le compteur juste.</p>
+      <form class="row stand-seuil" data-form="standSeuil"><label for="st-seuil" class="hint">Prévenir sous</label><input id="st-seuil" name="seuil" class="cell-in" inputmode="decimal" value="${esc(String(R.seuil))}" style="width:80px"><span class="hint">CHF</span><button class="btn small" type="submit">OK</button></form></div>
+    ${tl.length ? `<div class="banner">💳 ${tl.length} paiement${tl.length > 1 ? 's' : ''} TWINT importé${tl.length > 1 ? 's' : ''} pas encore compté${tl.length > 1 ? 's' : ''} (${chf(tl.reduce((a, t) => a + t.montant, 0))}). <button class="btn small primary" type="button" data-act="twLibresVD">Voir et compter</button></div>` : ''}
     ${rat ? `<div class="panel between"><span>🌱 ${rat} produit${rat > 1 ? 's' : ''} d'anciennes mises en vente peu${rat > 1 ? 'vent' : 't'} être compté${rat > 1 ? 's' : ''} comme récolte.</span><button class="btn primary small" type="button" data-act="selfRattrapage">Voir et compter</button></div>` : ''}
-    ${ouv.map(carte).join('')}${clo.slice(0, 12).map(carte).join('')}${!l.length ? '<div class="panel"><p class="empty">Aucune mise en vente pour l\'instant.</p></div>' : ''}
+    <div class="panel"><div class="between"><h2>Vente directe ${y}</h2>${ys.length > 1 ? `<div class="row">${ys.map((x) => `<button class="chip${x === y ? ' on' : ''}" type="button" data-act="sdAn" data-y="${x}">${x}</button>`).join('')}</div>` : ''}</div>
+      <div class="stats"><div class="stat"><span class="k">Mis en vente</span><span class="v">${chf(tMis)}</span><span class="s">${misY.length} remplissage${misY.length > 1 ? 's' : ''}</span></div>
+        <div class="stat blue"><span class="k">Encaissé (TWINT, espèces)</span><span class="v">${chf(tEnc)}</span><span class="s">${encY.length} paiement${encY.length > 1 ? 's' : ''}</span></div>
+        <div class="stat good"><span class="k">Vendu</span><span class="v">${chf(tEnc + tMsg)}</span><span class="s">${tMsg ? `dont ${chf(tMsg)} payés par message` : 'encaissé + payé par message'}</span></div>
+        <div class="stat ${tEnc + tMsg && manque / (tEnc + tMsg) > 0.1 ? 'bad' : ''}"><span class="k">Manque (vol, pertes)</span><span class="v">${ptsY.length ? chf(manque) : '—'}</span><span class="s">${ptsY.length ? `relevé à ${ptsY.length} point${ptsY.length > 1 ? 's' : ''}` : 'connu en faisant le point'}</span></div></div>
+      ${aggL.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th class="r">Mis en vente</th><th class="r">Valeur</th></tr></thead><tbody>
+        ${aggL.map((o) => `<tr><td>${esc(o.nom)}</td><td class="r num">${esc(fmtQ(r2(o.q), o.u === 'pièce' ? 'pc' : o.u))}</td><td class="r num">${money(o.v)}</td></tr>`).join('')}
+        </tbody><tfoot><tr><td>Total</td><td></td><td class="r num">${money(tMis)}</td></tr></tfoot></table></div>` : '<p class="empty">Rien mis en vente cette année.</p>'}
+      <details class="sd-hist"><summary class="hint">Historique : remplissages, points et encaissements</summary>${historiqueStandHtml(y)}</details></div>
     ${paiementsMessageHtml()}`;
 }
+function historiqueStandHtml(y) {
+  const ev = [].concat(
+    misesEnVente().filter((x) => yearOf(x.date) === y).map((x) => ({ date: x.date, cree: x.cree, t: `Remplissage${x.lieu && x.lieu !== 'Self-service' ? ' · ' + x.lieu : ''}`, d: (x.lignes || []).map((l) => `${fmtNum(num(l.qte), 0)} ${l.nom || (DB.get(l.prod) || {}).nom || '?'}`).join(', '), v: valeurMise(x), key: x.key, what: 'ce remplissage' })),
+    pointsStand().filter((p) => yearOf(p.date) === y).map((p) => ({ date: p.date, cree: p.cree, t: 'Point du stand', d: `restait ${chf(p.valeur)}${num(p.manque) > 0.05 ? ` · manque ${chf(p.manque)}` : ''}`, v: null, key: p.key, what: 'ce point' })),
+    encaissementsVD().filter((r) => yearOf(r.date) === y).map((r) => ({ date: r.date, cree: r.cree, t: `Encaissement ${r.moyen || ''}`, d: r.libelle || '', v: -num(r.montant), key: r.key, rec: true })),
+  ).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || '')));
+  return ev.length ? `<div class="table-wrap"><table class="list"><tbody>${ev.slice(0, 200).map((e) => `<tr><td class="num">${fmtDate(e.date)}</td><td><b>${esc(e.t)}</b><br><span class="hint">${esc(trunc(e.d, 120))}</span></td><td class="r num">${e.v == null ? '' : money(e.v)}</td><td class="r">${e.rec ? `<button class="btn link small" type="button" data-act="recEdit" data-key="${esc(e.key)}">modifier</button>` : `<button class="btn link small" type="button" data-act="delItem" data-key="${esc(e.key)}" data-what="${esc(e.what)}">supprimer</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Rien cette année.</p>';
+}
+FORMS.standSeuil = (v) => { const x = num(v.seuil); if (!(x >= 0)) { toast('Indique un montant.'); return; } DB.put('cfg:stand', Object.assign({}, DB.get('cfg:stand') || {}, { seuil: r2(x) })); toast(`Alerte sous ${chf(x)}.`); };
+/* Faire le point : on compte ce qui reste sur le stand (et ce qu'on reprend au stock) */
+function lignesStand() {
+  const out = [];
+  for (const a of articles().filter((x) => x.actif !== false)) out.push({ id: 'a_' + a.key, art: a.key, prod: a.prod, nom: a.nom, prix: prixArticle(a), unite: a.mode === 'lot' ? 'lot' : 'pièce', poids: poidsArticle(a) });
+  for (const p of produits().filter((x) => num(prixNiveau(x, 'part')) > 0)) {
+    calibresDe(p).forEach((c, j) => out.push({ id: 'c_' + p.key + '|' + j, prod: p.key, nom: p.nom + ' ' + String(c.nom).toLowerCase(), prix: r2(num(prixPiece(p, c, 'part'))), unite: 'pièce', poids: num(c.poids) }));
+    out.push({ id: 'p_' + p.key, prod: p.key, nom: p.nom, prix: r2(num(prixNiveau(p, 'part'))), unite: p.unite || 'kg' });
+  }
+  /* Ce qui a été mis en vente depuis le dernier point d'abord */
+  const E = etatStand(), mis = new Set(misesEnVente().filter((x) => apresPoint(x, E.p)).flatMap((x) => (x.lignes || []).map((l) => l.art || l.prod)));
+  return out.sort((a, b) => (mis.has(b.art || b.prod) ? 1 : 0) - (mis.has(a.art || a.prod) ? 1 : 0));
+}
+ACTIONS.standPoint = () => {
+  const ls = lignesStand(), E = etatStand();
+  if (!ls.length) { toast('Crée d\'abord un article de vente directe.'); return; }
+  openSheet(`${sheetHead('Faire le point du stand', `Estimé : ${chf(Math.max(0, E.estime))}`)}<form class="sbody form" data-form="standPoint">
+    ${inp('sp-d', 'Date', todayISO(), { name: 'date', type: 'date' })}
+    <div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Il en reste</th><th>Dont repris au stock</th><th class="r">Prix</th></tr></thead><tbody>
+    ${ls.map((l) => `<tr><td>${esc(l.nom)}</td><td><input class="cell-in" name="r_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px"> <span class="hint">${esc(l.unite === 'pièce' ? 'pc' : l.unite)}</span></td><td><input class="cell-in" name="k_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px"></td><td class="r num">${money(l.prix)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <p class="hint">Note d'abord les derniers encaissements. L'app compare ce qui reste à ce qui devrait rester : la différence est le manque (vol, pertes, erreurs). Ce qui est repris au stock quitte le stand.</p>
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer le point</button></div></form>`);
+};
+FORMS.standPoint = (v) => {
+  const ls = lignesStand(), lignes = [];
+  for (const l of ls) { const r = num(v['r_' + l.id]), k = Math.min(r, num(v['k_' + l.id])); if (r > 0) lignes.push({ prod: l.prod, art: l.art || '', nom: l.nom, reste: r, repris: k, prix: l.prix, unite: l.unite, poids: l.poids || 0 }); }
+  const k = 'stp:' + uid('p'), date = v.date || todayISO(), cree = new Date().toISOString();
+  const E = etatStand({ key: k, date, cree }), compte = lignes.reduce((a, l) => a + l.reste * l.prix, 0), reste = lignes.reduce((a, l) => a + (l.reste - l.repris) * l.prix, 0);
+  const o = { date, cree, lignes, valeur: r2(reste), estime: E.estime, manque: r2(E.estime - compte), par: Sync.me || '' };
+  DB.put(k, o);
+  lignes.forEach((l, i) => { if (!(l.repris > 0)) return; const p = DB.get(l.prod); if (!p || stockDe(l.prod) == null) return; const q = enUniteDeStock(p, l.repris, l.unite, l.poids); if (q == null) return;
+    DB.put(`mvt:stpr:${k.slice(4)}:${i}`, { date, prod: l.prod, qte: q, type: 'retour', ref: k, par: Sync.me || '', note: 'Repris du stand' }); });
+  closeSheet(); toast(o.manque > 0.05 ? `Point enregistré : il manque ${chf(o.manque)} par rapport à l'estimation.` : o.manque < -0.05 ? `Point enregistré : ${chf(-o.manque)} de plus que l'estimation (un encaissement noté en trop ?).` : 'Point enregistré : tout correspond.', 6000);
+};
+ACTIONS.twLibresVD = () => {
+  const l = twLibresVD(); if (!l.length) return;
+  openSheet(`${sheetHead('Paiements TWINT pas encore comptés')}<form class="sbody form" data-form="twLibresVD">
+    <div class="table-wrap"><table class="list"><thead><tr><th></th><th>Date</th><th>Texte</th><th class="r">Montant</th></tr></thead><tbody>
+    ${l.map((t) => `<tr><td><input type="checkbox" name="t_${esc(t.key)}" checked aria-label="Compter"></td><td class="num">${fmtDate(t.date)}</td><td>${esc(trunc(t.texte || t.ref || '', 40))}</td><td class="r num">${money(t.montant)}</td></tr>`).join('')}
+    </tbody></table></div><p class="hint">Les paiements cochés deviennent des encaissements de la vente directe (dans les recettes). Décoche ceux qui payaient autre chose.</p>
+    <div class="row-end"><button class="btn primary" type="submit">Compter</button></div></form>`);
+};
+FORMS.twLibresVD = (v) => {
+  let n = 0, tot = 0;
+  for (const t of twLibresVD()) { if (!v['t_' + t.key]) continue; const rk = 'rec:' + uid('r');
+    DB.put(rk, { date: t.date, montant: r2(t.montant), moyen: 'TWINT', par: cfg().compteDe || Sync.me || '', client: 'Vente directe', libelle: `Vente directe · TWINT${t.texte ? ' ' + trunc(t.texte, 40) : ''}`, vd: true, cree: new Date().toISOString() });
+    DB.put(t.key, Object.assign({}, DB.get(t.key), { utilise: rk })); n++; tot += t.montant; }
+  closeSheet(); toast(n ? `${chf(tot)} comptés (${n} paiement${n > 1 ? 's' : ''}).` : 'Rien de compté.');
+};
 ACTIONS.selfNouveau = () => {
   /* Prix de vente directe = prix « Particuliers & vente directe » du produit (haut de la fourchette, ou fixé à la main) */
   const ps = produits().filter((p) => num(prixNiveau(p, 'part')) > 0), arts = articles().filter((a) => a.actif !== false);
@@ -268,17 +356,16 @@ function stockPourSelf(k, s) {
     if (s.statut === 'close' && r > 0) DB.put(kr, { date: s.closeLe || todayISO(), prod: l.prod, qte: enUniteDeStock(p, r, l.unite, l.poids) ?? r, type: 'retour', ref: k, par: Sync.me || '' }); else if (DB.get(kr)) DB.del(kr);
   });
 }
-ACTIONS.selfEnc = (el) => {
-  const s = DB.get(el.dataset.key); if (!s) return;
-  openSheet(`${sheetHead('Encaissement', (s.lieu || 'Self-service') + ' · ' + fmtDate(s.date))}<form class="sbody form" data-form="selfEnc"><input type="hidden" name="key" value="${esc(el.dataset.key)}">
-    <div class="grid2">${inp('se-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('se-m', 'Montant CHF', '', { name: 'montant', type: 'number', attrs: { autofocus: '' } })}
-      ${sel('se-moy', 'Moyen', 'TWINT', [['TWINT', 'TWINT'], ['Espèces', 'Espèces (caisse)']], { name: 'moyen' })}${sel('se-par', 'Encaissé par', Sync.me, persOptions(), { name: 'par', sub: 'Le compte TWINT ou la personne qui a pris la caisse.' })}</div>
+ACTIONS.selfEnc = () => {
+  openSheet(`${sheetHead('Encaissement', 'Vente directe')}<form class="sbody form" data-form="selfEnc">
+    <div class="grid2">${inp('se-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('se-m', 'Montant CHF', '', { name: 'montant', type: 'number', attrs: { autofocus: '', step: '0.05', inputmode: 'decimal' } })}
+      ${sel('se-moy', 'Moyen', 'Espèces', [['Espèces', 'Espèces (caisse)'], ['TWINT', 'TWINT']], { name: 'moyen' })}${sel('se-par', 'Encaissé par', Sync.me, persOptions(), { name: 'par', sub: 'Le compte TWINT ou la personne qui a pris la caisse.' })}</div>
+    <p class="hint">Les paiements TWINT arrivent d'habitude tout seuls (mail TWINT, ou relevé importé) : ici, surtout la caisse.</p>
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
 };
 FORMS.selfEnc = (v) => {
   const m = num(v.montant); if (!(m > 0)) { toast('Indique un montant.'); return; }
-  const s = DB.get(v.key) || {};
-  DB.put('rec:' + uid('r'), { date: v.date || todayISO(), montant: r2(m), moyen: v.moyen, par: v.par, client: s.lieu || 'Self-service', libelle: 'Vente directe ' + fmtDate(s.date), self: v.key, cree: new Date().toISOString() });
+  DB.put('rec:' + uid('r'), { date: v.date || todayISO(), montant: r2(m), moyen: v.moyen, par: v.par, client: 'Vente directe', libelle: 'Vente directe · ' + (v.moyen || ''), vd: true, cree: new Date().toISOString() });
   closeSheet(); toast('Encaissement ajouté aux recettes.');
 };
 ACTIONS.selfClore = (el) => {
@@ -310,10 +397,10 @@ const kgTxt = (x) => (num(x) < 1 ? fmtNum(num(x) * 1000, 0) + ' g' : fmtNum(num(
 const descArticle = (a) => a.mode === 'lot' ? `lot de ${kgTxt(a.poids)}` : `pièce de ${kgTxt(a.min)} à ${kgTxt(a.max)}`;
 function articlesHtml() {
   const l = articles();
-  return `<div class="panel"><div class="between"><h2>Articles de vente directe</h2><button class="btn small" type="button" data-act="artEdit">+ Article</button></div>
+  return `<details class="panel art-box" data-garde="gdt-art-ouvert"${ls.get('gdt-art-ouvert') === '1' ? ' open' : ''}><summary class="between"><h2>Articles de vente directe <span class="hint">· ${l.length}</span></h2><button class="btn small" type="button" data-act="artEdit">+ Article</button></summary>
     ${l.length ? `<div class="items">${l.map((a) => { const p = DB.get(a.prod) || {}, q = stockDe(a.prod), auto = !(num(a.prix) > 0);
       return `<button type="button" class="item${a.actif === false ? ' off' : ''}" data-act="artEdit" data-key="${esc(a.key)}"><span class="who"><strong>${esc(a.nom)}</strong><span class="meta">${esc(descArticle(a))} · ${esc(p.nom || 'produit ?')}${q != null ? ' · stock ' + esc(fmtQ(q, p.unite)) : ''}${a.actif === false ? ' · pas en vente' : ''}</span></span><span class="amt">${chf(prixArticle(a))}${auto ? '<br><span class="hint">auto</span>' : ''}</span></button>`; }).join('')}</div>`
-      : '<p class="hint">Par exemple « Butternut moyenne » (pièce de 900 g à 1,4 kg, prix calculé tout seul) ou « Sachet de patates douces » (1,3 kg à 10 CHF). Mettre un article en vente retire son poids du stock du produit.</p>'}</div>`;
+      : '<p class="hint">Par exemple « Butternut moyenne » (pièce de 900 g à 1,4 kg, prix calculé tout seul) ou « Sachet de patates douces » (1,3 kg à 10 CHF). Mettre un article en vente retire son poids du stock du produit.</p>'}</details>`;
 }
 ACTIONS.artEdit = (el) => {
   const k = el.dataset.key || '', a = k ? DB.get(k) : { mode: 'piece', actif: true, prix: '' };
@@ -372,7 +459,7 @@ ACTIONS.ardEdit = (el) => {
     <p class="hint" id="ad-qui">${c ? '👤 ' + esc(displayName(c)) : ''}</p>
     <div class="grid2" id="ad-nouveau" hidden>${inp('ad-pre', 'Prénom (nouveau contact)', '', { name: 'prenom' })}${inp('ad-nom', 'Nom', '', { name: 'nomFamille' })}</div>
     <div class="grid2">${inp('ad-m', 'Montant CHF', x.montant ?? '', { name: 'montant', type: 'number', req: true, attrs: { step: '0.05', min: '0', inputmode: 'decimal' } })}${inp('ad-d', 'Date', x.date, { name: 'date', type: 'date' })}</div>
-    ${ouvertes.length ? sel('ad-self', 'Mise en vente', x.self || '', [['', '—']].concat(ouvertes.map((s) => [s.key, `${s.lieu || 'Self-service'} · ${fmtDate(s.date)}`])), { name: 'self', sub: 'Compte comme payé dans le bilan de cette vente directe.' }) : ''}
+    <input type="hidden" name="self" value="${esc(x.self || '')}">
     ${x.facture ? `<p class="hint">Déjà facturé (${esc((DB.get(x.facture) || {}).numero || '')}).</p>` : ''}
     <div class="row-end">${k && !x.facture ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="ce paiement">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const t = $('ad-tel'), maj = () => { const cc = contactParTel(t.value); $('ad-qui').textContent = cc ? '👤 ' + displayName(cc) : chiffresTel(t.value).length >= 9 ? 'Nouveau numéro : un contact sera créé.' : ''; $('ad-nouveau').hidden = !!cc || chiffresTel(t.value).length < 9; };
@@ -418,7 +505,7 @@ FORMS.ardFacturer = (v) => {
 };
 ACTIONS.selfRouvrir = (el) => { const s = DB.get(el.dataset.key); if (!s) return; const o = Object.assign({}, s, { statut: 'ouverte' }); DB.put(el.dataset.key, o); stockPourSelf(el.dataset.key, o); };
 /* Supprimer une mise en vente retire aussi ses mouvements de stock (les encaissements restent : c'est de l'argent reçu) */
-(() => { const del = ACTIONS.delItemOk; ACTIONS.delItemOk = (el) => { const k = el.dataset.key; del(el); if (String(k).startsWith('self:')) for (const m of mouvements()) if (m.ref === k) DB.del(m.key); }; })();
+(() => { const del = ACTIONS.delItemOk; ACTIONS.delItemOk = (el) => { const k = el.dataset.key; del(el); if (String(k).startsWith('self:') || String(k).startsWith('stp:')) for (const m of mouvements()) if (m.ref === k) DB.del(m.key); }; })();
 
 /* ---------- Grille de prix (PDF) : produits disponibles, prix par type de client, calibres à la pièce ---------- */
 const GRILLE = { dispo: true, niveaux: { part: true, resto: true, gros: true } };
