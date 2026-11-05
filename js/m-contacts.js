@@ -51,7 +51,7 @@ function liveSearch(id, setter) {
   s.addEventListener('input', () => { setter(s.value); const pos = s.selectionStart; render(); const n = $(id); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) { /* */ } });
 }
 
-/* Relations = Mails + Contacts (deux modules, une seule tuile et les mêmes onglets) ; la prospection est dans Ventes */
+/* Contacts = Mails + Contacts (deux modules, une seule tuile et les mêmes onglets) ; la prospection est dans Ventes */
 function relationsTabs(cur) {
   const nm = typeof mailsATraiter === 'function' ? mailsATraiter().length : 0;
   return `<nav class="subtabs" aria-label="Sections"><a href="#/mails" class="${cur === 'mails' ? 'on' : ''}${nm ? ' fort' : ''}"${cur === 'mails' ? ' aria-current="page"' : ''}>Mails${nm ? ' · ' + nm + ' à traiter' : ''}</a><a href="#/contacts" class="${cur === 'contacts' ? 'on' : ''}"${cur === 'contacts' ? ' aria-current="page"' : ''}>Contacts</a></nav>`;
@@ -59,7 +59,7 @@ function relationsTabs(cur) {
 const SOUS_PROSPECTION = ['prospection', 'prospect', 'convertir', 'pmodifier'];
 const ongletProspection = () => { const np = prospects().filter((c) => !['clos', 'valide'].includes(groupeStatut(pStat(c)))).length, nRel = prospects().filter(aRelancer).length; return ['prospection', `Prospection${nRel ? ' · ' + nRel + ' à relancer' : np ? ' · ' + np : ''}`, nRel > 0]; };
 MODULES.contacts = {
-  titre: 'Relations',
+  titre: 'Contacts',
   tuile() {
     const n = contacts().length;
     return { line: `${n} contact${n > 1 ? 's' : ''}` };

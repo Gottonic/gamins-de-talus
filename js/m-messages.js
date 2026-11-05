@@ -694,7 +694,7 @@ ACTIONS.chatFermer = () => { if (NAV_N > 0) { const avant = location.hash; histo
 
 /* ---------- Module Mails (la boîte Infomaniak), à côté de la Messagerie ---------- */
 MODULES.mails = {
-  titre: 'Relations',
+  titre: 'Contacts',
   tuile() {
     const nm = typeof mailsATraiter === 'function' ? mailsATraiter().length : 0, tous = typeof mails === 'function' ? mails() : [];
     if (!tous.length) return { line: 'La boîte ' + (cfgMails().adresse || 'info@') };

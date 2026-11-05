@@ -129,7 +129,7 @@ MODULES.factures = {
   render(sub, id) {
     if (sub === 'produits') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
     const pr = SOUS_PROSPECTION.includes(sub);
-    const t = tabs('factures', [['', 'Ventes'], ongletProspection(), ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), standARemplir() || ardAFacturer().length > 0], ['stock', 'Stock et prix']], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
+    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), standARemplir() || ardAFacturer().length > 0], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
     if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'stock') return t + renderStock();
