@@ -97,6 +97,7 @@ Recoller `supabase/functions/mails/index.ts` dans la fonction `mails` et redépl
 1. Supabase → Edge Functions → `notifier` → recoller `supabase/functions/notifier/index.ts` → Deploy.
 2. SQL Editor → coller `supabase/mise-a-jour-2026-11-05-evenements.sql` (remplacer `LE-SECRET` par la valeur de CRON_SECRET) → Run.
 3. Dans l'app : Réglages → Notifications → cocher « Nouvel événement créé ».
+4. SQL Editor → `supabase/mise-a-jour-2026-11-05-resume.sql` (même secret) → Run : résumé, toutes les 15 min, de ce qui est arrivé hors des jours et heures choisis.
    La même fonction gère la sourdine (N semaines, ou pendant ses vacances) : seuls passent les @mentions, les nouveaux événements pour soi et le matin d'un événement.
 
 ### Notifications sur téléphone et ordinateur (30.10.2026, 3e partie)

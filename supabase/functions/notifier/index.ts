@@ -1,5 +1,6 @@
 // Gamins de Talus — notifications « pop-up » sur les téléphones et ordinateurs abonnés (Web Push, sans service tiers).
-// Appelée : par la base à chaque nouveau message (msg:), nouveau mail (mail:) ou nouvel événement (ev:) ; chaque matin par Supabase Cron
+// Appelée : par la base à chaque nouveau message (msg:), nouveau mail (mail:) ou nouvel événement (ev:) ; toutes les 15 min par Supabase Cron
+// (résumé de ce qui est arrivé hors des jours et heures choisis : lignes notifq:<personne>:<id>) ; chaque matin par Supabase Cron
 // (tâches et événements du jour) ; par l'app pour une notification de test (membre connecté).
 // Abonnements : lignes push:<personne>:<appareil> = { endpoint, p256dh, auth, appareil }. Préférences : cfg:notif:<personne>.
 // Secrets : VAPID_PRIVATE (clé privée VAPID), CRON_SECRET. À déployer SANS « Verify JWT » : la fonction vérifie elle-même.
@@ -170,10 +171,36 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
       if (surDiscord(p.k, 'jour')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/>) **Aujourd'hui**\n` + court(lignes.join('\n'), 1800), prioritaire: sd });
     }
   }
-  /* Hors des jours et heures choisis : rien (sauf le test) */
-  if (!corps.test) { for (let i = envois.length - 1; i >= 0; i--) if (!dansPlage(envois[i].personne)) envois.splice(i, 1); for (let i = discordEnvois.length - 1; i >= 0; i--) if (!dansPlage(discordEnvois[i].personne)) discordEnvois.splice(i, 1); }
-  /* En sourdine : seul le prioritaire passe */
+  /* En sourdine : seul le prioritaire passe (le reste, l'accueil le résume au retour) */
   if (!corps.test) { for (let i = envois.length - 1; i >= 0; i--) if (!envois[i].prioritaire && enSourdine(envois[i].personne)) envois.splice(i, 1); for (let i = discordEnvois.length - 1; i >= 0; i--) if (!discordEnvois[i].prioritaire && enSourdine(discordEnvois[i].personne)) discordEnvois.splice(i, 1); }
+  /* Hors des jours et heures choisis : mis de côté, envoyé en résumé dès que la plage s'ouvre (le programme du jour expire le soir même) */
+  if (!corps.test && !corps.resume) {
+    const file: any[] = [], id = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    for (let i = envois.length - 1; i >= 0; i--) if (!dansPlage(envois[i].personne)) { const e = envois.splice(i, 1)[0]; file.push({ key: `notifq:${e.personne}:${id()}`, data: { quand: new Date().toISOString(), tag: e.message.tag || '', push: e.message, expire: e.message.tag === 'jour' ? jourZ : '' }, deleted: false }); }
+    for (let i = discordEnvois.length - 1; i >= 0; i--) if (!dansPlage(discordEnvois[i].personne)) { const e = discordEnvois.splice(i, 1)[0]; file.push({ key: `notifq:${e.personne}:${id()}`, data: { quand: new Date().toISOString(), discord: e.contenu, expire: /Aujourd'hui/.test(e.contenu) ? jourZ : '' }, deleted: false }); }
+    if (file.length) await sb.from('rows').upsert(file, { onConflict: 'key' });
+  }
+  /* Le résumé : ce qui attend, pour chacun dont la plage est ouverte (et pas en sourdine) */
+  const aRetirer: string[] = [];
+  if (corps.resume) {
+    const LIB: Record<string, [string, string]> = { msg: ['message', 'messages'], mail: ['mail', 'mails'], confie: ['mail confié', 'mails confiés'], ev: ['nouvel événement', 'nouveaux événements'], jour: ['programme du jour', 'programmes du jour'] };
+    const parP: Record<string, any[]> = {};
+    for (const r of await lire('notifq:')) { const p = r.key.split(':')[1]; (parP[p] = parP[p] || []).push(Object.assign({ key: r.key }, r.data)); }
+    for (const [p, xs0] of Object.entries(parP)) {
+      if (!dansPlage(p)) continue;
+      const xs = xs0.sort((a, b) => String(a.quand).localeCompare(String(b.quand))); xs.forEach((x) => aRetirer.push(x.key));
+      const vivants = xs.filter((x) => !x.expire || x.expire >= jourZ);
+      if (enSourdine(p)) continue; /* en sourdine : l'accueil fera le résumé au retour */
+      const push = vivants.filter((x) => x.push).map((x) => x.push), dis = vivants.filter((x) => x.discord).map((x) => x.discord);
+      if (push.length === 1) envois.push({ personne: p, message: push[0] });
+      else if (push.length > 1) {
+        const n: Record<string, number> = {}; for (const m of push) n[m.tag || ''] = (n[m.tag || ''] || 0) + 1;
+        const quoi = Object.entries(n).map(([t, k]) => `${k} ${(LIB[t] || ['notification', 'notifications'])[k > 1 ? 1 : 0]}`).join(', ');
+        envois.push({ personne: p, message: { titre: '🔔 En attente : ' + quoi, texte: court(push.map((m) => m.titre + (m.texte ? ' — ' + m.texte : '')).join(' · '), 180), url: APP + '#/', tag: 'resume' } });
+      }
+      if (dis.length) discordEnvois.push({ personne: p, contenu: court((dis.length > 1 ? `**🔔 Pendant ta pause (${dis.length})**\n` : '') + dis.join('\n'), 1900) });
+    }
+  }
   /* Envoi à chaque appareil ; un abonnement expiré (404/410) est retiré */
   let ok = 0; const erreurs: string[] = pbVapid && envois.length ? [pbVapid] : [];
   for (const e of pbVapid ? [] : envois) for (const a of abos.filter((x) => x.personne === e.personne)) {
@@ -190,5 +217,6 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
       if (r.ok) discordOk++; else erreurs.push(`discord ${r.status}`);
     } catch (err) { erreurs.push('discord ' + String((err as Error).message || err)); }
   }
+  if (aRetirer.length) await sb.from('rows').delete().in('key', aRetirer);
   return json({ envoyes: ok, appareils: abos.length, discord: discordOk, erreurs });
 });

@@ -417,8 +417,18 @@ function posterDiscord(webhook, contenu, image) {
   if (image) fd.append('files[0]', image, 'photo.jpg');
   return fetch(webhook, { method: 'POST', mode: 'no-cors', body: fd });
 }
+/* Hors des jours et heures choisis : le message Discord attend (résumé envoyé par le serveur dès que la plage s'ouvre) */
+function mettreEnAttenteDiscord(p, contenu) {
+  if (LOCAL_MODE || !Sync.sb || !navigator.onLine) return;
+  Sync.sb.from('rows').upsert({ key: `notifq:${p}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, data: { quand: new Date().toISOString(), discord: contenu }, deleted: false }, { onConflict: 'key' }).then(() => {}, () => {});
+}
+const discordEnAttente = (p) => !!discordDe(p).webhook && (DB.get('cfg:notif:' + p) || {}).d_messages !== false && typeof dansPlageNotif === 'function' && !dansPlageNotif(p);
 function notifierDiscord(de, texte, image, mentions) {
   if (LOCAL_MODE) return;
+  for (const p of personnes()) {
+    const vis = !mentions || !mentions.length || mentions.includes(p.k);
+    if (p.k !== de && vis && discordEnAttente(p.k) && (!enSourdine(p.k) || (mentions || []).includes(p.k))) mettreEnAttenteDiscord(p.k, `${LIEN_MSG} ${image ? '📷 ' : ''}**${nomDe(de)}**${texte ? ' : ' + trunc(texte, 300) : image ? ' : une photo' : ''}`);
+  }
   /* Un message avec des @mentions ne prévient que les personnes mentionnées */
   const vise = (k) => !mentions || !mentions.length || mentions.includes(k);
   /* Avec une photo : envoi direct (une photo ne se garde pas dans la file d'attente) */

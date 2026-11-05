@@ -144,6 +144,7 @@ const Sync = {
         const { data, error } = await q; if (error) throw error;
         for (const r of data) {
           if (!maxTs || r.updated_at > maxTs) maxTs = r.updated_at;
+          if (r.key.startsWith('notifq:')) continue; /* file d'attente des notifications : l'affaire du serveur */
           if (this.pousseesPendant.has(r.key)) { if (!minSaute || r.updated_at < minSaute) minSaute = r.updated_at; continue; }
           if (DB.dirty.has(r.key)) continue;
           if (r.deleted || r.data == null) {
