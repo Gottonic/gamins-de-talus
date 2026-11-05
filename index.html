@@ -1110,6 +1110,19 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .ta-tard > summary h4 { display: inline; }
 .ta-tard > summary h4::before { content: '▸ '; }
 .ta-tard[open] > summary h4::before { content: '▾ '; }
+.hl-zero-txt { display: none; margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.hl.zero .hl-champs, .hl.zero .hl-zero-btn { display: none; }
+.hl.zero .hl-zero-txt { display: block; }
+.ech-chip { position: relative; overflow: hidden; }
+.ech-chip input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; margin: 0; cursor: pointer; }
+.ech-chip.on { background: var(--soft); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.ech-chip.on.proche { background: var(--late-soft); border-color: var(--late); }
+.ech-chip.on.passee { background: var(--late); border-color: var(--late); color: #fff; }
+.ta-titre { cursor: text; }
+.ta-titre:hover { text-decoration: underline dotted; text-underline-offset: 4px; }
+.ta-resume .ta-partie { margin: 6px 0; }
+.ta-resume .ta-partie textarea, .ta-resume .ta-partie select, .ta-resume .ta-partie input:not([type=checkbox]) { width: 100%; }
+.ta-vli { margin-top: 4px; }
 </style>
 </head>
 <body>

@@ -665,19 +665,28 @@ const minDe = (hm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hm || ''); return m
 function dureeH(debut, fin, pause) { const a = minDe(debut), b = minDe(fin); if (a == null || b == null || b <= a) return null; const m = b - a - (num(pause) || 0); return m > 0 ? Math.round(m / 60 * 100) / 100 : null; }
 function ligneHeuresHtml(p, v, suit) {
   const tot = dureeH(v.debut, v.fin, v.pause);
-  return `<div class="hl" data-hl="${esc(p.k)}"${suit ? ' data-suit="1"' : ''}>
-    <div class="hl-tete"><b>${esc(p.k === Sync.me ? p.nom + ' (moi)' : p.nom)}</b><span class="hl-tot num">${tot != null ? fmtH(tot) + ' h' : v.ancien ? fmtH(v.ancien) + ' h notées' : ''}</span>${v.retirable ? `<button type="button" class="btn link small" data-act="hlRetirer" data-p="${esc(p.k)}">Retirer</button>` : ''}</div>
+  return `<div class="hl${v.zero ? ' zero' : ''}" data-hl="${esc(p.k)}"${suit ? ' data-suit="1"' : ''}${v.zero ? ' data-zero="1"' : ''}>
+    <div class="hl-tete"><b>${esc(p.k === Sync.me ? p.nom + ' (moi)' : p.nom)}</b><span class="hl-tot num">${tot != null ? fmtH(tot) + ' h' : v.ancien ? fmtH(v.ancien) + ' h notées' : ''}</span>${v.retirable ? `<button type="button" class="btn link small" data-act="hlRetirer" data-p="${esc(p.k)}">Retirer</button>` : `<button type="button" class="btn link small hl-zero-btn" data-act="hlZero" data-p="${esc(p.k)}">Retirer ${p.k === Sync.me ? 'mon nom' : 'son nom'}</button>`}</div>
+    <p class="hl-zero-txt">0 heure pour cet événement. <button type="button" class="btn link small" data-act="hlRemettre" data-p="${esc(p.k)}">Remettre</button></p>
     <div class="hl-champs"><label>Début<input type="time" data-hc="debut" value="${esc(v.debut || '')}"></label><label>Fin<input type="time" data-hc="fin" value="${esc(v.fin || '')}"></label><label>Pause<input type="number" inputmode="numeric" min="0" step="5" data-hc="pause" value="${esc(v.pause || '')}" placeholder="min" aria-label="Pause en minutes"></label></div></div>`;
 }
 const lireLigne = (row) => { const g = (c) => (row.querySelector(`[data-hc="${c}"]`) || {}).value || ''; return { debut: g('debut'), fin: g('fin'), pause: g('pause') }; };
-function lireLignes() { const o = {}; document.querySelectorAll('#hj-sheet [data-hl]').forEach((r) => { o[r.dataset.hl] = Object.assign(lireLigne(r), { suit: !!r.dataset.suit }); }); return o; }
+function lireLignes() { const o = {}; document.querySelectorAll('#hj-sheet [data-hl]').forEach((r) => { o[r.dataset.hl] = Object.assign(lireLigne(r), { suit: !!r.dataset.suit, zero: !!r.dataset.zero }); }); return o; }
+/* Retirer son nom : 0 heure pour cet événement (la journée est quand même « notée ») */
+ACTIONS.hlZero = (el) => { const r = document.querySelector(`#hj-sheet [data-hl="${el.dataset.p}"]`); if (!r) return; r.dataset.zero = '1'; r.classList.add('zero'); r.querySelectorAll('input').forEach((i) => { i.value = ''; }); majTotal(r); majBoutonHj(); };
+ACTIONS.hlRemettre = (el) => { const r = document.querySelector(`#hj-sheet [data-hl="${el.dataset.p}"]`); if (!r) return; delete r.dataset.zero; r.classList.remove('zero'); majBoutonHj(); const d = r.querySelector('[data-hc="debut"]'); if (d) d.focus(); };
+function majBoutonHj() {
+  const b = $('hj-ok'); if (!b) return;
+  const rows = [...document.querySelectorAll('#hj-sheet [data-hl]')].filter((r) => !r.dataset.retire), avec = rows.filter((r) => { const v = lireLigne(r); return v.debut || v.fin; });
+  b.textContent = !avec.length && rows.some((r) => r.dataset.zero) ? 'Enregistrer 0 heure' : 'Enregistrer les heures';
+}
 const p0k = (premier) => (personnes().find((p) => p.k === premier) || personnes()[0]).k;
 function heuresLignesHtml(d, j, premier) {
   const e = j ? DB.get(j.split('|')[0]) : null, ps = personnes(), ins = inscritsDuJour(d, j), br = HJ.cle === d + '|' + j ? HJ.brouillon : null;
   const seg = (k) => segmentsDe(DB.get(hKey(d, k)))[j || ''];
-  const valeurs = (k) => { if (br && br[k]) return br[k]; const g = seg(k); return g && g.debut ? { debut: g.debut, fin: g.fin, pause: g.pause || '' } : { ancien: g && num(g.heures) > 0 ? g.heures : 0 }; };
+  const valeurs = (k) => { if (br && br[k]) return br[k]; const g = seg(k); return g && g.debut ? { debut: g.debut, fin: g.fin, pause: g.pause || '' } : g && g.zero ? { zero: true } : { ancien: g && num(g.heures) > 0 ? g.heures : 0 }; };
   const p0 = ps.find((p) => p.k === premier) || ps[0], v0 = valeurs(p0.k);
-  if (!v0.debut && !v0.ancien && e && e.heureDebut && e.heureFin) { v0.debut = e.heureDebut; v0.fin = e.heureFin; }
+  if (!v0.debut && !v0.ancien && !v0.zero && e && e.heureDebut && e.heureFin) { v0.debut = e.heureDebut; v0.fin = e.heureFin; }
   const deja = (k) => (br ? !!br[k] : !!(seg(k) && num(seg(k).heures) > 0));
   /* Les heures déjà notées ce jour-là pour d'autres événements (ou hors événement) */
   const autresSeg = Object.entries(segmentsDe(DB.get(hKey(d, p0k(premier))))).filter(([sk, g]) => sk !== (j || '') && num(g.heures) > 0);
@@ -716,8 +725,8 @@ ACTIONS.heuresJour = (el) => {
     ${ts.length ? `<div class="tri-taches">${ts.map((t) => tacheHtml(t, { court: true, sansDate: true })).join('')}</div>` : '<p class="hint">Aucune tâche cochée ce jour-là.</p>'}
     <details class="hj-plus"${ts.length ? '' : ' open'}><summary>Autres tâches effectuées ?</summary>${ajoutTacheBarre({ id: 'hj-ajout', fait: d, placeholder: 'Ex. désherbé les carottes' })}</details>
     <div id="hj-conf"></div>
-    <div class="row-end"><button class="btn primary" type="button" data-act="hjOk" data-d="${d}" data-j="${esc(j)}">Enregistrer les heures</button></div></div>`);
-  const sh = $('hj-sheet'); brancherLignes(sh); sh.querySelectorAll('[data-hl]').forEach(majTotal);
+    <div class="row-end"><button class="btn primary" type="button" id="hj-ok" data-act="hjOk" data-d="${d}" data-j="${esc(j)}">Enregistrer les heures</button></div></div>`);
+  const sh = $('hj-sheet'); brancherLignes(sh); sh.querySelectorAll('[data-hl]').forEach(majTotal); majBoutonHj(); sh.addEventListener('input', majBoutonHj);
 };
 ACTIONS.hjOk = (el) => {
   const d = el.dataset.d, j = el.dataset.j || '', sk = j || '', notes = [];
@@ -725,7 +734,7 @@ ACTIONS.hjOk = (el) => {
   if (!el.dataset.force) {
     const deja = [];
     for (const r of document.querySelectorAll('#hj-sheet [data-hl]')) {
-      const v = lireLigne(r); if (!v.debut && !v.fin) continue;
+      const v = lireLigne(r); if (r.dataset.zero || (!v.debut && !v.fin)) continue;
       const segs = segmentsDe(DB.get(hKey(d, r.dataset.hl))); if (segs[sk] && num(segs[sk].heures) > 0) continue;
       const h = Object.entries(segs).filter(([k, g]) => k !== sk && num(g.heures) > 0).reduce((a, [, g]) => a + num(g.heures), 0);
       if (h > 0) deja.push([r.dataset.hl, h]);
@@ -750,6 +759,7 @@ ACTIONS.hjOk = (el) => {
   };
   for (const r of document.querySelectorAll('#hj-sheet [data-hl]')) {
     const k = hKey(d, r.dataset.hl), old = DB.get(k) || {}, v = lireLigne(r), nom = nomDe(r.dataset.hl), segs = Object.assign({}, segmentsDe(old));
+    if (r.dataset.zero) { segs[sk] = { debut: '', fin: '', pause: 0, heures: 0, zero: true }; ecrire(k, old, segs); notes.push(`${nom} 0 h`); continue; }
     if (!v.debut && !v.fin) { if (r.dataset.retire && segs[sk]) { delete segs[sk]; ecrire(k, old, segs); } continue; }
     const h = dureeH(v.debut, v.fin, v.pause);
     if (h == null || h > 24) { toast(`${nom} : vérifie le début, la fin et la pause.`); r.querySelector('[data-hc="debut"]').focus(); return; }
