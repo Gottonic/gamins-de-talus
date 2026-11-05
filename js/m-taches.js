@@ -64,8 +64,7 @@ document.addEventListener('pointerdown', (e) => {
   const fin = () => {
     document.removeEventListener('pointermove', bouge); document.removeEventListener('pointerup', fin); document.removeEventListener('pointercancel', fin);
     item.classList.remove('en-tri'); box.classList.remove('tri-actif');
-    freres().forEach((x, i) => { const t = DB.get(x.dataset.tache); if (t && t.ordre !== i) DB.put(x.dataset.tache, Object.assign({}, t, { ordre: i })); });
-    if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
+    enregistrerOrdre(box);
   };
   /* Sur le document (la ligne déplacée change de place dans la page pendant le geste) */
   document.addEventListener('pointermove', bouge); document.addEventListener('pointerup', fin); document.addEventListener('pointercancel', fin);
@@ -73,8 +72,8 @@ document.addEventListener('pointerdown', (e) => {
 document.addEventListener('mousedown', (e) => { if (e.target.closest && e.target.closest('[data-poignee]')) e.preventDefault(); });
 /* Sur ordinateur, on peut aussi glisser la ligne entière d'une tâche dans sa liste (journée, jour) pour changer l'ordre */
 const TRI = { el: null, box: null };
-document.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-tache]'), box = it && it.closest('.tri-taches'); TRI.el = box ? it : null; TRI.box = box || null; }, true);
-document.addEventListener('dragend', () => { if (TRI.el) TRI.el.classList.remove('en-tri'); TRI.el = null; TRI.box = null; }, true);
+document.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-tache]'), box = it && it.closest('.tri-taches'); TRI.el = box ? it : null; TRI.box = box || null; if (box) box.classList.add('tri-actif'); }, true);
+document.addEventListener('dragend', () => { if (TRI.el) TRI.el.classList.remove('en-tri'); if (TRI.box) TRI.box.classList.remove('tri-actif'); TRI.el = null; TRI.box = null; document.querySelectorAll('.tri-actif').forEach((b) => b.classList.remove('tri-actif')); if (UI.pending && !enSaisie(document.activeElement)) { UI.pending = false; render(); } }, true);
 document.addEventListener('dragover', (e) => {
   if (!TRI.el) return; const sur = e.target.closest && e.target.closest('[data-tache]');
   if (!sur || sur === TRI.el || sur.parentElement !== TRI.box) return;
@@ -83,10 +82,15 @@ document.addEventListener('dragover', (e) => {
 }, true);
 document.addEventListener('drop', (e) => {
   if (!TRI.el || !(e.target.closest && e.target.closest('.tri-taches') === TRI.box)) return;
-  e.preventDefault(); e.stopPropagation(); const box = TRI.box; TRI.el.classList.remove('en-tri'); TRI.el = null; TRI.box = null;
-  [...box.children].filter((x) => x.dataset && x.dataset.tache).forEach((x, i) => { const t = DB.get(x.dataset.tache); if (t && t.ordre !== i) DB.put(x.dataset.tache, Object.assign({}, t, { ordre: i })); });
-  if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
+  e.preventDefault(); e.stopPropagation(); const box = TRI.box; TRI.el.classList.remove('en-tri'); box.classList.remove('tri-actif'); TRI.el = null; TRI.box = null;
+  enregistrerOrdre(box);
 }, true);
+/* L'ordre affiché devient l'ordre enregistré ; puis l'écran se met à jour (il attendait la fin du geste) */
+function enregistrerOrdre(box) {
+  [...box.children].filter((x) => x.dataset && x.dataset.tache).forEach((x, i) => { const t = DB.get(x.dataset.tache); if (t && t.ordre !== i) DB.put(x.dataset.tache, Object.assign({}, t, { ordre: i })); });
+  if (UI.pending) { UI.pending = false; render(); }
+  if (typeof rafraichirFenetre === 'function') rafraichirFenetre();
+}
 /* Une tâche qu'on ajoute à une journée (ou à un jour) se met en bas de sa liste */
 function ordreFin(o) {
   /* Les anciennes tâches sans ordre reçoivent d'abord leur place actuelle (sinon la nouvelle passerait devant elles) */

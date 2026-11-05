@@ -106,7 +106,9 @@ const Sync = {
     if (c.me && !this.me) this.me = c.me;
     return true;
   },
-  changed() { if (LOCAL_MODE) DB.dirty.clear(); this.persist(); this.schedule(); UI.status(); UI.dataChanged(); },
+  /* Plusieurs changements d'affilée (ex. l'ordre de 10 tâches) : une seule copie sur l'appareil, un instant après */
+  persistBientot() { clearTimeout(this._pt); this._pt = setTimeout(() => this.persist(), 250); },
+  changed() { if (LOCAL_MODE) DB.dirty.clear(); this.persistBientot(); this.schedule(); UI.status(); UI.dataChanged(); },
   schedule(d) { if (LOCAL_MODE) return; clearTimeout(this.timer); this.timer = setTimeout(() => this.push(), d == null ? 1200 : d); },
   async push() {
     if (LOCAL_MODE || !this.sb || !this.uid || this.pushing || !DB.dirty.size) { UI.status(); return; }
@@ -118,6 +120,8 @@ const Sync = {
       const { error } = await this.sb.from('rows').upsert(rows, { onConflict: 'key' });
       if (error) throw error;
       keys.forEach((k) => { const now = DB.sig[k] ?? ('del:' + canon(DB.trash[k] ?? null)); if (now === sent[k]) DB.dirty.delete(k); });
+      /* Une lecture en cours a pu lire ces lignes avant notre envoi : elle ne doit pas remettre l'ancienne version */
+      if (this.pulling) keys.forEach((k) => this.pousseesPendant.add(k));
       this.persist(); this.lastOk = Date.now(); this.err = ''; this.pushing = false; UI.status();
       if (DB.dirty.size) this.schedule(300);
     } catch (e) { this.pushing = false; this.err = (e && e.message) || String(e); UI.status(); this.schedule(15000); }
@@ -125,14 +129,22 @@ const Sync = {
   async pull(full) {
     if (LOCAL_MODE || !this.sb || !this.uid) return false;
     if (!navigator.onLine) { UI.status(); return false; }
+    /* Une lecture à la fois ; une demande pendant ce temps relance une lecture juste après */
+    if (this.pulling) { this.relire = true; return this.pulling; }
+    this.pousseesPendant = new Set();
+    this.pulling = this._pull(full).finally(() => { this.pulling = null; if (this.relire) { this.relire = false; setTimeout(() => this.pull(), 0); } });
+    return this.pulling;
+  },
+  async _pull(full) {
     try {
-      const since = full ? null : DB.lastPull; let changed = false, maxTs = DB.lastPull, from = 0;
+      const since = full ? null : DB.lastPull; let changed = false, maxTs = DB.lastPull, from = 0, minSaute = null;
       for (;;) {
         let q = this.sb.from('rows').select('key,data,deleted,updated_at').order('updated_at', { ascending: true }).range(from, from + 999);
         if (since) q = q.gte('updated_at', since);
         const { data, error } = await q; if (error) throw error;
         for (const r of data) {
           if (!maxTs || r.updated_at > maxTs) maxTs = r.updated_at;
+          if (this.pousseesPendant.has(r.key)) { if (!minSaute || r.updated_at < minSaute) minSaute = r.updated_at; continue; }
           if (DB.dirty.has(r.key)) continue;
           if (r.deleted || r.data == null) {
             if (r.key in DB.data) { delete DB.data[r.key]; delete DB.sig[r.key]; changed = true; }
@@ -145,7 +157,9 @@ const Sync = {
         }
         if (data.length < 1000) break; from += 1000;
       }
-      DB.lastPull = maxTs; this.persist(); this.lastOk = Date.now(); this.err = ''; UI.status();
+      /* Des lignes sautées (envoyées pendant la lecture) : on les relira, pour ne rien manquer */
+      DB.lastPull = minSaute && (!maxTs || minSaute < maxTs) ? minSaute : maxTs; if (minSaute) this.relire = true;
+      this.persist(); this.lastOk = Date.now(); this.err = ''; UI.status();
       if (changed) UI.dataChanged();
       return true;
     } catch (e) { this.err = (e && e.message) || String(e); UI.status(); return false; }
@@ -196,13 +210,16 @@ const UI = {
     clearTimeout(this._t);
     this._t = setTimeout(() => {
       const a = document.activeElement;
-      if (a && $('view').contains(a) && enSaisie(a)) { this.pending = true; return; }
+      if ((a && $('view').contains(a) && enSaisie(a)) || document.querySelector('#view .tri-actif')) { this.pending = true; return; }
       render();
     }, 0);
   },
 };
 /* Un champ où l'on tape (pas une case à cocher ni un bouton radio : ceux-là ne doivent pas retarder l'affichage) */
 function enSaisie(a) { return !!a && (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file|range|color)$/i.test(a.type))); }
+/* Ne pas perdre la dernière copie si l'app passe en arrière-plan */
+addEventListener('pagehide', () => { if (Sync._pt) { clearTimeout(Sync._pt); Sync.persist(); } });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && Sync._pt) { clearTimeout(Sync._pt); Sync.persist(); } });
 document.addEventListener('focusout', () => { setTimeout(() => { if (UI.pending) { const a = document.activeElement; if (!(a && $('view').contains(a) && enSaisie(a))) { UI.pending = false; render(); } } }, 0); });
 
 /* Ré-affiche la page en gardant la case où l'on est (pour passer d'une case à l'autre avec Tab) */
