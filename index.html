@@ -782,7 +782,7 @@ table.matrix td.neg { color: var(--muted); }
 .task .ta-plan { display: none; flex: none; align-self: center; }
 @media (pointer: coarse) { .task .ta-plan { display: inline-flex; } }
 .imp { font-size: 9px; letter-spacing: 1px; vertical-align: middle; color: var(--muted); }
-.imp.imp1 { color: var(--late); }
+.imp.imp1 { color: var(--late); font-size: 13px; letter-spacing: 0; }
 .imp.imp2 { color: var(--c-taches); }
 .imp.imp3 { color: var(--muted); opacity: .7; }
 .ech { font-size: 12px; }
@@ -1124,6 +1124,9 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .ta-resume .ta-partie textarea, .ta-resume .ta-partie select, .ta-resume .ta-partie input:not([type=checkbox]) { width: 100%; }
 .ta-vli { margin-top: 4px; }
 .ta-resume .ta-quand { margin: 12px 0 0; }
+.urgent-chip.on, .urgent-cb:has(input:checked) { background: var(--late); border-color: var(--late); color: #fff; font-weight: 700; }
+.urgent-cb { display: inline-flex; align-items: center; gap: 6px; width: fit-content; cursor: pointer; }
+.urgent-cb input { margin: 0; }
 </style>
 </head>
 <body>

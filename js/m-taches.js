@@ -28,9 +28,10 @@ function repeterSiBesoin(k, t) {
    Une tâche pas planifiée attend dans « À planifier », triée : échéance proche d'abord, puis importance.
    Planifiée, elle ne se voit plus que dans la vue d'ensemble, à son jour ou sous sa journée. Si le jour passe sans qu'elle
    soit faite, elle revient dans « À planifier ». */
-const IMPORTANCES = [[1, 'Important', '●●●'], [2, 'Normal', '●●'], [3, 'Quand on peut', '●']];
+/* Une tâche est urgente, ou pas (les anciennes « Important » sont urgentes ; « Normal » et « Quand on peut » ne le sont pas) */
+const IMPORTANCES = [[1, 'Urgent', '🔥'], [2, 'Normale', '']];
 const ECH_PROCHE = 7; // jours : une échéance plus proche que ça fait remonter la tâche en haut de la liste
-const importanceDe = (t) => Number(t.importance) || (t.urgent ? 1 : t.statut === 'suspendu' ? 3 : 2);
+const importanceDe = (t) => (Number(t.importance) === 1 || (!t.importance && t.urgent) ? 1 : 2);
 function journeeDe(t) {
   if (!t || !t.journee) return null; const [k, d] = String(t.journee).split('|'); const e = DB.get(k);
   if (!e || !d || (e.exceptions || []).includes(d)) return null; return { key: k, date: d, e, titre: titreEv(e) };
@@ -154,7 +155,7 @@ function tacheHtml(t, o = {}) {
   const li = t.liste || []; if (li.length) meta.push(`<span>☑ ${li.filter((x) => x.fait).length}/${li.length}</span>`);
   if (t.rep && !done) meta.push(`<span title="Tâche qui se répète">↻</span>`);
   return `<div class="task${done ? ' done' : ''}" draggable="${done ? 'false' : 'true'}" data-tache="${esc(t.key)}" style="--c:${esc(couleurCat(c.cat))}">${o.tri && !done ? '<span class="poignee" data-poignee draggable="false" title="Glisser pour changer l\'ordre" aria-hidden="true">⋮⋮</span>' : ''}<button class="tick" type="button" data-act="taTick" data-key="${esc(t.key)}" aria-label="${done ? 'Rouvrir' : 'Marquer comme faite'} : ${esc(t.titre)}"></button>
-    <div class="body" data-act="taVoir" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp ? `<span class="imp imp${imp}" title="${esc(IMPORTANCES[imp - 1][1])}">${IMPORTANCES[imp - 1][2]}</span> ` : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div>${o.sous && li.length ? `<div class="ta-sous">${li.map((x, i) => `<label class="ta-li"><input type="checkbox" data-li-t="${esc(t.key)}|${i}"${x.fait ? ' checked' : ''}> <span${x.fait ? ' class="barre"' : ''}>${esc(x.t)}</span></label>`).join('')}</div>` : ''}</div>`;
+    <div class="body" data-act="taVoir" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp && imp === 1 ? '<span class="imp imp1" title="Urgent">🔥</span> ' : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div>${o.sous && li.length ? `<div class="ta-sous">${li.map((x, i) => `<label class="ta-li"><input type="checkbox" data-li-t="${esc(t.key)}|${i}"${x.fait ? ' checked' : ''}> <span${x.fait ? ' class="barre"' : ''}>${esc(x.t)}</span></label>`).join('')}</div>` : ''}</div>`;
 }
 /* Planifier en deux touches (téléphone) : une journée prévue, ou un jour */
 ACTIONS.taPlanifier = (el) => {
@@ -239,7 +240,6 @@ function resumeTacheHtml(t, k) {
   const vite = `<div class="ta-vite">
       <div class="chips">${catsTaches().map((x) => `<button type="button" class="chip catchip${x.k === c.cat ? ' on' : ''}" style="--c:${esc(x.couleur)}" data-act="taSetCat" data-key="${esc(k)}" data-cat="${esc(x.k)}">${esc(x.icone || '')} ${esc(x.nom)}</button>`).join('')}</div>
       ${sous.length ? `<div class="chips ta-vite-sous">${sous.map((x) => `<button type="button" class="chip${x.k === c.sous ? ' on' : ''}" data-act="taSetSous" data-key="${esc(k)}" data-sous="${esc(x.k)}">${esc(x.nom)}</button>`).join('')}</div>` : ''}
-      <div class="chips">${IMPORTANCES.map(([n, nom, pts]) => `<button type="button" class="chip${imp === n ? ' on' : ''}" data-act="taSetImp" data-key="${esc(k)}" data-imp="${n}"><span class="imp imp${n}">${pts}</span> ${nom}</button>`).join('')}</div>
       <div class="chips ta-vite-qui"><span class="hint">Qui :</span>${persOptions(true).map(([p, nom]) => `<button type="button" class="chip${(p === 'ensemble' ? t.responsable === 'ensemble' : qui.includes(p)) ? ' on' : ''}" data-act="taSetQui" data-key="${esc(k)}" data-p="${esc(p)}">${esc(nom)}</button>`).join('')}</div>
 </div>`;
   /* Les parties : affichées si la tâche en a, ou si on vient de toucher « + » */
@@ -252,7 +252,7 @@ function resumeTacheHtml(t, k) {
     ['cult', '🌿 Culture et planches', (t.cultures || []).length || t.planches || ouv.includes('cult'), () => `${cus.length ? `<div class="chips">${cus.map((x) => `<button type="button" class="chip${(t.cultures || []).includes(x.key) ? ' on' : ''}" data-act="taViteCu" data-key="${esc(k)}" data-c="${esc(x.key)}">${esc(x.nom)}</button>`).join('')}</div>` : ''}<input data-ta-k="${esc(k)}" data-ta-f="planches" value="${esc(t.planches || '')}" placeholder="Planches (ex. A1–A4)" aria-label="Planches">`],
     ['client', '👤 Client', t.contactId || ouv.includes('client'), () => `<select data-ta-k="${esc(k)}" data-ta-f="contactId" aria-label="Client ou contact"><option value="">—</option>${tousContacts().sort(byName).map((x) => `<option value="${esc(x.key)}"${t.contactId === x.key ? ' selected' : ''}>${esc(displayName(x) + (x.prospect ? ' (prospect)' : ''))}</option>`).join('')}</select>`],
   ];
-  const plus = ech + parts.filter(([, , on]) => !on).map(([id, nom]) => `<button type="button" class="chip" data-act="taViteOuvrir" data-key="${esc(k)}" data-p="${id}">${nom.replace(' ', ' + ')}</button>`).join('');
+  const plus = `<button type="button" class="chip urgent-chip${imp === 1 ? ' on' : ''}" data-act="taSetImp" data-key="${esc(k)}" data-imp="${imp === 1 ? 2 : 1}" aria-pressed="${imp === 1}">🔥 Urgent</button>` + ech + parts.filter(([, , on]) => !on).map(([id, nom]) => `<button type="button" class="chip" data-act="taViteOuvrir" data-key="${esc(k)}" data-p="${id}">${nom.replace(' ', ' + ')}</button>`).join('');
   return `<div class="ta-resume">${vite}
     ${parts.filter(([, , on]) => on).map(([id, nom, , html]) => `<fieldset class="ta-partie"><legend>${nom}</legend>${html()}</fieldset>`).join('')}
     ${plus ? `<div class="chips ta-plus-btns">${plus}</div>` : ''}
@@ -333,7 +333,7 @@ ACTIONS.taEdit = (el) => {
     ${inp('ta-titre', 'Tâche', t.titre, { name: 'titre', req: true, attrs: k ? {} : { autofocus: '' } })}
     ${catChoixHtml('ta-cat', c.cat, c.sous)}
     ${k ? '' : '<p class="hint" id="ta-auto" style="margin:-4px 0 0"></p>'}
-    <div class="field"><span class="flabel">Importance</span><div class="seg">${IMPORTANCES.map(([n, nom, pts]) => `<label><input type="radio" name="importance" value="${n}"${imp === n ? ' checked' : ''}> <span class="imp imp${n}">${pts}</span> ${nom}</label>`).join('')}</div></div>
+    <label class="chip urgent-chip urgent-cb"><input type="checkbox" name="importance"${imp === 1 ? ' checked' : ''}> 🔥 Urgent</label>
     <div class="grid2">${inp('ta-ech', 'Échéance (facultatif)', t.echeance, { name: 'echeance', type: 'date', sub: `Date limite. Elle fait remonter la tâche en haut de la liste ${ECH_PROCHE} jours avant.` })}
       ${sel('ta-resp', 'Qui', t.responsable || '', [['', '—']].concat(persOptions(true), String(t.responsable || '').includes('+') ? [[t.responsable, quiLabel(t.responsable)]] : []), { name: 'responsable' })}</div>
     ${(() => {
@@ -382,7 +382,7 @@ FORMS.ta = (v) => {
   if (!v.titre) return;
   const k = v.key || 't:' + uid('t'), t = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '' };
   const was = t.statut === 'termine', faite = !!v.faite;
-  const o = Object.assign({}, t, { titre: v.titre, statut: faite ? 'termine' : 'afaire', importance: Number(v.importance) || 2, echeance: v.echeance || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', responsable: v.responsable, cat: v.cat || '', sous: v.cat ? v.sous || '' : '', rep: v.rep || '',
+  const o = Object.assign({}, t, { titre: v.titre, statut: faite ? 'termine' : 'afaire', importance: v.importance === true || String(v.importance) === '1' ? 1 : 2, echeance: v.echeance || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', responsable: v.responsable, cat: v.cat || '', sous: v.cat ? v.sous || '' : '', rep: v.rep || '',
     contactId: v.contactId != null ? v.contactId : t.contactId || '', cultures: v.cultures != null ? String(v.cultures).split(',').filter(Boolean) : (t.cultures || []), planches: v.planches != null ? String(v.planches).trim() : t.planches || '', liste: (TA.liste || []).slice(), remarques: v.remarques,
     termineLe: faite ? (was ? t.termineLe : todayISO()) : '' });
   delete o.tag; delete o.urgent;

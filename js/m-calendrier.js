@@ -347,7 +347,7 @@ setTimeout(() => sansAnnuler(reparerJournees), 9000);
 
 /* ---------- Vue d'ensemble : les 14 prochains jours ----------
    Jour par jour : les événements en cartes, avec les tâches rattachées à chaque journée, puis les tâches prévues ce jour.
-   À côté : « À planifier » (échéance proche d'abord, puis importance). Une tâche n'apparaît qu'à un seul endroit.
+   À côté : « À planifier » (à venir d'abord, puis sans échéance ; les urgentes en tête). Une tâche n'apparaît qu'à un seul endroit.
    Sur ordinateur : glisser une tâche sur un jour (lui donne cette date), sur une journée (l'y rattache) ou sur « À planifier ». */
 const PL = { qui: '', jours: 14 };
 const concerneMoi = (q) => !Sync.me || quiInclut(q, Sync.me);
@@ -530,7 +530,7 @@ ACTIONS.plJournee = (el) => {
   const l = ouv.map((t, i) => [t, i]).sort((a, b) => rang(a[0]) - rang(b[0]) || a[1] - b[1]).map((x) => x[0]);
   openSheet(`${sheetHead('Tâches de la journée', `${titreEv(e)} · ${dateLongue(d)}`)}<form class="sbody form" data-form="plJournee"><input type="hidden" name="j" value="${esc(j)}">
     <div class="row"><input id="pj-new" placeholder="Nouvelle tâche pour cette journée…" style="flex:1" autocomplete="off"><button class="btn small" type="button" data-act="plJourneeNew">Ajouter</button></div>
-    <div class="pj-liste">${l.length ? l.map((t) => { const c = catTache(t), dt = dateTache(t); return `<label class="row pj-it" style="--c:${esc(couleurCat(c.cat))}"><input type="checkbox" name="t" value="${esc(t.key)}"${t.journee === j ? ' checked' : ''}> <span style="flex:1"><b>${esc(t.titre)}</b> ${c.cat ? catPill(c.cat, c.sous, true) : ''}<br><span class="hint">${[IMPORTANCES[importanceDe(t) - 1][1], t.responsable ? nomDe(t.responsable) : '', t.echeance ? 'avant le ' + fmtDateCourt(t.echeance) : '', dt && t.journee !== j && estPlanifiee(t) ? 'prévue le ' + fmtDateCourt(dt) : ''].filter(Boolean).join(' · ')}</span></span></label>`; }).join('') : '<p class="empty">Aucune tâche ouverte.</p>'}</div>
+    <div class="pj-liste">${l.length ? l.map((t) => { const c = catTache(t), dt = dateTache(t); return `<label class="row pj-it" style="--c:${esc(couleurCat(c.cat))}"><input type="checkbox" name="t" value="${esc(t.key)}"${t.journee === j ? ' checked' : ''}> <span style="flex:1"><b>${esc(t.titre)}</b> ${c.cat ? catPill(c.cat, c.sous, true) : ''}<br><span class="hint">${[importanceDe(t) === 1 ? '🔥 Urgent' : '', t.responsable ? quiLabel(t.responsable) : '', t.echeance ? 'avant le ' + fmtDateCourt(t.echeance) : '', dt && t.journee !== j && estPlanifiee(t) ? 'prévue le ' + fmtDateCourt(dt) : ''].filter(Boolean).join(' · ')}</span></span></label>`; }).join('') : '<p class="empty">Aucune tâche ouverte.</p>'}</div>
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
   const n = $('pj-new'); if (n) n.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ACTIONS.plJourneeNew(); } });
 };
