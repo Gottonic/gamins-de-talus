@@ -253,9 +253,10 @@ function resumeTacheHtml(t, k) {
     ['client', '👤 Client', t.contactId || ouv.includes('client'), () => `<select data-ta-k="${esc(k)}" data-ta-f="contactId" aria-label="Client ou contact"><option value="">—</option>${tousContacts().sort(byName).map((x) => `<option value="${esc(x.key)}"${t.contactId === x.key ? ' selected' : ''}>${esc(displayName(x) + (x.prospect ? ' (prospect)' : ''))}</option>`).join('')}</select>`],
   ];
   const plus = ech + parts.filter(([, , on]) => !on).map(([id, nom]) => `<button type="button" class="chip" data-act="taViteOuvrir" data-key="${esc(k)}" data-p="${id}">${nom.replace(' ', ' + ')}</button>`).join('');
-  return `<div class="ta-resume">${vite}${estPlanifiee(t) ? `<p class="meta">📅 ${j ? esc(j.titre) + ', ' : ''}${esc(dateLongue(jourPlanifie(t)))}</p>` : ''}
+  return `<div class="ta-resume">${vite}
     ${parts.filter(([, , on]) => on).map(([id, nom, , html]) => `<fieldset class="ta-partie"><legend>${nom}</legend>${html()}</fieldset>`).join('')}
-    ${plus ? `<div class="chips ta-plus-btns">${plus}</div>` : ''}</div>`;
+    ${plus ? `<div class="chips ta-plus-btns">${plus}</div>` : ''}
+    ${estPlanifiee(t) ? `<p class="meta ta-quand">📅 ${j ? esc(j.titre) + ', ' : ''}${esc(dateLongue(jourPlanifie(t)))}</p>` : ''}</div>`;
 }
 const majTache = (k, patch) => { const t = DB.get(k); if (!t) return; DB.put(k, Object.assign({}, t, patch)); };
 ACTIONS.taViteOuvrir = (el) => { const k = el.dataset.key; TA.ouvert = { k, p: ((TA.ouvert && TA.ouvert.k === k) ? TA.ouvert.p : []).concat([el.dataset.p]) }; reouvrirTache(k); setTimeout(() => { const x = el.dataset.p === 'liste' ? $('ta-vli') : document.querySelector(`#sheet [data-ta-f="${({ rep: 'rep', rem: 'remarques', cult: 'planches', client: 'contactId' })[el.dataset.p]}"]`); if (x && el.dataset.p !== 'cult') x.focus(); }, 30); };
