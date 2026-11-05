@@ -121,6 +121,8 @@ MODULES.factures = {
   tuile() {
     const f = factures(); const open = f.filter((x) => ['ouverte', 'retard'].includes(facStatut(x)));
     const late = f.filter((x) => facStatut(x) === 'retard'), verif = mesVirementsAVerifier();
+    /* Le stand presque vide : sur la tuile, pour tous (pastille seulement tant que personne ne s'en occupe, ou pour celui qui s'en occupe) */
+    if (typeof standARemplir === 'function' && standARemplir()) { const pr = priseStand(); return { line: pr ? `🧺 Stand à remplir · ${pr.par === Sync.me ? 'tu t\'en occupes' : nomDe(pr.par) + ' s\'en occupe'}` : '🧺 Stand à remplir', warn: !pr || pr.par === Sync.me, badge: (!pr || pr.par === Sync.me ? 1 : 0) + verif.length + late.filter((x) => !verif.includes(x)).length }; }
     if (verif.length) return { line: `${verif.length} virement${verif.length > 1 ? 's' : ''} à vérifier sur ${titulaireCompte() === Sync.me ? 'ton' : 'le'} compte`, warn: true, badge: verif.length + late.filter((x) => !verif.includes(x)).length };
     if (late.length) return { line: `${late.length} facture${late.length > 1 ? 's' : ''} en retard · ${chf(late.reduce((a, x) => a + x.total, 0))}`, warn: true, badge: late.length };
     if (open.length) return { line: `À encaisser : ${chf(open.reduce((a, x) => a + x.total, 0))}` };
@@ -129,7 +131,7 @@ MODULES.factures = {
   render(sub, id) {
     if (sub === 'produits') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
     const pr = SOUS_PROSPECTION.includes(sub);
-    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), standARemplir() || ardAFacturer().length > 0], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
+    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), (standARemplir() && !priseStand()) || ardAFacturer().length > 0], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
     if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'stock') return t + renderStock();

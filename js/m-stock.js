@@ -212,6 +212,13 @@ function etatStand(avant) {
   return { p, base, mis: r2(mis), enc: r2(enc), msg: r2(msg), estime, aRemplir: (misesEnVente().length > 0) && estime < num(reglagesStand().seuil) };
 }
 const standARemplir = () => { try { return etatStand().aRemplir; } catch (e) { return false; } };
+/* « Je m'en occupe » : qui va remplir le stand (cfg:stand.charge = { par, le }) ; plus valable dès le remplissage suivant */
+function priseStand() {
+  const c = (DB.get('cfg:stand') || {}).charge; if (!c || !c.par) return null;
+  const dernier = misesEnVente().map((x) => String(x.cree || x.date || '')).sort().pop() || '';
+  return String(c.le) > dernier ? c : null;
+}
+ACTIONS.standPrise = (el) => { DB.put('cfg:stand', Object.assign({}, DB.get('cfg:stand') || {}, { charge: el.dataset.off ? null : { par: Sync.me || '', le: new Date().toISOString() } })); };
 /* Paiements TWINT pas encore comptés nulle part, depuis la première mise en vente */
 const twLibresVD = () => { const d0 = (misesEnVente().slice(-1)[0] || {}).date; return d0 ? DB.all('tw:').filter((t) => (!t.utilise || !DB.get(t.utilise)) && t.montant > 0 && t.date >= d0).sort((a, b) => a.date.localeCompare(b.date)) : []; };
 const SD = { an: '' };
@@ -234,7 +241,7 @@ function renderSelfService() {
     <div class="row"><button class="btn primary" type="button" data-act="selfNouveau">Remplir le stand</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button></div>
     ${rat ? `<div class="panel between"><span>🌱 ${rat} produit${rat > 1 ? 's' : ''} d'anciennes mises en vente : à compter comme récolte, ou pas.</span><button class="btn primary small" type="button" data-act="selfRattrapage">Voir et compter</button></div>` : ''}
     <div class="panel stand${E.aRemplir ? ' a-remplir' : ''}"><div class="between"><h2>Sur le stand</h2><span class="v-stand">≈ ${chf(Math.max(0, E.estime))}</span></div>
-      ${E.aRemplir ? `<p class="banner">🧺 Le stand est presque vide (moins de ${chf(R.seuil)} de marchandise) : il est temps de le remplir.</p>` : ''}
+      ${E.aRemplir ? (() => { const pr = priseStand(); return `<div class="banner stand-alerte"><span>🧺 Le stand est presque vide (moins de ${chf(R.seuil)} de marchandise)${pr ? ` : <b>${esc(pr.par === Sync.me ? 'tu t\'en occupes' : nomDe(pr.par) + ' s\'en occupe')}</b>.` : ' : il est temps de le remplir.'}</span>${pr ? (pr.par === Sync.me ? '<button class="btn small" type="button" data-act="standPrise" data-off="1">Annuler</button>' : '') : '<button class="btn small primary" type="button" data-act="standPrise">Je m\'en occupe</button>'}</div>`; })() : ''}
       <p class="hint">${E.p ? `Compté le ${fmtDate(E.p.date)} : ${chf(E.base)}` : 'Pas encore de point'} + mis depuis ${chf(E.mis)} − encaissé ${chf(E.enc)}${E.msg ? ` − payé par message ${chf(E.msg)}` : ''}. Les paiements TWINT reçus par mail comptent dès qu'on les enregistre. Un vol ou une perte n'est pas visible : « Remplir le stand » commence par compter ce qui reste, ce qui remet le compteur juste.</p>
       <form class="row stand-seuil" data-form="standSeuil"><label for="st-seuil" class="hint">Prévenir sous</label><input id="st-seuil" name="seuil" class="cell-in" inputmode="decimal" value="${esc(String(R.seuil))}" style="width:80px"><span class="hint">CHF</span><button class="btn small" type="submit">OK</button></form></div>
     ${tl.length ? `<div class="banner">💳 ${tl.length} paiement${tl.length > 1 ? 's' : ''} TWINT importé${tl.length > 1 ? 's' : ''} pas encore compté${tl.length > 1 ? 's' : ''} (${chf(tl.reduce((a, t) => a + t.montant, 0))}). <button class="btn small primary" type="button" data-act="twLibresVD">Voir et compter</button></div>` : ''}
