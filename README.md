@@ -93,6 +93,11 @@ déjà accumulées sont effacées). Rien d'autre n'est touché.
 Recoller `supabase/functions/mails/index.ts` dans la fonction `mails` et redéployer. L'envoi passe par le SMTP d'Infomaniak
 (port 465) avec les mêmes secrets `IMAP_USER` / `IMAP_PASSWORD` ; une copie est rangée dans « Envoyés ».
 
+### Notification « Nouvel événement créé » (05.11.2026)
+1. Supabase → Edge Functions → `notifier` → recoller `supabase/functions/notifier/index.ts` → Deploy.
+2. SQL Editor → coller `supabase/mise-a-jour-2026-11-05-evenements.sql` (remplacer `LE-SECRET` par la valeur de CRON_SECRET) → Run.
+3. Dans l'app : Réglages → Notifications → cocher « Nouvel événement créé ».
+
 ### Notifications sur téléphone et ordinateur (30.10.2026, 3e partie)
 1. Supabase → Edge Functions → **Deploy a new function** → **Via Editor** → nom `notifier` → coller
    `supabase/functions/notifier/index.ts` → Deploy, puis désactiver **Verify JWT**.

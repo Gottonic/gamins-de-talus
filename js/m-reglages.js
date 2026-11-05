@@ -315,9 +315,9 @@ FORMS.catSousRen = (v) => { const cs = categories(), s = (cs[Number(v.i)] || { s
    C'est la fonction Supabase « notifier » qui envoie : à chaque nouveau message ou mail, et le matin pour les tâches et événements du jour. */
 const VAPID_PUBLIC = 'BEWBqzH3etLZ-_g1_ZUOTJSyD-qECUilmuXsm9MIw6COqRTe4Ynqgu75jrlmAW3PGTVDD5VdjtL5zHWpBDUkCi0';
 const NOTIF = { etat: null, enCours: false };
-const NOTIF_CHOIX = [['messages', 'Nouveaux messages de la discussion', 'Sauf les tiens.'], ['mails', 'Nouveaux mails de la boîte', 'Dès qu\'ils sont relevés.'], ['assignes', 'Un mail qu\'on me confie', 'Quand quelqu\'un te confie un mail.'], ['jour', 'Le matin vers 7 h : tes tâches et événements du jour', 'Seulement s\'il y en a.']];
+const NOTIF_CHOIX = [['messages', 'Nouveaux messages de la discussion', 'Sauf les tiens.'], ['mails', 'Nouveaux mails de la boîte', 'Dès qu\'ils sont relevés.'], ['assignes', 'Un mail qu\'on me confie', 'Quand quelqu\'un te confie un mail.'], ['jour', 'Le matin vers 7 h : tes tâches et événements du jour', 'Seulement s\'il y en a.'], ['evenements', 'Nouvel événement créé', 'Quand quelqu\'un d\'autre crée un événement qui te concerne (pour toi, ou pour tout le monde).']];
 /* messages / mails / jour : notification sur les appareils ; d_messages / d_mails / d_jour : sur Discord */
-const prefsNotif = (p) => Object.assign({ messages: true, mails: true, assignes: true, jour: true, d_messages: true, d_mails: false, d_assignes: false, d_jour: false }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
+const prefsNotif = (p) => Object.assign({ messages: true, mails: true, assignes: true, jour: true, evenements: false, d_messages: true, d_mails: false, d_assignes: false, d_jour: false, d_evenements: false }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
 /* Jours et heures où on accepte les notifications : plage = { jours: [1..7] (1 = lundi), de, a } ; rien = toujours */
 const JOURS_NOTIF = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 function dansPlageNotif(p) {

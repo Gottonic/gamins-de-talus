@@ -1,5 +1,5 @@
 // Gamins de Talus — notifications « pop-up » sur les téléphones et ordinateurs abonnés (Web Push, sans service tiers).
-// Appelée : par la base à chaque nouveau message (msg:) ou nouveau mail (mail:) ; chaque matin par Supabase Cron
+// Appelée : par la base à chaque nouveau message (msg:), nouveau mail (mail:) ou nouvel événement (ev:) ; chaque matin par Supabase Cron
 // (tâches et événements du jour) ; par l'app pour une notification de test (membre connecté).
 // Abonnements : lignes push:<personne>:<appareil> = { endpoint, p256dh, auth, appareil }. Préférences : cfg:notif:<personne>.
 // Secrets : VAPID_PRIVATE (clé privée VAPID), CRON_SECRET. À déployer SANS « Verify JWT » : la fonction vérifie elle-même.
@@ -133,6 +133,19 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     for (const p of personnes) {
       if (veut(p.k, 'mails')) envois.push({ personne: p.k, message: { titre: '📧 ' + court(de, 40), texte: court(m.objet || '(sans objet)', 140), url: APP + '#/mails', tag: 'mail' } });
       if (surDiscord(p.k, 'mails')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/mails>) 📧 ` + (discord[p.k].texte === false ? 'Nouveau mail' : `**${court(de, 60)}** : ${court(m.objet || '(sans objet)', 200)}`) });
+    }
+  } else if (String(corps.key || '').startsWith('ev:')) {
+    /* Nouvel événement : les personnes concernées (sauf celle qui l'a créé), seulement si elles l'ont coché (« evenements ») */
+    const e = corps.data || {}, TYPES: Record<string, string> = { travail: 'Journée de travail', recolte: 'Chantier de récolte', livraison: 'Livraison', vente: 'Vente ou marché', vacances: 'Vacances ou congé', autre: 'Événement' };
+    const pour = (p: string) => !e.qui || e.qui === 'ensemble' || String(e.qui).split('+').includes(p);
+    const jours = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'], dt = e.date ? new Date(e.date + 'T12:00:00Z') : null;
+    const quand = dt ? `${jours[dt.getUTCDay()]} ${e.date.slice(8)}.${e.date.slice(5, 7)}${e.heureDebut ? ' · ' + e.heureDebut + (e.heureFin ? '–' + e.heureFin : '') : ''}` : '';
+    const titre = court(e.titre || TYPES[e.type] || 'Événement', 80), qui = e.qui && e.qui !== 'ensemble' ? String(e.qui).split('+').map(nom).join(' & ') : '';
+    for (const p of personnes) {
+      if (p.k === e.creePar || !pour(p.k)) continue;
+      const txt = [quand, qui, e.creePar ? 'par ' + nom(e.creePar) : ''].filter(Boolean).join(' · ');
+      if ((prefs[p.k] || {}).evenements === true) envois.push({ personne: p.k, message: { titre: '📅 Nouveau : ' + titre, texte: court(txt, 140), url: APP + '#/calendrier', tag: 'ev' } });
+      if (surDiscord(p.k, 'evenements')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/calendrier>) 📅 Nouvel événement : **${titre}**` + (txt ? ` · ${txt}` : '') });
     }
   } else if (corps.matin) {
     const jour = aujourdhui(), taches = await lire('t:'), evs = await lire('ev:');
