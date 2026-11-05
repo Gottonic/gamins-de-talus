@@ -3,6 +3,14 @@
    NOUVEAUTES : le plus récent en premier. Une entrée n'est ajoutée qu'une fois la note validée par Nicolas. */
 'use strict';
 const NOUVEAUTES = [
+  { id: '2026-11-05', titre: 'Quoi de neuf', points: [
+    '🗂 <b>Contacts</b> réunit les mails (onglet principal) et les contacts. La <b>Prospection</b> est passée dans Ventes.',
+    '🔥 <b>Tâches</b> : plus de niveaux d\'importance, juste « Urgent » ou non.',
+    '🕐 <b>Heures</b> : « Retirer mon nom » enregistre 0 heure pour une journée.',
+    '📧 <b>Mails</b> : les nouveaux mails d\'une adresse vont à celui qui s\'en est occupé la dernière fois.',
+    '🔕 <b>Notifications</b> : sourdine possible (automatique pendant tes vacances) ; les @mentions et tes événements passent quand même. Ce qui arrive hors de tes heures arrive ensuite en résumé.',
+    '💡 <b>Bouton ampoule</b> en haut : signale un bug ou propose une idée.',
+  ] },
 ];
 const vuNouveautes = () => (Sync.me && (DB.get('cfg:nouv:' + Sync.me) || {}).vu) || '';
 function nouveautesAMontrer() {
