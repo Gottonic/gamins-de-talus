@@ -1130,6 +1130,14 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .retour-l { display: flex; flex-direction: column; gap: 6px; }
 .retour-l a { color: var(--ink); text-decoration: none; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
 .retour-l a:hover { border-color: var(--accent); }
+.idees { display: flex; flex-direction: column; margin-top: 8px; }
+.idee { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); padding: 4px 0; }
+.idee input[type=checkbox] { width: 22px; height: 22px; flex: none; }
+.idee-t { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 8px; align-items: baseline; background: none; border: 0; padding: 8px 0; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.idee-t > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.idee-t .hint { flex: none; }
+.idee.fait .idee-t > span:first-child { text-decoration: line-through; color: var(--muted); }
+.idee-ajout { gap: 8px; }
 </style>
 </head>
 <body>
@@ -1153,6 +1161,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
     <button class="sync" id="sync" type="button" data-act="syncSheet">…</button>
     <button class="me" id="me" type="button" data-act="syncSheet" hidden></button>
     <button class="gear" id="undo" type="button" data-act="annuler" hidden title="Annuler la dernière action (Ctrl+Z)" aria-label="Annuler la dernière action"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H4V2"/><path d="M4.5 7.5A8 8 0 1 1 6 17.5"/></svg></button>
+    <button class="gear" id="idees-btn" type="button" data-act="idees" title="Signaler un bug, proposer une idée" aria-label="Bugs et idées"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3z"/></svg></button>
     <a class="gear" href="#/reglages" title="Réglages" aria-label="Réglages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h3.4M11.1 6.5h9.4M3.5 12h9.9M17.6 12h2.9M3.5 17.5h1.4M9.1 17.5h11.4"/><circle cx="9" cy="6.5" r="2.1"/><circle cx="15.5" cy="12" r="2.1"/><circle cx="7" cy="17.5" r="2.1"/></svg></a>
   </div>
 </header>
@@ -1186,6 +1195,7 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="js/m-stock.js"></script>
 <script src="js/m-parcelle.js"></script>
 <script src="js/m-itineraires.js"></script>
+<script src="js/m-idees.js"></script>
 <script src="js/m-drive.js"></script>
 <script src="js/main.js"></script>
 </body>
