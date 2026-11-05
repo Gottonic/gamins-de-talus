@@ -101,7 +101,7 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
      par l'app elle-même (avec les photos) ; ici : les mails et la journée, si la personne l'a coché (d_mails, d_jour). */
   const discord: Record<string, any> = {}; for (const r of await lire('cfg:discord:')) discord[r.key.split(':')[2]] = r.data || {};
   const surDiscord = (p: string, quoi: string) => !!(discord[p] && discord[p].webhook) && (prefs[p] || {})['d_' + quoi] === true;
-  const discordEnvois: { personne: string; contenu: string }[] = [];
+  const discordEnvois: { personne: string; contenu: string; prioritaire?: boolean }[] = [];
   /* Jours et heures où chacun accepte d'être dérangé : prefs.plage = { jours: [1..7] (1 = lundi), de: 'HH:MM', a: 'HH:MM' } */
   const maintenant = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Zurich', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
   const jourSem = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf((maintenant.find((x) => x.type === 'weekday') as any)?.value || '') + 1;
@@ -113,8 +113,16 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     return de <= a ? hm >= de && hm < a : hm >= de || hm < a;
   };
 
+  /* Sourdine (choisie pour N semaines, ou pendant ses vacances) : rien, sauf ce qui est « prioritaire »
+     (une @mention dans la discussion, un nouvel événement pour soi, le matin d'un événement pour soi) */
+  const jourZ = aujourdhui(), evsTous = (await lire('ev:')).map((r) => r.data).filter(Boolean);
+  const enSourdine = (p: string) => {
+    const pr = prefs[p] || {};
+    if (pr.sourdineJusqua && jourZ <= pr.sourdineJusqua && (!pr.sourdineDe || jourZ >= pr.sourdineDe)) return true;
+    return pr.sourdineVacances !== false && evsTous.some((e) => e.type === 'vacances' && aLieu(e, jourZ) && (!e.qui || e.qui === 'ensemble' || String(e.qui).split('+').includes(p)));
+  };
   /* Ce qu'il faut envoyer, à qui */
-  const envois: { personne: string; message: any }[] = [];
+  const envois: { personne: string; message: any; prioritaire?: boolean }[] = [];
   if (corps.test) envois.push({ personne: membre, message: { titre: 'Gamins de Talus', texte: 'Les notifications marchent sur cet appareil 🎉', url: APP + '#/reglages/notifications', tag: 'test' } });
   else if (corps.confier) {
     const c = corps.confier, p = String(c.personne || '');
@@ -127,7 +135,7 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     const m = corps.data || {};
     /* Un message avec des @mentions ne prévient que les personnes mentionnées */
     const vises: string[] = Array.isArray(m.mentions) ? m.mentions : [];
-    for (const p of personnes) if (p.k !== m.de && (!vises.length || vises.includes(p.k)) && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de) + (vises.includes(p.k) ? ' te mentionne' : ''), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } });
+    for (const p of personnes) if (p.k !== m.de && (!vises.length || vises.includes(p.k)) && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de) + (vises.includes(p.k) ? ' te mentionne' : ''), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } , prioritaire: vises.includes(p.k) });
   } else if (String(corps.key || '').startsWith('mail:')) {
     const m = corps.data || {}, de = (m.de && (m.de.nom || m.de.adresse)) || '?';
     for (const p of personnes) {
@@ -144,8 +152,8 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     for (const p of personnes) {
       if (p.k === e.creePar || !pour(p.k)) continue;
       const txt = [quand, qui, e.creePar ? 'par ' + nom(e.creePar) : ''].filter(Boolean).join(' · ');
-      if ((prefs[p.k] || {}).evenements === true) envois.push({ personne: p.k, message: { titre: '📅 Nouveau : ' + titre, texte: court(txt, 140), url: APP + '#/calendrier', tag: 'ev' } });
-      if (surDiscord(p.k, 'evenements')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/calendrier>) 📅 Nouvel événement : **${titre}**` + (txt ? ` · ${txt}` : '') });
+      if ((prefs[p.k] || {}).evenements === true) envois.push({ personne: p.k, message: { titre: '📅 Nouveau : ' + titre, texte: court(txt, 140), url: APP + '#/calendrier', tag: 'ev' }, prioritaire: e.type !== 'vacances' });
+      if (surDiscord(p.k, 'evenements')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/calendrier>) 📅 Nouvel événement : **${titre}**` + (txt ? ` · ${txt}` : ''), prioritaire: e.type !== 'vacances' });
     }
   } else if (corps.matin) {
     const jour = aujourdhui(), taches = await lire('t:'), evs = await lire('ev:');
@@ -154,15 +162,18 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
       const pour = (q: string) => !q || q === 'ensemble' || String(q).split('+').includes(p.k);
       /* Tâches prévues aujourd'hui (un jour, ou une journée de travail d'aujourd'hui), ou dont l'échéance tombe aujourd'hui */
       const ts = taches.map((r) => r.data).filter((t) => t && t.statut !== 'termine' && pour(t.responsable) && (t.jour === jour || String(t.journee || '').endsWith('|' + jour) || (t.echeance === jour && !t.jour && !t.journee)));
-      const es = evs.map((r) => r.data).filter((e) => e && aLieu(e, jour) && pour(e.qui));
-      if (!ts.length && !es.length) continue;
-      const lignes = [...es.map((e) => '📅 ' + (e.heureDebut ? e.heureDebut + ' ' : '') + (e.titre || 'Événement')), ...ts.map((t) => '✓ ' + t.titre)];
-      if (veut(p.k, 'jour')) envois.push({ personne: p.k, message: { titre: "Aujourd'hui", texte: court(lignes.join(' · '), 180), url: APP + '#/accueil', tag: 'jour' } });
-      if (surDiscord(p.k, 'jour')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/>) **Aujourd'hui**\n` + court(lignes.join('\n'), 1800) });
+      const sd = enSourdine(p.k), es = evs.map((r) => r.data).filter((e) => e && aLieu(e, jour) && pour(e.qui) && (!sd || e.type !== 'vacances'));
+      const tsV = sd ? [] : ts; /* en sourdine : seulement les événements qui commencent */
+      if (!tsV.length && !es.length) continue;
+      const lignes = [...es.map((e) => '📅 ' + (e.heureDebut ? e.heureDebut + ' ' : '') + (e.titre || 'Événement')), ...tsV.map((t) => '✓ ' + t.titre)];
+      if (veut(p.k, 'jour')) envois.push({ personne: p.k, message: { titre: "Aujourd'hui", texte: court(lignes.join(' · '), 180), url: APP + '#/accueil', tag: 'jour' }, prioritaire: sd });
+      if (surDiscord(p.k, 'jour')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/>) **Aujourd'hui**\n` + court(lignes.join('\n'), 1800), prioritaire: sd });
     }
   }
   /* Hors des jours et heures choisis : rien (sauf le test) */
   if (!corps.test) { for (let i = envois.length - 1; i >= 0; i--) if (!dansPlage(envois[i].personne)) envois.splice(i, 1); for (let i = discordEnvois.length - 1; i >= 0; i--) if (!dansPlage(discordEnvois[i].personne)) discordEnvois.splice(i, 1); }
+  /* En sourdine : seul le prioritaire passe */
+  if (!corps.test) { for (let i = envois.length - 1; i >= 0; i--) if (!envois[i].prioritaire && enSourdine(envois[i].personne)) envois.splice(i, 1); for (let i = discordEnvois.length - 1; i >= 0; i--) if (!discordEnvois[i].prioritaire && enSourdine(discordEnvois[i].personne)) discordEnvois.splice(i, 1); }
   /* Envoi à chaque appareil ; un abonnement expiré (404/410) est retiré */
   let ok = 0; const erreurs: string[] = pbVapid && envois.length ? [pbVapid] : [];
   for (const e of pbVapid ? [] : envois) for (const a of abos.filter((x) => x.personne === e.personne)) {

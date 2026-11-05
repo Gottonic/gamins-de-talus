@@ -160,7 +160,7 @@ const Sync = {
       /* Des lignes sautées (envoyées pendant la lecture) : on les relira, pour ne rien manquer */
       DB.lastPull = minSaute && (!maxTs || minSaute < maxTs) ? minSaute : maxTs; if (minSaute) this.relire = true;
       this.persist(); this.lastOk = Date.now(); this.err = ''; UI.status();
-      if (changed) UI.dataChanged();
+      if (changed) { UI.dataChanged(); if (typeof attribuerMailsAuto === 'function') setTimeout(attribuerMailsAuto, 0); }
       return true;
     } catch (e) { this.err = (e && e.message) || String(e); UI.status(); return false; }
   },

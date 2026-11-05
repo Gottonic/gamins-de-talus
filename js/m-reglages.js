@@ -317,7 +317,30 @@ const VAPID_PUBLIC = 'BEWBqzH3etLZ-_g1_ZUOTJSyD-qECUilmuXsm9MIw6COqRTe4Ynqgu75jr
 const NOTIF = { etat: null, enCours: false };
 const NOTIF_CHOIX = [['messages', 'Nouveaux messages de la discussion', 'Sauf les tiens.'], ['mails', 'Nouveaux mails de la boîte', 'Dès qu\'ils sont relevés.'], ['assignes', 'Un mail qu\'on me confie', 'Quand quelqu\'un te confie un mail.'], ['jour', 'Le matin vers 7 h : tes tâches et événements du jour', 'Seulement s\'il y en a.'], ['evenements', 'Nouvel événement créé', 'Quand quelqu\'un d\'autre crée un événement qui te concerne (pour toi, ou pour tout le monde).']];
 /* messages / mails / jour : notification sur les appareils ; d_messages / d_mails / d_jour : sur Discord */
-const prefsNotif = (p) => Object.assign({ messages: true, mails: true, assignes: true, jour: true, evenements: false, d_messages: true, d_mails: false, d_assignes: false, d_jour: false, d_evenements: false }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
+const prefsNotif = (p) => Object.assign({ messages: true, mails: true, assignes: true, jour: true, evenements: false, sourdineVacances: true, d_messages: true, d_mails: false, d_assignes: false, d_jour: false, d_evenements: false }, DB.get('cfg:notif:' + (p || Sync.me)) || {});
+/* ---------- Sourdine : plus rien (appareils, Discord) sauf les @mentions dans la discussion ----------
+   prefs.sourdineDe / sourdineJusqua (dates) : choisie pour N semaines ; prefs.sourdineVacances (oui par défaut) : pendant ses vacances. */
+function vacancesDe(p, jour) {
+  if (typeof itemsPeriode !== 'function') return null;
+  const x = ((itemsPeriode(jour, jour)[jour]) || []).find((i) => i.kind === 'ev' && (DB.get(i.key) || {}).type === 'vacances' && quiInclut(i.qui, p));
+  return x ? DB.get(x.key) : null;
+}
+function enSourdine(p, jour) {
+  const pr = DB.get('cfg:notif:' + p) || {}, j = jour || todayISO();
+  if (pr.sourdineJusqua && j <= pr.sourdineJusqua && (!pr.sourdineDe || j >= pr.sourdineDe)) return true;
+  return pr.sourdineVacances !== false && !!vacancesDe(p, j);
+}
+function sourdineHtml(p) {
+  const t = todayISO(), man = p.sourdineJusqua && t <= p.sourdineJusqua, vac = p.sourdineVacances !== false && vacancesDe(Sync.me, t);
+  return `<h3>🔕 Sourdine</h3>
+    ${man ? `<p class="banner">En sourdine jusqu'au <b>${fmtDate(p.sourdineJusqua)}</b> inclus. Seules les @mentions dans la discussion passent. <button class="btn small" type="button" data-act="sourdineFin">Réactiver maintenant</button></p>`
+      : `<div class="row" style="gap:8px;align-items:center"><span>Pendant</span><select id="sd-sem" style="width:auto">${[1, 2, 3, 4, 6, 8].map((n) => `<option value="${n}">${n} semaine${n > 1 ? 's' : ''}</option>`).join('')}</select><button class="btn" type="button" data-act="sourdineOn">Mettre en sourdine</button></div>`}
+    ${vac && !man ? '<p class="hint">🏖 Tu es en vacances aujourd\'hui : en sourdine.</p>' : ''}
+    <label class="row" style="font-size:14px;margin-top:6px"><input type="checkbox" data-notif="sourdineVacances"${p.sourdineVacances !== false ? ' checked' : ''}> En sourdine pendant mes vacances (événement « Vacances ou congé » à mon nom ou pour tout le monde)</label>
+    <p class="hint">En sourdine : plus aucune notification, ni sur les appareils ni sur Discord, sauf quand quelqu'un te mentionne (@${esc(nomDe(Sync.me))}) dans la discussion. À ton retour, l'accueil résume ce qui te concerne.</p>`;
+}
+ACTIONS.sourdineOn = () => { const n = Number(($('sd-sem') || {}).value) || 1, t = todayISO(); DB.put('cfg:notif:' + Sync.me, Object.assign(prefsNotif(), { sourdineDe: t, sourdineJusqua: addDays(t, 7 * n - 1), retourVu: '' })); toast(`En sourdine jusqu'au ${fmtDate(addDays(t, 7 * n - 1))}.`); };
+ACTIONS.sourdineFin = () => { const p = prefsNotif(), t = todayISO(); DB.put('cfg:notif:' + Sync.me, Object.assign(p, { sourdineJusqua: addDays(t, -1) })); toast('Notifications réactivées.'); };
 /* Jours et heures où on accepte les notifications : plage = { jours: [1..7] (1 = lundi), de, a } ; rien = toujours */
 const JOURS_NOTIF = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 function dansPlageNotif(p) {
@@ -369,7 +392,8 @@ function renderNotifs() {
         <td><input type="checkbox" data-notif="${k}" aria-label="${esc(l)} sur les appareils"${p[k] ? ' checked' : ''}></td>
         <td><input type="checkbox" data-notif="d_${k}" aria-label="${esc(l)} sur Discord"${p['d_' + k] && dOn ? ' checked' : ''}${dOn ? '' : ' disabled'}></td></tr>`).join('')}</tbody></table>
       <p class="hint">Ces choix valent pour tous tes appareils. Chacun règle les siens.${dOn ? '' : ' Pour cocher Discord, relie d\'abord ton salon (à gauche).'}</p>
-      ${plageHtml(p)}</div></div>`;
+      ${plageHtml(p)}
+      ${sourdineHtml(p)}</div></div>`;
 }
 document.addEventListener('change', (e) => { const k = e.target.dataset && e.target.dataset.notif; if (!k || !Sync.me) return; DB.put('cfg:notif:' + Sync.me, Object.assign(prefsNotif(), { [k]: e.target.checked })); toast('Enregistré.'); });
 ACTIONS.notifOn = async () => {

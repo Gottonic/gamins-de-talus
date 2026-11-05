@@ -58,9 +58,38 @@ function renderAccueil() {
   return `<section class="hello"><div><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></div>
     ${enCours ? '' : `<div class="row hello-btns"><button class="btn primary big" type="button" data-act="heuresJour" data-d="${today}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>Noter mes heures</button></div>`}
     </section>
+    ${retourHtml()}
     ${typeof journeeEnCoursHtml === 'function' ? journeeEnCoursHtml() : ''}
     <section class="tiles" aria-label="Modules">${tiles}</section>
     ${rappels.join('')}
     ${kpis}`;
 }
+/* ---------- De retour (fin de sourdine ou de vacances, dans les 14 derniers jours) : ce qui te concerne directement ---------- */
+function absenceRecente() {
+  if (!Sync.me) return null; const t = todayISO(), pr = DB.get('cfg:notif:' + Sync.me) || {}, cands = [];
+  if (pr.sourdineJusqua && pr.sourdineDe && pr.sourdineJusqua < t && pr.sourdineJusqua >= addDays(t, -14)) cands.push({ de: pr.sourdineDe, a: pr.sourdineJusqua });
+  if (pr.sourdineVacances !== false) for (const e of DB.all('ev:')) {
+    if (e.type !== 'vacances' || !quiInclut(e.qui, Sync.me) || (e.rec && e.rec.freq)) continue; const a = e.fin && e.fin > e.date ? e.fin : e.date;
+    if (a < t && a >= addDays(t, -14)) cands.push({ de: e.date, a });
+  }
+  const r = cands.sort((x, y) => y.a.localeCompare(x.a))[0]; if (!r || pr.retourVu === r.de + '|' + r.a) return null;
+  if (typeof enSourdine === 'function' && enSourdine(Sync.me)) return null; return r;
+}
+function retourHtml() {
+  const r = absenceRecente(); if (!r) return '';
+  const me = Sync.me, dans = (x) => { const d = String(x || '').slice(0, 10); return d >= r.de && d <= addDays(r.a, 1); };
+  const lignes = [];
+  const ments = DB.all('msg:').filter((m) => (m.mentions || []).includes(me) && dans(m.cree));
+  if (ments.length) lignes.push(`<a href="#/messages">💬 <b>${ments.length}</b> message${ments.length > 1 ? 's' : ''} où l'on te mentionne</a>`);
+  const ms = typeof mails === 'function' ? mails().filter((m) => m.par === me && !mailFini(m) && dans(m.date)) : [];
+  if (ms.length) lignes.push(`<a href="#/mails">📧 <b>${ms.length}</b> mail${ms.length > 1 ? 's' : ''} pour toi : ${esc(ms.slice(0, 3).map((m) => (m.de && (m.de.nom || m.de.adresse)) || '?').join(', '))}${ms.length > 3 ? '…' : ''}</a>`);
+  const evs = DB.all('ev:').filter((e) => e.creePar !== me && e.type !== 'vacances' && quiInclut(e.qui, me) && dans(e.cree) && (e.fin || e.date || '') >= todayISO());
+  if (evs.length) lignes.push(`<a href="#/calendrier">📅 <b>${evs.length}</b> événement${evs.length > 1 ? 's' : ''} prévu${evs.length > 1 ? 's' : ''} pour toi : ${esc(evs.slice(0, 3).map((e) => titreEv(e) + ' ' + fmtDateCourt(e.date)).join(', '))}</a>`);
+  const ts = taches().filter((t) => tacheOuverte(t) && t.creePar && t.creePar !== me && String(t.responsable || '').split('+').includes(me) && dans(t.cree));
+  if (ts.length) lignes.push(`<a href="#/calendrier">☑ <b>${ts.length}</b> tâche${ts.length > 1 ? 's' : ''} pour toi : ${esc(ts.slice(0, 3).map((t) => t.titre).join(', '))}${ts.length > 3 ? '…' : ''}</a>`);
+  return `<section class="panel retour"><div class="between"><h2>👋 Bon retour</h2><button class="btn small" type="button" data-act="retourVu" data-v="${esc(r.de + '|' + r.a)}">OK, vu</button></div>
+    <p class="hint">Ce qui te concerne directement, du ${fmtDate(r.de)} au ${fmtDate(r.a)} :</p>
+    ${lignes.length ? `<div class="retour-l">${lignes.join('')}</div>` : '<p>Rien de spécial pour toi. 🌿</p>'}</section>`;
+}
+ACTIONS.retourVu = (el) => { DB.put('cfg:notif:' + Sync.me, Object.assign({}, DB.get('cfg:notif:' + Sync.me) || {}, { retourVu: el.dataset.v })); };
 ACTIONS.goSansJ = () => { FIN.sansJ = true; FIN.annee = ''; FIN.type = ''; FIN.par = ''; FIN.q = ''; go('#/finances/depenses'); };

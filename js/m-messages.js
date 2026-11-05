@@ -424,13 +424,13 @@ function notifierDiscord(de, texte, image, mentions) {
   /* Avec une photo : envoi direct (une photo ne se garde pas dans la file d'attente) */
   if (image) {
     for (const p of personnes()) {
-      const d = discordDe(p.k); if (p.k === de || !discordMessages(p.k) || !vise(p.k)) continue;
+      const d = discordDe(p.k); if (p.k === de || !discordMessages(p.k) || !vise(p.k) || (enSourdine(p.k) && !(mentions || []).includes(p.k))) continue;
       const c = d.texte === false ? `${LIEN_MSG} 📷 Nouvelle photo de **${nomDe(de)}**` : `${LIEN_MSG} 📷 **${nomDe(de)}**${texte ? ' : ' + trunc(texte, 1500) : ''}`;
       posterDiscord(d.webhook, c, d.texte === false ? null : image).catch(() => {});
     }
     return;
   }
-  const envois = personnes().filter((p) => p.k !== de && discordMessages(p.k) && vise(p.k)).map((p) => {
+  const envois = personnes().filter((p) => p.k !== de && discordMessages(p.k) && vise(p.k) && (!enSourdine(p.k) || (mentions || []).includes(p.k))).map((p) => {
     const d = discordDe(p.k);
     return { webhook: d.webhook, contenu: d.texte === false ? `${LIEN_MSG} Nouveau message de **${nomDe(de)}**` : `${LIEN_MSG} **${nomDe(de)}** : ${trunc(texte, 1500)}` };
   });
@@ -588,7 +588,33 @@ function enregistrerTwintMail(k, quoi, date, montant, payeur) {
 }
 
 const ouvrirWebmail = () => { try { window.open(cfgMails().webmail, '_blank', 'noopener'); } catch (e) { /* */ } };
-const majMail = (k, o) => { const m = DB.get(k); if (m) DB.put(k, Object.assign({}, m, o, { vus: Object.assign({}, m.vus || {}, Sync.me ? { [Sync.me]: new Date().toISOString() } : {}) })); };
+const majMail = (k, o) => {
+  const m = DB.get(k); if (!m) return;
+  DB.put(k, Object.assign({}, m, o, { vus: Object.assign({}, m.vus || {}, Sync.me ? { [Sync.me]: new Date().toISOString() } : {}) }));
+  /* Quelqu'un s'occupe du mail (le confier, le traiter, répondre, l'archiver…) : les prochains mails de cette adresse seront pour lui */
+  if ('par' in o) { if (o.par) noterReferentMail(m, o.par); } else if (Object.keys(o).length && Sync.me) noterReferentMail(m, Sync.me);
+};
+/* Référent d'une adresse : mref:<adresse> = { personne, le }. Sinon le contact principal du contact (Contacts). */
+const adresseMail = (m) => String((m && m.de && m.de.adresse) || '').trim().toLowerCase();
+function noterReferentMail(m, p) {
+  const a = adresseMail(m); if (!a || !p) return; const k = 'mref:' + a, o = DB.get(k);
+  if (!o || o.personne !== p) sansAnnuler(() => DB.put(k, { personne: p, le: new Date().toISOString() }));
+}
+function referentMail(m) {
+  const a = adresseMail(m); if (!a) return null; const r = DB.get('mref:' + a); if (r && r.personne) return { p: r.personne, le: r.le };
+  const c = typeof contactDuMail === 'function' ? contactDuMail(a) : null, p = c && typeof referentDe === 'function' ? referentDe(c) : '';
+  return p ? { p, le: '2026-11-05T00:00:00Z' } : null;
+}
+/* Un nouveau mail d'une adresse qui a son référent : il lui est confié tout seul (seulement les mails arrivés après) */
+function attribuerMailsAuto() {
+  if (typeof mails !== 'function') return;
+  for (const m of mails()) {
+    if (m.par || m.statut || m.auto) continue; const r = referentMail(m); if (!r || !personnes().some((x) => x.k === r.p)) continue;
+    if (String(m.date || '') < String(r.le)) continue;
+    sansAnnuler(() => DB.put(m.key, Object.assign({}, DB.get(m.key), { par: r.p, statut: 'encours', auto: true })));
+  }
+}
+setTimeout(attribuerMailsAuto, 2000);
 ACTIONS.mailFiltre = (el) => { MAIL.filtre = el.dataset.k; render(); };
 ACTIONS.mailOuvrir = (el) => { MAIL.ouvert = MAIL.ouvert === el.dataset.key ? '' : el.dataset.key; render(); };
 /* Traité / ignoré : on garde à qui il était confié (par) et on note qui l'a fermé (traitePar). Remis à traiter : il revient à la personne à qui il était confié. */
@@ -777,7 +803,7 @@ ACTIONS.pjPartager = async () => {
 };
 /* Une facture fournisseur reçue par mail → une dépense avec ce justificatif (rangé dans l'app, comme une photo de ticket) */
 ACTIONS.mailPieceDep = async (el) => {
-  const m = DB.get(el.dataset.key); toast('Préparation du justificatif…');
+  const m = DB.get(el.dataset.key); toast('Préparation du justificatif…'); if (m && Sync.me) noterReferentMail(m, Sync.me);
   try {
     const f = await pieceDeMail(el.dataset.key, el.dataset.i);
     ACTIONS.depEdit({ dataset: {} });
