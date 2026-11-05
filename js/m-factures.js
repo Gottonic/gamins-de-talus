@@ -127,16 +127,18 @@ MODULES.factures = {
     return { line: f.length ? `${f.length} vente${f.length > 1 ? 's' : ''}, tout est payé` : 'Ventes, stock et prix' };
   },
   render(sub, id) {
-    /* La prospection est maintenant dans Contacts : les anciennes adresses y mènent */
-    if (['prospection', 'prospect', 'convertir', 'pmodifier'].includes(sub)) { setTimeout(() => location.replace(`#/contacts/${sub}${id ? '/' + encodeURIComponent(id) : ''}`), 0); return ''; }
     if (sub === 'produits') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
-    const t = tabs('factures', [['', 'Ventes'], ['nouvelle', 'Nouvelle vente'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), standARemplir() || ardAFacturer().length > 0], ['stock', 'Stock et prix']], sub === 'voir' ? '' : sub);
+    const pr = SOUS_PROSPECTION.includes(sub);
+    const t = tabs('factures', [['', 'Ventes'], ongletProspection(), ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), standARemplir() || ardAFacturer().length > 0], ['stock', 'Stock et prix']], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
+    if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'stock') return t + renderStock();
     if (sub === 'selfservice') return t + renderSelfService();
     return t + renderListeFactures(sub === 'voir' ? id : '');
   },
-  after(sub) { if (sub === 'nouvelle') brancherBrouillon(); if (sub === 'stock') brancherStock(); },
+  after(sub) { if (sub === 'nouvelle') brancherBrouillon(); if (sub === 'stock') brancherStock(); if (SOUS_PROSPECTION.includes(sub)) afterContactsProspection(sub); },
+  /* La prospection : ouvrir ou fermer une fiche garde la liste là où on l'avait fait défiler */
+  garderDefilement(sub, avant) { return SOUS_PROSPECTION.includes(sub) && SOUS_PROSPECTION.includes(avant); },
 };
 
 function renderListeFactures(selKey) {

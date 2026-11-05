@@ -40,9 +40,9 @@ for (const largeur of [1200, 390]) {
     DB.put('msg:a', { de: 'noe', texte: 'Salut', cree: new Date().toISOString() });
     DB.put('self:a', { date: t, lieu: 'Stand', lignes: [{ prod: 'prod:c', qte: 4, prix: 9, unite: 'pièce', calibre: 'Moyen', poids: 1.5 }], retours: {}, statut: 'ouverte' });
   });
-  const routes = ['accueil', 'messages', 'mails', 'contacts', 'contacts/prospection', 'taches', 'calendrier', 'calendrier/taches', 'calendrier/mois', 'calendrier/heures',
+  const routes = ['accueil', 'messages', 'mails', 'contacts', 'factures/prospection', 'taches', 'calendrier', 'calendrier/taches', 'calendrier/mois', 'calendrier/heures',
     'factures', 'factures/nouvelle', 'factures/selfservice', 'factures/stock', 'factures/voir/fac:a', 'finances', 'finances/recettes', 'finances/associes', 'finances/annee', 'finances/bilan', 'finances/inventaire', 'finances/achats',
-    'cultures', 'cultures/planches', 'cultures/fumure', 'cultures/recoltes', 'cultures/journal', 'cultures/marges', 'cultures/fiches', 'irrigation', 'irrigation/saison', 'irrigation/meteo', 'irrigation/reglages', 'drive', 'reglages', 'reglages/associes', 'reglages/donnees', 'reglages/entreprise', 'reglages/categories'];
+    'cultures', 'cultures/planches', 'cultures/fumure', 'cultures/recoltes', 'cultures/journal', 'cultures/marges', 'cultures/fiches', 'irrigation', 'irrigation/saison', 'irrigation/meteo', 'irrigation/reglages', 'drive', 'reglages', 'reglages/associes', 'reglages/donnees', 'reglages/entreprise', 'reglages/categories', 'reglages/nouveautes'];
   for (const r of routes) {
     await p.goto(U + '#/' + r); await p.waitForTimeout(150);
     const plante = await p.evaluate(() => /n'a pas pu s'afficher/.test(document.body.innerText));

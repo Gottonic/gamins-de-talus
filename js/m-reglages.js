@@ -7,8 +7,9 @@ MODULES.reglages = {
   render(sub) {
     /* Notifications d'abord (onglet par défaut), puis Associés, Données, Entreprise */
     if (sub === 'notifications') sub = '';
-    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise'], ['categories', 'Catégories'], ['apparence', 'Apparence']], sub);
+    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise'], ['categories', 'Catégories'], ['apparence', 'Apparence'], ['nouveautes', 'Nouveautés']], sub);
     if (sub === 'apparence') return t + renderApparence();
+    if (sub === 'nouveautes') return t + renderNouveautes();
     if (sub === 'categories') return t + renderCategories() + renderComptesReglages();
     if (sub === 'associes') return t + renderRegAssocies();
     if (sub === 'donnees') return t + renderDonnees();

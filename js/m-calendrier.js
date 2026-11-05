@@ -178,7 +178,7 @@ function renderSemaineCal() {
       ${ts.map((x) => `<button type="button" class="sem-ta" data-act="taVoir" data-key="${esc(x.key)}">☐ ${esc(x.titre)}</button>`).join('')}
       ${ech.map((x) => `<button type="button" class="sem-ta ech" data-act="taVoir" data-key="${esc(x.key)}">⏰ ${esc(x.titre)}</button>`).join('')}
       ${fac.map((x) => `<button type="button" class="sem-ta" data-act="go" data-href="#/factures/voir/${encodeURIComponent(x.key)}">🧾 ${esc(x.titre)}</button>`).join('')}
-      ${rel.map((x) => `<button type="button" class="sem-ta" data-act="go" data-href="#/contacts/prospect/${encodeURIComponent(x.key)}">☎ ${esc(x.titre)}</button>`).join('')}
+      ${rel.map((x) => `<button type="button" class="sem-ta" data-act="go" data-href="#/factures/prospect/${encodeURIComponent(x.key)}">☎ ${esc(x.titre)}</button>`).join('')}
       ${hs.length ? `<div class="sem-h">${hs.map((x) => `<span>${esc(ini(x.personne))} ${x.off ? 'off' : fmtH(x.heures) + ' h'}</span>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
@@ -225,7 +225,7 @@ function ouvrirJour(d) {
     ${evHtml || '<p class="hint">Aucun événement ce jour.</p>'}
     ${tch.filter((x) => !x.journee).length ? `<h3>Tâches de ce jour</h3>${tch.filter((x) => !x.journee).map((x) => tacheHtml(tacheParCle(x.key) || {}, { sansDate: true, court: true })).join('')}` : ''}
     <div class="row"><button class="btn small" type="button" data-act="taNouvelle" data-date="${d}">+ Tâche pour ce jour</button></div>
-    ${rel.length ? `<h3>Relances prospection</h3>${rel.map((r) => `<a class="item" href="#/contacts/prospect/${encodeURIComponent(r.key)}"><span class="who"><strong>${esc(r.titre)}</strong></span></a>`).join('')}` : ''}
+    ${rel.length ? `<h3>Relances prospection</h3>${rel.map((r) => `<a class="item" href="#/factures/prospect/${encodeURIComponent(r.key)}"><span class="who"><strong>${esc(r.titre)}</strong></span></a>`).join('')}` : ''}
     ${fac.length ? `<h3>Factures à échéance</h3>${fac.map((f) => `<a class="item" href="#/factures/voir/${encodeURIComponent(f.key)}"><span class="who"><strong>${esc(f.titre)}</strong></span><span class="amt">${chf(f.montant)}</span></a>`).join('')}` : ''}
   </div>`);
   const sh = $('jour-sheet'); brancherHeures(sh);
@@ -379,7 +379,7 @@ function renderVue() {
       <div class="between pl-jour-h"><button type="button" class="pl-date" data-act="plJourVoir" data-d="${d}" title="Ouvrir le jour"><b>${d === today ? "Aujourd'hui" : d === addDays(today, 1) ? 'Demain' : JOURS[(new Date(d + 'T12:00').getDay() + 6) % 7]}</b> ${fmtDateCourt(d)}</button></div>
       ${evs.map((x) => ev(x, d)).join('')}
       ${ts.length ? `<div class="pl-taches tri-taches">${ts.map((t) => tacheHtml(t, { sansDate: true, court: true, tri: ts.length > 1 })).join('')}</div>` : ''}
-      ${autres.map((x) => `<div class="agit clic" style="--c:${x.kind === 'facture' ? 'var(--c-factures)' : 'var(--c-contacts)'}" data-act="go" data-href="${x.kind === 'facture' ? '#/factures/voir/' : '#/contacts/prospect/'}${encodeURIComponent(x.key)}" role="button" tabindex="0">${esc(x.titre)}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}
+      ${autres.map((x) => `<div class="agit clic" style="--c:${x.kind === 'facture' ? 'var(--c-factures)' : 'var(--c-contacts)'}" data-act="go" data-href="${x.kind === 'facture' ? '#/factures/voir/' : '#/factures/prospect/'}${encodeURIComponent(x.key)}" role="button" tabindex="0">${esc(x.titre)}${x.montant ? ` <span class="num">${chf(x.montant)}</span>` : ''}</div>`).join('')}
       ${vide ? '<p class="hint" style="margin:0">Rien de prévu.</p>' : ''}</div>`;
   }
   const plan = listeAPlanifierHtml(aPlan, { court: true, vide: 'Tout est planifié. 👌' });
