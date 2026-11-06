@@ -148,10 +148,16 @@ function renderListeFactures(selKey) {
   const y = todayISO().slice(0, 4); let open = 0, late = 0, nLate = 0, year = 0;
   for (const f of list) { const s = facStatut(f); if (s === 'ouverte' || s === 'retard') open += f.total; if (s === 'retard') { late += f.total; nLate++; } if (s !== 'annulee' && s !== 'groupee' && String(f.date || '').slice(0, 4) === y) year += f.total; }
   const sp = recettesDirectes().filter((r) => r.spontanee && String(r.date || '').slice(0, 4) === y).sort((a, b) => String(b.date).localeCompare(String(a.date))), tSp = sp.reduce((a, r) => a + num(r.montant), 0); year += tSp;
+  /* Toutes les ventes au même endroit : le self-service une ligne par semaine, les ventes spontanées une par vente */
+  const sem = typeof semainesSelf === 'function' ? semainesSelf() : [], tSelf = sem.filter((w) => w.date.slice(0, 4) === y).reduce((a, w) => a + w.total, 0); year += tSelf;
+  const lignes = list.map((f) => ({ date: f.date, f })).concat(sem.map((w) => ({ date: w.date, w })), recettesDirectes().filter((r) => r.spontanee).map((r) => ({ date: r.date, r })))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const dbl = numerosEnDouble();
   const probs = problemesReglages(false);
   const setup = probs.length ? `<div class="errors">Pour facturer par virement, il manque ${esc(probs.join(', '))}. <a href="#/reglages/entreprise">Compléter les réglages</a></div>` : '';
-  const table = list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Facture / BL</th><th>Client</th><th>Date</th><th class="r">Montant</th><th>Statut</th></tr></thead><tbody>${list.map((f) => {
+  const table = lignes.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Facture / BL</th><th>Client</th><th>Date</th><th class="r">Montant</th><th>Statut</th></tr></thead><tbody>${lignes.map(({ f, w, r }) => {
+    if (w) return `<tr class="click" data-act="go" data-href="#/factures/selfservice"><td><span class="hint">sem. ${w.sem}</span></td><td>🧺 Self-service <span class="hint">${fmtDateCourt(w.lundi)}–${fmtDateCourt(addDays(w.lundi, 6))}${w.msg ? ` · dont ${money(w.msg)} par message` : ''}</span></td><td class="num">${fmtDate(w.date)}</td><td class="r num">${money(w.total)}</td><td><span class="pill payee">vendu</span></td></tr>`;
+    if (r) return `<tr class="click" data-act="venteSpontanee" data-key="${esc(r.key)}"><td><span class="hint">spontanée</span></td><td>💵 ${esc(trunc(r.quoi || (r.client && r.client !== 'Vente spontanée' ? r.client : 'Vente spontanée'), 28))}</td><td class="num">${fmtDate(r.date)}</td><td class="r num">${money(r.montant)}</td><td><span class="pill payee">cash</span></td></tr>`;
     const s = facStatut(f);
     return `<tr class="click${f.key === selKey ? ' sel' : ''}" data-act="go" data-href="#/factures/voir/${encodeURIComponent(f.key)}"><td class="num">${f.numero ? esc(f.numero) : `<span class="hint">${esc(f.blNumero || 'vente')}</span>`}${f.numero && dbl[f.numero] > 1 && s !== 'annulee' ? ' <span class="pill retard">double</span>' : ''}</td><td>${esc(trunc(f.client && f.client.nom, 28))}</td><td class="num">${fmtDate(f.date)}</td><td class="r num">${money(f.total)}</td><td><span class="pill ${s}">${esc(facLabel(f))}</span></td></tr>`;
   }).join('')}</tbody></table></div>` : `<p class="empty">Aucune vente pour l'instant. <a href="#/factures/nouvelle">Enregistrer la première</a></p>`;
@@ -159,12 +165,11 @@ function renderListeFactures(selKey) {
   return `${setup}${virementsAVerifierHtml()}<div class="stats">
       <div class="stat good"><span class="k">À encaisser</span><span class="v">${chf(open)}</span></div>
       <div class="stat bad"><span class="k">En retard</span><span class="v">${nLate ? `${nLate} · ${chf(late)}` : 'Aucune'}</span></div>
-      <div class="stat"><span class="k">Vendu en ${y}</span><span class="v">${chf(year)}</span>${tSp ? `<span class="s">dont ${chf(tSp)} de ventes spontanées</span>` : ''}</div></div>
+      <div class="stat"><span class="k">Vendu en ${y}</span><span class="v">${chf(year)}</span>${tSelf || tSp ? `<span class="s">${[tSelf ? `self-service ${chf(tSelf)}` : '', tSp ? `spontanées ${chf(tSp)}` : ''].filter(Boolean).join(' · ')}</span>` : ''}</div></div>
     <div class="split">
       <div class="panel"><div class="between"><h2>Ventes</h2><div class="row"><button class="btn small" type="button" data-act="facCsv">Exporter (CSV)</button><button class="btn small" type="button" data-act="facMois">Facture du mois</button><button class="btn small" type="button" data-act="venteSpontanee">Vente spontanée</button><a class="btn primary small" href="#/factures/nouvelle">+ Vente</a></div></div>${table}</div>
       <div>${sel ? renderDetailFacture(Object.assign({ key: selKey }, sel), dbl) : (list.length ? '<div class="panel"><p class="hint">Choisis une vente pour voir sa facture ou son bulletin, ou la marquer comme payée.</p></div>' : '')}</div>
-    </div>
-    ${sp.length ? `<div class="panel"><div class="between"><h2>Ventes spontanées ${y}</h2><b class="num">${chf(tSp)}</b></div><div class="items">${sp.slice(0, 20).map((r) => `<button type="button" class="item" data-act="venteSpontanee" data-key="${esc(r.key)}"><span class="who"><strong>${esc(r.quoi || r.client || 'Vente spontanée')}</strong><span class="meta">${fmtDate(r.date)}${r.par ? ' · ' + esc(nomDe(r.par)) : ''}${r.client && r.client !== 'Vente spontanée' ? ' · ' + esc(r.client) : ''}</span></span><span class="amt">${chf(r.montant)}</span></button>`).join('')}</div>${sp.length > 20 ? `<p class="hint">Et ${sp.length - 20} autres, dans Finances → Recettes.</p>` : ''}</div>` : ''}`;
+    </div>`;
 }
 function renderDetailFacture(f, dbl) {
   const s = facStatut(f), acts = [];

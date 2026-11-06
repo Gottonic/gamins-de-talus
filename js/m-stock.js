@@ -221,6 +221,14 @@ function priseStand() {
 ACTIONS.standPrise = (el) => { DB.put('cfg:stand', Object.assign({}, DB.get('cfg:stand') || {}, { charge: el.dataset.off ? null : { par: Sync.me || '', le: new Date().toISOString() } })); };
 /* Paiements TWINT pas encore comptés nulle part, depuis la première mise en vente */
 const twLibresVD = () => { const d0 = (misesEnVente().slice(-1)[0] || {}).date; return d0 ? DB.all('tw:').filter((t) => (!t.utilise || !DB.get(t.utilise)) && t.montant > 0 && t.date >= d0).sort((a, b) => a.date.localeCompare(b.date)) : []; };
+/* Le self-service, semaine par semaine (lundi → dimanche) : encaissé + payé par message pas encore facturé (une facture le montre ensuite) */
+function semainesSelf() {
+  const m = {};
+  const add = (d, v, msg) => { d = String(d || '').slice(0, 10); if (!d || !(v > 0)) return; const l = lundiDe(d), o = m[l] || (m[l] = { lundi: l, total: 0, msg: 0, date: d }); o.total += v; if (msg) o.msg += v; if (d > o.date) o.date = d; };
+  for (const r of encaissementsVD()) add(r.date, num(r.montant));
+  for (const x of paiementsMessage()) if (!x.facture) add(x.date, num(x.montant), true);
+  return Object.values(m).map((o) => Object.assign(o, { total: r2(o.total), msg: r2(o.msg), sem: semaineISO(o.lundi).semaine }));
+}
 const SD = { an: '' };
 /* Une boîte qu'on ouvre ou ferme et qui s'en souvient (data-garde = clé) */
 document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('summary [data-act]')) e.preventDefault(); }, true);
@@ -258,11 +266,11 @@ function renderSelfService() {
 }
 function historiqueStandHtml(y) {
   const ev = [].concat(
-    misesEnVente().filter((x) => yearOf(x.date) === y).map((x) => ({ date: x.date, cree: x.cree, t: `Remplissage${x.lieu && x.lieu !== 'Self-service' ? ' · ' + x.lieu : ''}`, d: (x.lignes || []).map((l) => `${fmtNum(num(l.qte), 0)} ${l.nom || (DB.get(l.prod) || {}).nom || '?'}`).join(', '), v: valeurMise(x), key: x.key, what: 'ce remplissage' })),
-    pointsStand().filter((p) => yearOf(p.date) === y).map((p) => ({ date: p.date, cree: p.cree, t: 'Comptage du stand', d: `restait ${chf(p.valeur)}${num(p.manque) > 0.05 ? ` · manque ${chf(p.manque)}` : ''}`, v: null, key: p.key, what: 'ce point' })),
+    misesEnVente().filter((x) => yearOf(x.date) === y).map((x) => ({ date: x.date, cree: x.cree, t: `Remplissage${x.lieu && x.lieu !== 'Self-service' ? ' · ' + x.lieu : ''}`, d: (x.lignes || []).map((l) => `${fmtNum(num(l.qte), 0)} ${l.nom || (DB.get(l.prod) || {}).nom || '?'}`).join(', '), v: valeurMise(x), key: x.key, what: 'ce remplissage', modif: 'selfModifier' })),
+    pointsStand().filter((p) => yearOf(p.date) === y).map((p) => ({ date: p.date, cree: p.cree, t: 'Comptage du stand', d: `restait ${chf(p.valeur)}${num(p.manque) > 0.05 ? ` · manque ${chf(p.manque)}` : ''}`, v: null, key: p.key, what: 'ce comptage', modif: 'standPoint' })),
     encaissementsVD().filter((r) => yearOf(r.date) === y).map((r) => ({ date: r.date, cree: r.cree, t: `Encaissement ${r.moyen || ''}`, d: r.libelle || '', v: -num(r.montant), key: r.key, rec: true })),
   ).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || '')));
-  return ev.length ? `<div class="table-wrap"><table class="list"><tbody>${ev.slice(0, 200).map((e) => `<tr><td class="num">${fmtDate(e.date)}</td><td><b>${esc(e.t)}</b><br><span class="hint">${esc(trunc(e.d, 120))}</span></td><td class="r num">${e.v == null ? '' : money(e.v)}</td><td class="r">${e.rec ? `<button class="btn link small" type="button" data-act="recEdit" data-key="${esc(e.key)}">modifier</button>` : `<button class="btn link small" type="button" data-act="delItem" data-key="${esc(e.key)}" data-what="${esc(e.what)}">supprimer</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Rien cette année.</p>';
+  return ev.length ? `<div class="table-wrap"><table class="list"><tbody>${ev.slice(0, 200).map((e) => `<tr><td class="num">${fmtDate(e.date)}</td><td><b>${esc(e.t)}</b><br><span class="hint">${esc(trunc(e.d, 120))}</span></td><td class="r num">${e.v == null ? '' : money(e.v)}</td><td class="r">${e.rec ? `<button class="btn link small" type="button" data-act="recEdit" data-key="${esc(e.key)}">modifier</button>` : `<button class="btn link small" type="button" data-act="${e.modif}" data-key="${esc(e.key)}">modifier</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Rien cette année.</p>';
 }
 FORMS.standSeuil = (v) => { const x = num(v.seuil); if (!(x >= 0)) { toast('Indique un montant.'); return; } DB.put('cfg:stand', Object.assign({}, DB.get('cfg:stand') || {}, { seuil: r2(x) })); toast(`Alerte sous ${chf(x)}.`); };
 /* Faire le point : on compte ce qui reste sur le stand (et ce qu'on reprend au stock) */
@@ -278,22 +286,27 @@ function lignesStand() {
   return out.sort((a, b) => (mis.has(b.art || b.prod) ? 1 : 0) - (mis.has(a.art || a.prod) ? 1 : 0));
 }
 ACTIONS.standPoint = (el) => {
-  const ls = lignesStand(), E = etatStand(), suite = !!(el && el.dataset && el.dataset.suite);
+  const k = (el && el.dataset && el.dataset.key) || '', p = k ? DB.get(k) : null, suite = !k && !!(el && el.dataset && el.dataset.suite);
+  const E = p ? { estime: p.estime } : etatStand(), deja = {}; for (const l of (p && p.lignes) || []) deja[l.art ? 'a_' + l.art : l.nom] = l;
+  const ls = lignesStand(); for (const l of (p && p.lignes) || []) if (!ls.some((x) => (x.art && x.art === l.art) || (!x.art && x.nom === l.nom))) ls.push({ id: 'x_' + ls.length, art: l.art, prod: l.prod, nom: l.nom, prix: l.prix, unite: l.unite, poids: l.poids });
+  const val = (l, f) => { const d = deja[l.art ? 'a_' + l.art : l.nom]; return d && num(d[f]) ? String(d[f]).replace('.', ',') : ''; };
   if (!ls.length) { toast('Crée d\'abord un article de vente directe.'); return; }
-  openSheet(`${sheetHead(suite ? 'Remplir le stand' : 'Compter le stand', `${suite ? '1 / 2 · Ce qui reste · ' : ''}estimé : ${chf(Math.max(0, E.estime))}`)}<form class="sbody form" data-form="standPoint"><input type="hidden" name="suite" value="${suite ? '1' : ''}">
-    ${inp('sp-d', 'Date', todayISO(), { name: 'date', type: 'date' })}
+  openSheet(`${sheetHead(p ? 'Modifier le comptage' : suite ? 'Remplir le stand' : 'Compter le stand', `${suite ? '1 / 2 · Ce qui reste · ' : ''}estimé : ${chf(Math.max(0, E.estime))}`)}<form class="sbody form" data-form="standPoint"><input type="hidden" name="suite" value="${suite ? '1' : ''}"><input type="hidden" name="key" value="${esc(k)}">
+    ${inp('sp-d', 'Date', p ? p.date : todayISO(), { name: 'date', type: 'date' })}
     <div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Il en reste</th><th>Dont repris au stock</th><th class="r">Prix</th></tr></thead><tbody>
-    ${ls.map((l) => `<tr><td>${esc(l.nom)}</td><td><input class="cell-in" name="r_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px"> <span class="hint">${esc(l.unite === 'pièce' ? 'pc' : l.unite)}</span></td><td><input class="cell-in" name="k_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px"></td><td class="r num">${money(l.prix)}</td></tr>`).join('')}
+    ${ls.map((l) => `<tr><td>${esc(l.nom)}</td><td><input class="cell-in" name="r_${esc(l.id)}" inputmode="decimal" placeholder="0" value="${esc(val(l, 'reste'))}" style="width:64px"> <span class="hint">${esc(l.unite === 'pièce' ? 'pc' : l.unite)}</span></td><td><input class="cell-in" name="k_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px" value="${esc(val(l, 'repris'))}"></td><td class="r num">${money(l.prix)}</td></tr>`).join('')}
     </tbody></table></div>
     <p class="hint">Comptez ce qui reste sur le stand (vide = il n'en reste pas). L'app compare à ce qui devrait rester : la différence est le manque (vol, pertes, erreurs). Ce qui est repris au stock quitte le stand.${suite ? ' Pas le temps de compter ? « Passer ».' : ''}</p>
-    <div class="row-end">${suite ? '<button class="btn" type="button" data-act="selfRemplir">Passer</button>' : ''}<button class="btn primary" type="submit">${suite ? 'Suivant' : 'Enregistrer'}</button></div></form>`);
+    <div class="row-end">${p ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="ce comptage">Supprimer</button>` : ''}${suite ? '<button class="btn" type="button" data-act="selfRemplir">Passer</button>' : ''}<button class="btn primary" type="submit">${suite ? 'Suivant' : 'Enregistrer'}</button></div></form>`);
 };
 FORMS.standPoint = (v) => {
-  const ls = lignesStand(), lignes = [];
+  const old = v.key ? DB.get(v.key) : null, ls = lignesStand(), lignes = [];
+  for (const l of (old && old.lignes) || []) if (!ls.some((x) => (x.art && x.art === l.art) || (!x.art && x.nom === l.nom))) ls.push({ id: 'x_' + ls.length, art: l.art, prod: l.prod, nom: l.nom, prix: l.prix, unite: l.unite, poids: l.poids });
   for (const l of ls) { const r = num(v['r_' + l.id]), k = Math.min(r, num(v['k_' + l.id])); if (r > 0) lignes.push({ prod: l.prod, art: l.art || '', nom: l.nom, reste: r, repris: k, prix: l.prix, unite: l.unite, poids: l.poids || 0 }); }
-  const k = 'stp:' + uid('p'), date = v.date || todayISO(), cree = new Date().toISOString();
+  const k = v.key || 'stp:' + uid('p'), date = v.date || todayISO(), cree = (old && old.cree) || new Date().toISOString();
+  if (old) for (const m of mouvements()) if (m.ref === k) DB.del(m.key); /* ses reprises au stock sont refaites */
   const E = etatStand({ key: k, date, cree }), compte = lignes.reduce((a, l) => a + l.reste * l.prix, 0), reste = lignes.reduce((a, l) => a + (l.reste - l.repris) * l.prix, 0);
-  const o = { date, cree, lignes, valeur: r2(reste), estime: E.estime, manque: r2(E.estime - compte), par: Sync.me || '' };
+  const o = Object.assign({}, old || {}, { date, cree, lignes, valeur: r2(reste), estime: E.estime, manque: r2(E.estime - compte), par: (old && old.par) || Sync.me || '' }, old ? { modifiePar: Sync.me || '', modifieLe: new Date().toISOString() } : {});
   DB.put(k, o);
   lignes.forEach((l, i) => { if (!(l.repris > 0)) return; const p = DB.get(l.prod); if (!p || stockDe(l.prod) == null) return; const q = enUniteDeStock(p, l.repris, l.unite, l.poids); if (q == null) return;
     DB.put(`mvt:stpr:${k.slice(4)}:${i}`, { date, prod: l.prod, qte: q, type: 'retour', ref: k, par: Sync.me || '', note: 'Repris du stand' }); });
@@ -314,6 +327,25 @@ FORMS.twLibresVD = (v) => {
     DB.put(rk, { date: t.date, montant: r2(t.montant), moyen: 'TWINT', par: cfg().compteDe || Sync.me || '', client: 'Vente directe', libelle: `Vente directe · TWINT${t.texte ? ' ' + trunc(t.texte, 40) : ''}`, vd: true, cree: new Date().toISOString() });
     DB.put(t.key, Object.assign({}, DB.get(t.key), { utilise: rk })); n++; tot += t.montant; }
   closeSheet(); toast(n ? `${chf(tot)} comptés (${n} paiement${n > 1 ? 's' : ''}).` : 'Rien de compté.');
+};
+/* Modifier un remplissage : quantités, prix, date ; le stock et la récolte suivent */
+ACTIONS.selfModifier = (el) => {
+  const k = el.dataset.key, s = DB.get(k); if (!s) return;
+  openSheet(`${sheetHead('Modifier le remplissage', fmtDate(s.date))}<form class="sbody form" data-form="selfModifier"><input type="hidden" name="key" value="${esc(k)}">
+    ${inp('sm-d', 'Date', s.date, { name: 'date', type: 'date' })}
+    <div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Quantité</th><th>Prix</th></tr></thead><tbody>
+    ${(s.lignes || []).map((l, i) => { const p = DB.get(l.prod) || {}; return `<tr><td>${esc(l.nom || p.nom || '?')}${l.calibre && !l.nom ? ' ' + esc(String(l.calibre).toLowerCase()) : ''}</td><td><input class="cell-in" name="q_${i}" inputmode="decimal" value="${esc(String(l.qte).replace('.', ','))}" style="width:64px"> <span class="hint">${esc(l.unite === 'pièce' ? 'pc' : l.unite || p.unite || '')}</span></td><td><input class="cell-in" name="p_${i}" inputmode="decimal" value="${esc(String(l.prix).replace('.', ','))}" style="width:70px"></td></tr>`; }).join('')}
+    </tbody></table></div><p class="hint">Quantité 0 : la ligne est retirée. Le stock (et la récolte d'un produit au champ) suivent.</p>
+    <div class="row-end"><button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="ce remplissage">Supprimer</button><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+};
+FORMS.selfModifier = (v) => {
+  const k = v.key, s = DB.get(k); if (!s) return;
+  const lignes = [], retours = {};
+  (s.lignes || []).forEach((l, i) => { const q = num(v['q_' + i]); if (!(q > 0)) return; if ((s.retours || {})[i] != null) retours[lignes.length] = Math.min(q, num(s.retours[i])); lignes.push(Object.assign({}, l, { qte: q, prix: r2(num(v['p_' + i])) })); });
+  if (!lignes.length) { toast('Plus aucune ligne : utilise « Supprimer ».'); return; }
+  for (const m of mouvements()) if (m.ref === k) DB.del(m.key);
+  const s2 = Object.assign({}, s, { date: v.date || s.date, lignes, retours, modifiePar: Sync.me || '', modifieLe: new Date().toISOString() });
+  DB.put(k, s2); stockPourSelf(k, s2); closeSheet(); toast('Remplissage modifié.');
 };
 /* Remplir le stand : 1. compter ce qui reste (ou passer), 2. ce qu'on ajoute */
 ACTIONS.selfNouveau = () => { if (misesEnVente().length && articles().length + produits().length) ACTIONS.standPoint({ dataset: { suite: '1' } }); else ACTIONS.selfRemplir(); };
