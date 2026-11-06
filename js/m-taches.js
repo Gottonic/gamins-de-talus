@@ -71,11 +71,16 @@ document.addEventListener('pointerdown', (e) => {
 });
 document.addEventListener('mousedown', (e) => { if (e.target.closest && e.target.closest('[data-poignee]')) e.preventDefault(); });
 /* Sur ordinateur, on peut aussi glisser la ligne entière d'une tâche dans sa liste (journée, jour) pour changer l'ordre */
-const TRI = { el: null, box: null };
-document.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-tache]'), box = it && it.closest('.tri-taches'); TRI.el = box ? it : null; TRI.box = box || null; if (box) box.classList.add('tri-actif'); }, true);
-document.addEventListener('dragend', () => { if (TRI.el) TRI.el.classList.remove('en-tri'); if (TRI.box) TRI.box.classList.remove('tri-actif'); TRI.el = null; TRI.box = null; document.querySelectorAll('.tri-actif').forEach((b) => b.classList.remove('tri-actif')); if (UI.pending && !enSaisie(document.activeElement)) { UI.pending = false; render(); } }, true);
+const TRI = { el: null, box: null, avant: '' };
+const ordreDe = (box) => [...box.children].filter((x) => x.dataset && x.dataset.tache).map((x) => x.dataset.tache).join(',');
+document.addEventListener('dragstart', (e) => { const it = e.target.closest && e.target.closest('[data-tache]'), box = it && it.closest('.tri-taches'); TRI.el = box ? it : null; TRI.box = box || null; TRI.avant = box ? ordreDe(box) : ''; if (box) box.classList.add('tri-actif'); }, true);
+document.addEventListener('dragend', () => { if (TRI.el) TRI.el.classList.remove('en-tri'); if (TRI.box) TRI.box.classList.remove('tri-actif');
+  /* Lâchée sur elle-même ou entre deux lignes, la tâche a déjà changé de place à l'écran : on enregistre cet ordre-là */
+  const b = TRI.box, change = b && b.isConnected && ordreDe(b) !== TRI.avant; TRI.el = null; TRI.box = null; if (change) { enregistrerOrdre(b); return; } document.querySelectorAll('.tri-actif').forEach((b) => b.classList.remove('tri-actif')); if (UI.pending && !enSaisie(document.activeElement)) { UI.pending = false; render(); } }, true);
 document.addEventListener('dragover', (e) => {
   if (!TRI.el) return; const sur = e.target.closest && e.target.closest('[data-tache]');
+  /* Au-dessus de sa propre ligne ou de sa liste : on accepte le lâcher (sinon le navigateur l'annule et l'ordre n'est pas gardé) */
+  if (TRI.box.contains(e.target) && (!sur || sur === TRI.el)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; return; }
   if (!sur || sur === TRI.el || sur.parentElement !== TRI.box) return;
   e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; TRI.el.classList.add('en-tri');
   const r = sur.getBoundingClientRect(); if (e.clientY < r.top + r.height / 2) { if (sur.previousElementSibling !== TRI.el) TRI.box.insertBefore(TRI.el, sur); } else if (sur.nextElementSibling !== TRI.el) sur.after(TRI.el);
