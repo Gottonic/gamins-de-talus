@@ -296,7 +296,7 @@ ACTIONS.standPoint = (el) => {
     <div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Il en reste</th><th>Dont repris au stock</th><th class="r">Prix</th></tr></thead><tbody>
     ${ls.map((l) => `<tr><td>${esc(l.nom)}</td><td><input class="cell-in" name="r_${esc(l.id)}" inputmode="decimal" placeholder="0" value="${esc(val(l, 'reste'))}" style="width:64px"> <span class="hint">${esc(l.unite === 'pièce' ? 'pc' : l.unite)}</span></td><td><input class="cell-in" name="k_${esc(l.id)}" inputmode="decimal" placeholder="0" style="width:64px" value="${esc(val(l, 'repris'))}"></td><td class="r num">${money(l.prix)}</td></tr>`).join('')}
     </tbody></table></div>
-    <p class="hint">Comptez ce qui reste sur le stand (vide = il n'en reste pas). L'app compare à ce qui devrait rester : la différence est le manque (vol, pertes, erreurs). Ce qui est repris au stock quitte le stand.${suite ? ' Pas le temps de compter ? « Passer ».' : ''}</p>
+    <p class="hint">Compte ce qui reste sur le stand (vide = il n'en reste pas). L'app compare à ce qui devrait rester : la différence est le manque (vol, pertes, erreurs). Ce qui est repris au stock quitte le stand.${suite ? ' Pas le temps de compter ? « Passer ».' : ''}</p>
     <div class="row-end">${p ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="ce comptage">Supprimer</button>` : ''}${suite ? '<button class="btn" type="button" data-act="selfRemplir">Passer</button>' : ''}<button class="btn primary" type="submit">${suite ? 'Suivant' : 'Enregistrer'}</button></div></form>`);
 };
 FORMS.standPoint = (v) => {
@@ -354,7 +354,7 @@ ACTIONS.selfRemplir = () => {
   const ps = produits().filter((p) => num(prixNiveau(p, 'part')) > 0), arts = articles().filter((a) => a.actif !== false);
   if (!ps.length && !arts.length) { toast('Crée d\'abord un article de vente directe, ou mets une fourchette de prix sur un produit.', 5000); return; }
   const lgnArt = arts.map((a) => { const p = DB.get(a.prod) || {}, q = stockDe(a.prod); return `<tr><td><b>${esc(a.nom)}</b> <span class="hint">${esc(descArticle(a))}</span></td><td><input class="cell-in" name="qa_${esc(a.key)}" inputmode="numeric" placeholder="0" style="width:70px"> <span class="hint">${a.mode === 'lot' ? 'lots' : 'pièces'}</span></td><td><input class="cell-in" name="pa_${esc(a.key)}" inputmode="decimal" value="${esc(String(prixArticle(a)).replace('.', ','))}" style="width:70px"></td><td class="r hint">${p.auChamp ? '🌱 au champ' : q == null ? (p.dispo ? 'dispo' : '—') : fmtQ(q, p.unite)}</td></tr>`; }).join('');
-  openSheet(`${sheetHead('Remplir le stand', misesEnVente().length ? '2 / 2 · Ce que vous ajoutez' : '')}<form class="sbody form" data-form="self">
+  openSheet(`${sheetHead('Remplir le stand', misesEnVente().length ? '2 / 2 · Ce que tu ajoutes' : '')}<form class="sbody form" data-form="self">
     <div class="grid2">${inp('sf-date', 'Date', todayISO(), { name: 'date', type: 'date' })}${inp('sf-lieu', 'Où', 'Self-service', { name: 'lieu' })}</div>
     ${arts.length ? `<h3>Articles</h3><div class="table-wrap"><table class="list"><thead><tr><th>Article</th><th>Quantité</th><th>Prix</th><th class="r">Stock</th></tr></thead><tbody>${lgnArt}</tbody></table></div>` : ''}
     ${ps.length ? `<details${arts.length ? '' : ' open'}><summary class="hint" style="cursor:pointer">${arts.length ? 'Autres produits (au kg ou par calibre)' : 'Produits'}</summary>` : ''}
