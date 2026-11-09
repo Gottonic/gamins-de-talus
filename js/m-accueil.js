@@ -60,9 +60,25 @@ function renderAccueil() {
     </section>
     ${retourHtml()}
     ${typeof journeeEnCoursHtml === 'function' ? journeeEnCoursHtml() : ''}
+    ${tachesAFinirHtml()}
     <section class="tiles" aria-label="Modules">${tiles}</section>
     ${rappels.join('')}
     ${kpis}`;
+}
+/* ---------- À finir : tâches prévues aujourd'hui, pas cochées un jour passé, ou à échéance aujourd'hui ou dépassée (pour moi) ----------
+   Celles d'une journée déjà affichée au-dessus n'y sont pas répétées. */
+function tachesAFinir() {
+  if (typeof taches !== 'function') return [];
+  const t0 = todayISO(), dansCarte = new Set(typeof journeesEnCours === 'function' ? journeesEnCours().map((x) => x.j) : []);
+  return taches().filter((t) => tacheOuverte(t) && (!Sync.me || quiInclut(t.responsable, Sync.me)) && !(t.journee && (dansCarte.has(t.journee) || !quiInclut((DB.get(t.journee.split('|')[0]) || {}).qui, Sync.me || '')))
+    && ((jourPlanifie(t) && jourPlanifie(t) <= t0) || (t.echeance && t.echeance <= t0)))
+    .sort((a, b) => (pasTerminee(b) || (b.echeance && b.echeance < t0) ? 1 : 0) - (pasTerminee(a) || (a.echeance && a.echeance < t0) ? 1 : 0) || importanceDe(a) - importanceDe(b) || triOrdre(a, b));
+}
+function tachesAFinirHtml() {
+  const l = tachesAFinir(); if (!l.length) return '';
+  const retard = l.filter((t) => pasTerminee(t) || (t.echeance && t.echeance < todayISO())).length;
+  return `<section class="panel jc a-finir"><h2>☑ À finir aujourd'hui <small class="hint">${l.length}${retard ? ` · dont ${retard} en retard` : ''}</small></h2>
+    <div>${l.map((t) => tacheHtml(t, { court: true, sansDate: true, sous: true })).join('')}</div></section>`;
 }
 /* ---------- De retour (fin de sourdine ou de vacances, dans les 14 derniers jours) : ce qui te concerne directement ---------- */
 function absenceRecente() {
