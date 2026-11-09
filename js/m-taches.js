@@ -162,7 +162,8 @@ function tacheHtml(t, o = {}) {
   if (t.planches) meta.push(`<span>▦ ${esc(t.planches)}</span>`);
   const ctc = t.contactId && DB.get(t.contactId); if (ctc) meta.push(`<span>👤 ${esc(displayName(ctc))}</span>`);
   const li = t.liste || []; if (li.length) meta.push(`<span>☑ ${li.filter((x) => x.fait).length}/${li.length}</span>`);
-  if (t.rep && !done) meta.push(`<span title="Tâche qui se répète">↻</span>`);
+  if (t.rep && !done) meta.push(`<span title="Tâche qui se répète">🔁</span>`);
+  if (t.remarques && o.court) meta.push(`<span title="${esc(trunc(t.remarques, 120))}">📝</span>`);
   return `<div class="task${done ? ' done' : ''}" draggable="${done ? 'false' : 'true'}" data-tache="${esc(t.key)}" style="--c:${esc(couleurCat(c.cat))}">${o.tri && !done ? '<span class="poignee" data-poignee draggable="false" title="Glisser pour changer l\'ordre" aria-hidden="true">⋮⋮</span>' : ''}<button class="tick" type="button" data-act="taTick" data-key="${esc(t.key)}" aria-label="${done ? 'Rouvrir' : 'Marquer comme faite'} : ${esc(t.titre)}"></button>
     <div class="body" data-act="taVoir" data-key="${esc(t.key)}" role="button" tabindex="0"><strong>${!done && !o.sansImp && imp === 1 ? '<span class="imp imp1" title="Urgent">🔥</span> ' : ''}${esc(t.titre)}</strong>${meta.length ? `<span class="meta">${meta.join('')}</span>` : ''}${t.remarques && !o.court ? `<span class="meta">${linkify(trunc(t.remarques, 160))}</span>` : ''}</div>${o.sous && li.length ? `<div class="ta-sous">${li.map((x, i) => `<label class="ta-li"><input type="checkbox" data-li-t="${esc(t.key)}|${i}"${x.fait ? ' checked' : ''}> <span${x.fait ? ' class="barre"' : ''}>${esc(x.t)}</span></label>`).join('')}</div>` : ''}</div>`;
 }
