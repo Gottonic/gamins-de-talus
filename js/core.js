@@ -311,7 +311,7 @@ function sel(id, label, val, options, opts = {}) {
 }
 function txt(id, label, val, opts = {}) { return fld(id, label, `<textarea id="${id}" name="${opts.name || id}" rows="${opts.rows || 3}">${esc(val ?? '')}</textarea>`, opts.sub); }
 function persOptions(withEnsemble) { const o = personnes().map((p) => [p.k, p.nom]); if (withEnsemble) o.push(['ensemble', 'Ensemble']); return o; }
-function formValues(form) { const o = {}; for (const el of form.elements) { if (!el.name) continue; if (el.type === 'checkbox') o[el.name] = el.checked; else if (el.type === 'radio') { if (el.checked) o[el.name] = el.value; } else o[el.name] = el.value.trim(); } return o; }
+function formValues(form) { const o = {}; for (const el of form.elements) { if (!el.name || el.tagName === 'BUTTON' || /^(submit|button|reset)$/i.test(el.type)) continue; if (el.type === 'checkbox') o[el.name] = el.checked; else if (el.type === 'radio') { if (el.checked) o[el.name] = el.value; } else o[el.name] = el.value.trim(); } return o; }
 
 /* Confirmation dans la page (pas de boîte de dialogue du navigateur) */
 function confirmSheet(titre, texte, actOk, labelOk, data) {
@@ -341,7 +341,9 @@ document.addEventListener('click', (e) => {
 document.addEventListener('submit', (e) => {
   const form = e.target.closest('form[data-form]'); if (!form) return;
   e.preventDefault(); const f = FORMS[form.dataset.form]; if (!f) return;
-  utiliseForm(form, () => f(formValues(form), form));
+  /* Le bouton qui a envoyé le formulaire (name/value), ex. « Enregistrer » ou « Enregistrer et livrer » */
+  const v = formValues(form); if (e.submitter && e.submitter.name) v[e.submitter.name] = e.submitter.value;
+  utiliseForm(form, () => f(v, form));
 });
 /* Un formulaire qu'on vient d'envoyer (ou dont un bouton vient de servir) n'est pas remis tel quel au prochain affichage.
    La marque s'efface dès qu'on y retape quelque chose. */

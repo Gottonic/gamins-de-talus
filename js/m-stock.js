@@ -687,7 +687,17 @@ function twDevine(entete, lignes) {
     montant: trouve([/montant(?!.*frais)/, /betrag/, /amount/, /brut/, /total/], (v) => isFinite(twNombre(v)) && twNombre(v) !== 0 && !twDate(v)),
     ref: trouve([/^ref|referen|^id\b|transaction.?id|transaktions.?id/]),
     texte: trouve([/description|beschreibung|message|nachricht|texte|libelle|magasin|store|point/]),
+    frais: trouve([/frais|gebuhr|fee|commission|kommission|taxe/]),
+    net: trouve([/\bnet/]),
   };
+}
+/* Une ligne du relevé → paiement { date, montant (brut), ref, texte, frais } ; les frais TWINT : colonne « frais », ou brut − net */
+function twLigne(l, c) {
+  const brutOuNet = r2(twNombre(l[c.montant])), fr = c.frais >= 0 ? Math.abs(twNombre(l[c.frais])) || 0 : 0;
+  const montantEstNet = c.net >= 0 && c.net === c.montant;
+  const montant = montantEstNet && fr && brutOuNet > 0 ? r2(brutOuNet + fr) : brutOuNet;
+  const frais = fr ? r2(fr) : (c.net >= 0 && c.net !== c.montant && montant > 0 ? Math.max(0, r2(montant - Math.abs(twNombre(l[c.net]) || montant))) : 0);
+  return { date: twDate(l[c.date]), montant, ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '', frais: montant > 0 && isFinite(frais) ? frais : 0 };
 }
 ACTIONS.twImport = () => {
   openSheet(`${sheetHead('Importer le relevé TWINT', 'Fichier exporté de TWINT Business')}<div class="sbody">
@@ -706,37 +716,55 @@ ACTIONS.twImport = () => {
 function twApercu() {
   const res = $('tw-res'); if (!res) return; const c = TW.cols, opts = (v) => `<option value="-1">—</option>${TW.entete.map((h, j) => `<option value="${j}"${j === v ? ' selected' : ''}>${esc(h)}</option>`).join('')}`;
   const tx = twTransactions();
-  res.innerHTML = `<div class="grid2">${[['date', 'Colonne date'], ['montant', 'Colonne montant'], ['ref', 'Référence (facultatif)'], ['texte', 'Texte (facultatif)']].map(([k, l]) => `<div class="field"><label for="tw-${k}">${l}</label><select id="tw-${k}" data-twc="${k}">${opts(c[k])}</select></div>`).join('')}</div>
-    <p class="hint">${tx.length} paiement${tx.length > 1 ? 's' : ''} reconnu${tx.length > 1 ? 's' : ''}${tx.length ? `, du ${fmtDate(tx[0].date)} au ${fmtDate(tx[tx.length - 1].date)}, total ${chf(tx.reduce((a, t) => a + t.montant, 0))}` : ''}.</p>
+  const fr = r2(tx.reduce((a, t) => a + (t.frais || 0), 0));
+  res.innerHTML = `<div class="grid2">${[['date', 'Colonne date'], ['montant', 'Colonne montant'], ['frais', 'Frais TWINT (facultatif)'], ['ref', 'Référence (facultatif)'], ['texte', 'Texte (facultatif)']].map(([k, l]) => `<div class="field"><label for="tw-${k}">${l}</label><select id="tw-${k}" data-twc="${k}">${opts(c[k])}</select></div>`).join('')}</div>
+    <p class="hint">${tx.length} paiement${tx.length > 1 ? 's' : ''} reconnu${tx.length > 1 ? 's' : ''}${tx.length ? `, du ${fmtDate(tx[0].date)} au ${fmtDate(tx[tx.length - 1].date)}, total ${chf(tx.reduce((a, t) => a + t.montant, 0))}` : ''}.${fr ? ` Frais TWINT : <b>${chf(fr)}</b> (enregistrés en dépense, un total par mois, compte 6900 Frais bancaires).` : tx.length ? ' Pas de colonne de frais trouvée : choisis-la ci-dessus si le fichier en a une.' : ''}</p>
     ${tx.length ? `<div class="table-wrap"><table class="list"><tbody>${tx.slice(0, 5).map((t) => `<tr><td class="num">${fmtDate(t.date)}</td><td>${esc(trunc(t.texte || t.ref, 40))}</td><td class="r num">${money(t.montant)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div class="row-end"><button class="btn primary" type="button" data-act="twImportOk"${tx.length ? '' : ' disabled'}>Importer</button></div>`;
   res.querySelectorAll('select[data-twc]').forEach((el) => el.addEventListener('change', () => { TW.cols[el.dataset.twc] = Number(el.value); twApercu(); }));
 }
 function twTransactions() {
   const c = TW.cols; if (!TW.lignes || c.date < 0 || c.montant < 0) return [];
-  return TW.lignes.map((l) => ({ date: twDate(l[c.date]), montant: r2(twNombre(l[c.montant])), ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '' }))
+  return TW.lignes.map((l) => twLigne(l, c))
     .filter((t) => t.date && isFinite(t.montant) && t.montant !== 0).sort((a, b) => a.date.localeCompare(b.date));
 }
 ACTIONS.twImportOk = () => {
   const r = importerTransactionsTwint(twTransactions());
-  closeSheet(); toast(r.n ? `${r.n} paiement${r.n > 1 ? 's' : ''} TWINT importé${r.n > 1 ? 's' : ''}${r.lies ? `, dont ${r.lies} rattaché${r.lies > 1 ? 's' : ''} à des ventes` : ''}.` : 'Rien de nouveau : ces paiements étaient déjà importés.', 5000);
+  closeSheet(); toast((r.n ? `${r.n} paiement${r.n > 1 ? 's' : ''} TWINT importé${r.n > 1 ? 's' : ''}${r.lies ? `, dont ${r.lies} rattaché${r.lies > 1 ? 's' : ''} à des ventes` : ''}.` : 'Rien de nouveau : ces paiements étaient déjà importés.') + (r.frais ? ` Frais TWINT : ${chf(r.frais)} en dépense.` : ''), 6000);
 };
 /* Ajoute les paiements d'un relevé TWINT (sans doublon) ; aussi utilisé par la vérification des relevés de fin d'année */
 function importerTransactionsTwint(tx) {
   let n = 0, lies = 0; const deja = new Set(DB.all('tw:').flatMap((t) => [t.cle, t.apparie]).filter(Boolean)), vus = {};
   const ventes = factures().filter((f) => f.payeePar === 'twint' && f.statut === 'payee'), prises = new Set(DB.all('tw:').map((t) => t.utilise).filter(Boolean));
+  const mois = new Set();
   for (const t of tx) {
     const base = t.ref || `${t.date}|${t.montant}|${t.texte}`; vus[base] = (vus[base] || 0) + 1; const cle = t.ref ? t.ref : base + '|' + vus[base];
-    if (deja.has(cle)) continue;
+    if (t.frais) mois.add(t.date.slice(0, 7));
+    if (deja.has(cle)) { if (t.frais) { const x = DB.all('tw:').find((y) => y.cle === cle || y.apparie === cle); if (x && x.frais !== t.frais) DB.put(x.key, Object.assign({}, DB.get(x.key), { frais: t.frais })); } continue; }
     /* Déjà enregistré depuis le mail TWINT (même jour, même montant) : on le relie, sans le recompter */
     const viaMail = DB.all('tw:').find((x) => x.src === 'mail' && !x.apparie && x.date === t.date && Math.abs(num(x.montant) - t.montant) < 0.01);
-    if (viaMail) { DB.put(viaMail.key, Object.assign({}, viaMail, { apparie: cle, ref: t.ref || viaMail.ref })); deja.add(cle); continue; }
+    if (viaMail) { DB.put(viaMail.key, Object.assign({}, viaMail, { apparie: cle, ref: t.ref || viaMail.ref }, t.frais ? { frais: t.frais } : {})); deja.add(cle); continue; }
     const o = Object.assign({ cle, importe: new Date().toISOString(), par: Sync.me || '' }, t);
     const v = ventes.find((f) => !prises.has(f.key) && (f.payeeLe || f.date) === t.date && Math.abs(num(f.total) - t.montant) < 0.01);
     if (v) { o.utilise = v.key; prises.add(v.key); lies++; }
+    if (!o.frais) delete o.frais;
     DB.put('tw:' + uid('w'), o); n++;
   }
-  return { n, lies };
+  return { n, lies, frais: majFraisTwint(mois) };
+}
+/* Frais TWINT Business → une dépense par mois (dep:twfrais-AAAA-MM, compte 6900), recalculée à chaque import : jamais en double */
+function majFraisTwint(mois) {
+  let tot = 0;
+  for (const m of mois) {
+    const l = DB.all('tw:').filter((t) => String(t.date).slice(0, 7) === m && num(t.frais) > 0), f = r2(l.reduce((a, t) => a + num(t.frais), 0));
+    const k = 'dep:twfrais-' + m, old = DB.get(k); if (!f && !old) continue; tot += f;
+    const [Y, M] = m.split('-').map(Number), fin = isoDate(new Date(Y, M, 0, 12)), d = fin > todayISO() ? todayISO() : fin;
+    const nomMois = new Date(m + '-15T12:00').toLocaleDateString('fr-CH', { month: 'long', year: 'numeric' });
+    DB.put(k, Object.assign({ cree: new Date().toISOString(), creePar: Sync.me || '', n: 1 + Math.max(0, ...depenses().map((x) => x.n || 0)) }, old || {}, {
+      date: d, montant: f, objet: `Frais TWINT ${nomMois}`, type: 'charge', compte: '6900', par: (typeof titulaireCompte === 'function' && titulaireCompte()) || Sync.me || '',
+      justificatif: 'Relevé TWINT', remarque: `${l.length} paiement${l.length > 1 ? 's' : ''} : frais retenus par TWINT sur les versements (calculé depuis le relevé).`, auto: 'twint' }));
+  }
+  return r2(tot);
 }
 /* Paiements TWINT libres pendant une vente directe (de la mise en vente à la clôture, ou aujourd'hui) */
 function twintPourSelf(s) {

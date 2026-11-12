@@ -17,7 +17,7 @@ async function lireReleveTwint(file) {
   let hi = rows.findIndex((r) => r.filter((x) => typeof x === 'string' && x.trim() && !twDate(x) && !isFinite(twNombre(x))).length >= 2); if (hi < 0) hi = 0;
   const entete = rows[hi].map((x, j) => String(x || 'Colonne ' + (j + 1))), lignes = rows.slice(hi + 1).filter((r) => r.some((x) => String(x).trim())), c = twDevine(entete, lignes);
   if (c.date < 0 || c.montant < 0) throw new Error('colonnes date / montant introuvables');
-  return lignes.map((l) => ({ date: twDate(l[c.date]), montant: r2(twNombre(l[c.montant])), ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '' }))
+  return lignes.map((l) => twLigne(l, c))
     .filter((t) => t.date && isFinite(t.montant) && t.montant !== 0).sort((a, b) => a.date.localeCompare(b.date));
 }
 /* Relevé bancaire : camt.053 / camt.054 (XML, le format standard des banques suisses) ou CSV ; un PDF est seulement joint */

@@ -1,10 +1,10 @@
 /* Gamins de Talus : fonctionne hors ligne. Changer VERSION à chaque mise à jour du code. */
-const VERSION = 'gdt-2026-11-12-11';
+const VERSION = 'gdt-2026-11-12-12';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'lib/supabase.js', 'lib/jspdf.umd.min.js', 'lib/qrcode.js', 'lib/jszip.min.js',
   'js/calc.js', 'js/core.js', 'js/comptes.js', 'js/fichiers.js', 'js/pdf.js', 'js/m-accueil.js', 'js/m-factures.js', 'js/m-contacts.js', 'js/m-finances.js',
-  'js/categories.js', 'js/m-calendrier.js', 'js/m-taches.js', 'js/m-cultures.js', 'js/m-inventaire.js', 'js/m-reglages.js', 'js/m-messages.js', 'js/m-bouclement.js', 'js/releves.js', 'js/m-irrigation.js', 'js/m-stock.js', 'js/m-parcelle.js', 'js/m-itineraires.js', 'js/m-idees.js', 'js/nouveautes.js', 'js/m-drive.js', 'js/main.js',
+  'js/categories.js', 'js/m-calendrier.js', 'js/m-taches.js', 'js/m-cultures.js', 'js/m-inventaire.js', 'js/m-reglages.js', 'js/m-messages.js', 'js/m-bouclement.js', 'js/releves.js', 'js/m-irrigation.js', 'js/m-stock.js', 'js/m-precommandes.js', 'js/m-parcelle.js', 'js/m-itineraires.js', 'js/m-idees.js', 'js/nouveautes.js', 'js/m-drive.js', 'js/main.js',
   'icons/gdt-192.png', 'icons/gdt-512.png', 'icons/gdt-maskable-512.png', 'icons/gdt-180.png', 'icons/favicon.svg', 'icons/favicon-32.png', 'icons/badge-96.png',
   'fonts/bricolage-grotesque-latin-600-normal.woff2', 'fonts/bricolage-grotesque-latin-800-normal.woff2',
   'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2',

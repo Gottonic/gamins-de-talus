@@ -131,11 +131,12 @@ MODULES.factures = {
   render(sub, id) {
     if (sub === 'produits') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
     const pr = SOUS_PROSPECTION.includes(sub);
-    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), (standARemplir() && !priseStand()) || ardAFacturer().length > 0], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
+    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), (standARemplir() && !priseStand()) || ardAFacturer().length > 0], ['precommandes', 'Précommandes' + (typeof pcOuvertes === 'function' && pcOuvertes().length ? ' · ' + pcOuvertes().length : '')], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
     if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'stock') return t + renderStock();
     if (sub === 'selfservice') return t + renderSelfService();
+    if (sub === 'precommandes') return t + renderPrecommandes();
     return t + renderListeFactures(sub === 'voir' ? id : '');
   },
   after(sub) { if (sub === 'nouvelle') brancherBrouillon(); if (sub === 'stock') brancherStock(); if (SOUS_PROSPECTION.includes(sub)) afterContactsProspection(sub); },
@@ -343,6 +344,7 @@ function creerVente(pdf) {
     /* Prix qui changent pour ce client (ils deviennent ses nouveaux prix habituels) */
     const changes = inv.client && inv.client.id ? d.lignes.map((l) => { const pc = l.produitId ? prixClient(inv.client.id, l.produitId, l.calibre) : null; return pc && Math.abs(pc.prix - num(l.prix)) >= 0.005 ? `${l.designation} ${money(l.prix)} (avant ${money(pc.prix)})` : ''; }).filter(Boolean) : [];
     DB.put(key, inv); stockPourVente(key, inv);
+    if (typeof pcVenteEnregistree === 'function') pcVenteEnregistree(key);
     Object.assign(draftF, { lignes: [], bulletin: '', remarque: '', livraison: '', paiement: 'virement' });
     toast((inv.numero ? `Vente enregistrée, facture ${inv.numero}.` : 'Vente enregistrée.') + (changes.length ? ` Nouveau prix pour ce client : ${changes.join(', ')}.` : '') + (!pdf && (inv.numero || inv.blNumero) ? ' Les PDF : bouton « Facture & bulletin PDF ».' : ''), changes.length ? 7000 : 4500);
     go('#/factures/voir/' + encodeURIComponent(key));
@@ -425,7 +427,7 @@ ACTIONS.venteModifier = (el) => {
   });
   go('#/factures/nouvelle');
 };
-function viderBrouillon() { Object.assign(draftF, { edition: '', clientId: '', date: todayISO(), lignes: [], bulletin: '', remarque: '', livraison: '', paiement: 'virement', facture: true, bl: false, stock: true, moyen: 'especes' }); }
+function viderBrouillon() { Object.assign(draftF, { precommande: '', edition: '', clientId: '', date: todayISO(), lignes: [], bulletin: '', remarque: '', livraison: '', paiement: 'virement', facture: true, bl: false, stock: true, moyen: 'especes' }); }
 ACTIONS.venteModifAnnuler = () => { const k = draftF.edition; viderBrouillon(); go(k ? '#/factures/voir/' + encodeURIComponent(k) : '#/factures'); };
 function modifierVente() {
   const k = draftF.edition, old = DB.get(k); if (!old) { viderBrouillon(); render(); return; }
