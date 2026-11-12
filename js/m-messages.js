@@ -690,7 +690,10 @@ async function twintAuto() {
       if (!mt && !LOCAL_MODE && Sync.sb && navigator.onLine) { try { const c = MAIL.complet[m.key] || await boite(m.key, 'lire'); MAIL.complet[m.key] = c; txt += ' ' + (c.texte || ''); mt = montantDansTexte(txt); } catch (e) { /* reste à la main */ } }
       if (!mt) continue;
       const cur = DB.get(m.key); if (!cur || cur.statut === 'traite' || cur.twAttente || DB.all('tw:').some((t) => t.mail === m.key)) continue;
-      const fs = facturesOuvertesDe(mt);
+      const fs = facturesOuvertesDe(mt), jour = jourDuMail(m), pris = new Set(DB.all('tw:').map((t) => t.utilise).filter(Boolean));
+      /* Une vente déjà notée « payée par TWINT » ce jour-là, du même montant (précommande livrée, marché) : c'est elle */
+      const vt = (typeof factures === 'function' ? factures() : []).find((f) => f.statut === 'payee' && f.payeePar === 'twint' && (f.payeeLe || f.date) === jour && Math.abs(r2(f.total) - mt) < 0.005 && !pris.has(f.key));
+      if (vt) { const id = String(m.key).replace(/^mail:/, '').replace(/[^\w-]/g, ''); sansAnnuler(() => { DB.put('tw:twm-' + id, { cle: 'mail:' + m.key, src: 'mail', mail: m.key, date: jour, montant: mt, ref: vt.numero || '', texte: payeurDansTexte(txt) || m.objet || '', utilise: vt.key, importe: new Date().toISOString(), par: Sync.me || '' }); DB.put(m.key, Object.assign({}, DB.get(m.key), { statut: 'traite', traitePar: '' })); }); if (!LOCAL_MODE) boite(m.key, 'lu').catch(() => {}); continue; }
       sansAnnuler(() => {
         if (fs.length) DB.put(m.key, Object.assign({}, cur, { twAttente: { montant: mt, factures: fs.map((f) => f.key), payeur: payeurDansTexte(txt) } }));
         else enregistrerTwintMail(m.key, 'self', jourDuMail(m), mt, payeurDansTexte(txt), true);

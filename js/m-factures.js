@@ -129,14 +129,14 @@ MODULES.factures = {
     return { line: f.length ? `${f.length} vente${f.length > 1 ? 's' : ''}, tout est payé` : 'Ventes, stock et prix' };
   },
   render(sub, id) {
-    if (sub === 'produits') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
+    if (sub === 'produits' || sub === 'precommandes') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
     const pr = SOUS_PROSPECTION.includes(sub);
-    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), (standARemplir() && !priseStand()) || ardAFacturer().length > 0], ['precommandes', 'Précommandes' + (typeof pcOuvertes === 'function' && pcOuvertes().length ? ' · ' + pcOuvertes().length : '')], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub === 'selfstats' ? 'selfservice' : sub);
+    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), (standARemplir() && !priseStand()) || ardAFacturer().length > 0], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub === 'selfstats' ? 'selfservice' : sub);
     if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'stock') return t + renderStock();
     if (sub === 'selfservice') return t + renderSelfService();
-    if (sub === 'precommandes') return t + renderPrecommandes();
+
     if (sub === 'selfstats') return t + renderStatsSelf();
     return t + renderListeFactures(sub === 'voir' ? id : '');
   },
@@ -650,6 +650,9 @@ ACTIONS.prodEdit = (el) => {
     <p class="hint">Facultatif, pour un produit au kg vendu à la pièce : jusqu'à 3 tailles avec leur poids moyen. En vente directe ou sur une facture, on compte les pièces ; le stock baisse de pièces × poids. Prix d'une pièce : prix au kg × poids, arrondi à 50 ct en vente directe (ou le prix écrit ici).</p>
     ${[0, 1, 2].map((j) => { const c = (p.calibres || [])[j] || {}; return `<div class="grid3">${inp('pr-cn-' + j, j ? '' : 'Calibre', c.nom || '', { name: 'cn_' + j, attrs: { placeholder: ['Petit', 'Moyen', 'Gros'][j] } })}${inp('pr-cp-' + j, j ? '' : 'Poids moyen kg', c.poids ?? '', { name: 'cp_' + j, type: 'number', attrs: { placeholder: 'ex. ' + ['0,8', '1,5', '2,5'][j] } })}${inp('pr-cx-' + j, j ? '' : 'Prix pièce, vente directe', c.prix ?? '', { name: 'cx_' + j, type: 'number', sub: `<span id="pr-cauto-${j}"></span>` })}</div>`; }).join('')}
     <h3>Stock</h3>
+    ${sel('pr-origine', "D'où il vient", p.origine || '', [['', '🌱 Récolté (au jardin)'], ['prepare', '🧺 Préparé avec d\'autres produits (ex. sachet)'], ['achete', '🛒 Acheté ou reçu']], { name: 'origine', sub: 'Préparé : « + Préparer » transforme le stock des ingrédients en ce produit. Acheté : « + Ajouter » au lieu de « + Récolte ».' })}
+    <div id="pr-recette"${p.origine === 'prepare' ? '' : ' hidden'}><span class="flabel">Pour 1 ${esc(p.unite || 'unité')}, il faut</span>
+      ${[0, 1, 2, 3].map((j) => { const r = (p.recette || [])[j] || {}; return `<div class="grid2">${sel('pr-rp-' + j, '', r.prod || '', [['', '—']].concat(produits().filter((x) => x.key !== k).map((x) => [x.key, x.nom + ' (' + (x.unite || '') + ')'])), { name: 'rp_' + j })}${inp('pr-rq-' + j, '', r.qte ?? '', { name: 'rq_' + j, type: 'number', attrs: { placeholder: 'quantité', 'aria-label': 'Quantité' } })}</div>`; }).join('')}</div>
     ${sel('pr-fiche', 'Vient de la culture', p.fiche || '', [['', '—']].concat((typeof fiches === 'function' ? fiches() : []).map((f) => [f.key, f.nom])), { name: 'fiche', sub: 'Les récoltes de cette culture peuvent entrer dans le stock de ce produit.' })}
     <label class="row" style="font-size:14px"><input type="checkbox" name="dispo"${p.dispo ? ' checked' : ''}> Disponible (sans compter la quantité)</label>
     <label class="row" style="font-size:14px"><input type="checkbox" name="auChamp"${p.auChamp ? ' checked' : ''}> Au champ (à récolter à la demande)</label>
@@ -668,6 +671,7 @@ ACTIONS.prodEdit = (el) => {
     const q = { prixMin: $('pr-min').value === '' ? '' : num($('pr-min').value), prixMax: $('pr-max').value === '' ? '' : num($('pr-max').value), prixParType: p.prixParType, prix: p.prix, prixNiveau: { part: $('pr-n-part').value === '' ? '' : num($('pr-n-part').value) } };
     for (const j of [0, 1, 2]) { const w = num($('pr-cp-' + j).value), x = w > 0 ? prixPiece(q, { poids: w }, 'part') : ''; $('pr-cx-' + j).placeholder = x === '' ? '' : money(x); $('pr-cauto-' + j).textContent = w > 0 ? ($('pr-cx-' + j).value ? 'fixé à la main' : 'auto') : ''; }
   };
+  $('pr-origine').addEventListener('change', () => { $('pr-recette').hidden = $('pr-origine').value !== 'prepare'; });
   for (const id of ['pr-min', 'pr-max', ...NIVEAUX.map(([key]) => 'pr-n-' + key)]) $(id).addEventListener('input', () => { maj(); majCal(); });
   for (const j of [0, 1, 2]) for (const x of ['cp', 'cx']) $(`pr-${x}-${j}`).addEventListener('input', majCal);
   majCal();
@@ -677,7 +681,8 @@ FORMS.prod = (v) => {
   if (!v.nom) { toast('La désignation est obligatoire.'); return; }
   const val = (x) => (x === '' ? null : r2(num(x)));
   const k = v.key || 'prod:' + uid('p'), old = DB.get(k) || {};
-  const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), remarque: v.remarque || '', prixNiveau: {}, fiche: v.fiche || '', dispo: !!v.dispo, auChamp: !!v.auChamp });
+  const o = Object.assign({}, old, { nom: v.nom, unite: v.unite, prixMin: val(v.prixMin), prixMax: val(v.prixMax), remarque: v.remarque || '', prixNiveau: {}, fiche: v.fiche || '', dispo: !!v.dispo, auChamp: !!v.auChamp, origine: v.origine || '' });
+  o.recette = v.origine === 'prepare' ? [0, 1, 2, 3].map((j) => ({ prod: v['rp_' + j], qte: num(v['rq_' + j]) })).filter((r) => r.prod && r.qte > 0) : [];
   o.calibres = [0, 1, 2].map((j) => ({ nom: (v['cn_' + j] || '').trim() || ['Petit', 'Moyen', 'Gros'][j], poids: val(v['cp_' + j]), prix: val(v['cx_' + j]) })).filter((c) => c.poids > 0);
   for (const [key] of NIVEAUX) { const x = val(v['n_' + key]); if (x != null && Math.abs(x - num(prixAuto(o, key))) >= 0.005) o.prixNiveau[key] = x; } // égal au calcul : on garde l'automatique
   if (o.prixMin != null && o.prixMax != null && o.prixMin > o.prixMax) { toast('Le minimum dépasse le maximum.'); return; }

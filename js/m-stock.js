@@ -11,7 +11,7 @@
 
 const mouvements = () => DB.all('mvt:');
 const misesEnVente = () => DB.all('self:').sort((a, b) => String(b.date).localeCompare(String(a.date)));
-const TYPES_MVT = { recolte: 'Récolte', vente: 'Vente', self: 'Mis en vente directe', retour: 'Invendus repris', perte: 'Perte', ajout: 'Ajout', inventaire: 'Compté' };
+const TYPES_MVT = { recolte: 'Récolte', vente: 'Vente', self: 'Mis en vente directe', retour: 'Invendus repris', perte: 'Perte', ajout: 'Ajout', inventaire: 'Compté', prepa: 'Préparation' };
 
 /* Quantité en stock : dernier comptage + mouvements suivants. null = quantité pas suivie. */
 function stockDe(prodKey, ms) {
@@ -34,16 +34,18 @@ function recoltesDeCulture(cultureKey) {
 
 /* ---------- Onglet « Stock et prix » ---------- */
 function renderStock() {
-  const ps = produits(), ms = mouvements();
+  const ps = produits(), ms = mouvements(), res = typeof reserves === 'function' ? reserves() : {};
   const st = ps.map((p) => ({ p, q: stockDe(p.key, ms) }));
-  const enStock = st.filter((x) => (x.q != null && x.q > 0) || x.p.dispo || x.p.auChamp);
+  const enStock = st.filter((x) => (x.q != null && x.q > 0) || x.p.dispo || x.p.auChamp || res[x.p.key]);
   const prix = (p) => [fourchette(p) ? `fourchette ${fourchette(p)}` : '', prixNiveauxTxt(p), calibresDe(p).length ? 'à la pièce : ' + calibresDe(p).map((c) => `${c.nom} ${money(prixPiece(p, c, 'part'))}`).join(', ') : ''].filter(Boolean).join(' · ');
   const ligne = ({ p, q }) => `<div class="stk${q != null && q < 0 ? ' neg' : ''}">
       <div class="stk-nom"><b>${esc(p.nom)}</b>${p.auChamp ? ' <span class="tpill champ">🌱 au champ</span>' : ''}${p.dispo && (q == null || q <= 0) ? ' <span class="tpill">disponible</span>' : ''}<br><span class="hint">${prix(p) || 'Prix à définir'}</span></div>
-      <div class="stk-q num">${q != null ? fmtQ(q, p.unite) : '—'}</div>
-      <div class="row stk-act"><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="recolte">+ Récolte</button><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="perte">− Sortie</button><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="inventaire">Compter</button><button class="btn small" type="button" data-act="stkHist" data-prod="${esc(p.key)}" aria-label="Historique">⋯</button></div></div>`;
+      <div class="stk-q num">${q != null ? fmtQ(q, p.unite) : '—'}${res[p.key] ? `<br><span class="hint">réservé ${fmtQ(res[p.key], '')}${q != null ? ` · libre <b class="${q - res[p.key] < 0 ? 'bad' : ''}">${fmtQ(r2(q - res[p.key]), '')}</b>` : ''}</span>` : ''}</div>
+      <div class="row stk-act">${p.origine === 'prepare' ? `<button class="btn small" type="button" data-act="prepaNouveau" data-prod="${esc(p.key)}">+ Préparer</button>` : p.origine === 'achete' ? `<button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="ajout">+ Ajouter</button>` : `<button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="recolte">+ Récolte</button>`}<button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="perte">− Sortie</button><button class="btn small" type="button" data-act="mvtNouveau" data-prod="${esc(p.key)}" data-type="inventaire">Compter</button><button class="btn small" type="button" data-act="stkHist" data-prod="${esc(p.key)}" aria-label="Historique">⋯</button></div></div>`;
   const recents = ms.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || ''))).slice(0, 8);
-  return `<div class="row"><button class="btn primary" type="button" data-act="mvtNouveau" data-type="recolte">+ Noter une récolte</button><button class="btn" type="button" data-act="grilleSheet">Grille de prix (PDF)</button></div>
+  const cadrePc = typeof precommandesPanelHtml === 'function' ? precommandesPanelHtml() : '';
+  return `<div class="row"><button class="btn primary" type="button" data-act="mvtNouveau" data-type="recolte">+ Noter une récolte</button>${cadrePc ? '' : '<button class="btn" type="button" data-act="pcEdit">🎁 + Précommande</button>'}<button class="btn" type="button" data-act="grilleSheet">Grille de prix (PDF)</button></div>
+    ${cadrePc}
     <div class="split">
       <div class="panel"><h2>En stock${enStock.length ? ' · ' + enStock.length : ''}</h2>
         ${enStock.length ? enStock.map(ligne).join('') : '<p class="empty">Rien en stock. Note une récolte, ou marque un produit « disponible » ou « au champ » dans la liste plus bas.</p>'}
@@ -61,6 +63,27 @@ function brancherStock() {
   $('view').querySelectorAll('input[data-stk]').forEach((el) => el.addEventListener('change', () => { const p = DB.get(el.dataset.key); if (p) DB.put(el.dataset.key, Object.assign({}, p, { [el.dataset.stk]: el.checked })); }));
 }
 
+/* ---------- Préparer un produit avec d'autres (ex. sachet = cacahuètes + biscôme) : le stock des ingrédients passe dans le produit ---------- */
+ACTIONS.prepaNouveau = (el) => {
+  const k = el.dataset.prod, p = DB.get(k); if (!p) return;
+  const rec = (p.recette || []).length ? p.recette : [{ prod: '', qte: '' }, { prod: '', qte: '' }];
+  const opts = (v) => `<option value="">—</option>${produits().filter((x) => x.key !== k).map((x) => { const q = stockDe(x.key); return `<option value="${esc(x.key)}"${x.key === v ? ' selected' : ''}>${esc(x.nom)}${q != null ? ' · ' + esc(fmtQ(q, x.unite)) : ''}</option>`; }).join('')}`;
+  openSheet(`${sheetHead('Préparer : ' + p.nom, 'Les ingrédients sortent du stock, le produit y entre')}<form class="sbody form" data-form="prepa" id="prepa-form"><input type="hidden" name="prod" value="${esc(k)}">
+    <div class="grid2">${inp('pp-n', `Combien (${p.unite || 'unités'})`, '', { name: 'n', type: 'number', attrs: { autofocus: '' } })}${inp('pp-date', 'Date', todayISO(), { name: 'date', type: 'date' })}</div>
+    <div class="field"><span class="flabel">Utilisé</span>${rec.map((r, j) => `<div class="row pp-ing" data-par="${esc(r.qte ?? '')}"><select name="ip_${j}" aria-label="Ingrédient">${opts(r.prod)}</select><input class="cell-in" name="iq_${j}" inputmode="decimal" placeholder="total" style="width:80px" aria-label="Quantité utilisée"></div>`).join('')}
+      <span class="sub">${(p.recette || []).length ? 'Calculé avec la composition du produit ; corrige si besoin.' : 'La composition se règle dans le produit (« Préparé avec d\'autres produits ») ; ici, indique ce qui a été utilisé.'}</span></div>
+    ${inp('pp-note', 'Note', '', { name: 'note', attrs: { placeholder: 'facultatif' } })}
+    <div class="row-end"><button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+  const n = $('pp-n'); n.addEventListener('input', () => { const x = num(n.value); document.querySelectorAll('#prepa-form .pp-ing').forEach((r) => { const par = num(r.dataset.par); if (par > 0) r.querySelector('input').value = x > 0 ? String(r2(par * x)) : ''; }); });
+};
+FORMS.prepa = (v, form) => {
+  const n = num(v.n), p = DB.get(v.prod); if (!(n > 0) || !p) { toast('Indique combien.'); return; }
+  const ings = [...form.querySelectorAll('.pp-ing')].map((r) => ({ prod: r.querySelector('select').value, q: num(r.querySelector('input').value) })).filter((x) => x.prod && x.q > 0);
+  const ref = 'prepa:' + uid('x'), date = v.date || todayISO(), cree = new Date().toISOString();
+  DB.put('mvt:' + uid('m'), { date, prod: v.prod, qte: n, type: 'prepa', ref, par: Sync.me || '', note: v.note || (ings.length ? 'avec ' + ings.map((x) => (DB.get(x.prod) || {}).nom).join(', ') : ''), cree });
+  for (const x of ings) DB.put('mvt:' + uid('m'), { date, prod: x.prod, qte: -x.q, type: 'prepa', ref, par: Sync.me || '', note: 'pour ' + p.nom, cree });
+  closeSheet(); toast(`${fmtQ(n, p.unite)} ${p.nom} préparé${n > 1 ? 's' : ''}${ings.length ? ` (${ings.map((x) => fmtQ(x.q, (DB.get(x.prod) || {}).unite) + ' ' + (DB.get(x.prod) || {}).nom).join(', ')} sorti${ings.length > 1 ? 's' : ''} du stock)` : ''}.`, 5000);
+};
 /* La culture du plan d'une saison qui donne ce produit (fiche liée, sinon même nom) */
 function cultureDuProduit(p, saison) {
   if (!p || typeof cultures !== 'function') return null;

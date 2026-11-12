@@ -145,6 +145,7 @@ function contactFiche(c) {
   return `<div class="panel">
     <div class="between"><div><h2>${esc(displayName(c))}</h2><span class="tpill">${esc(typeLabel(c.type))}</span>${c.devenuClientLe ? ` <span class="hint">client depuis le ${fmtDate(c.devenuClientLe)}</span>` : ''}</div>
       <div class="row"><a class="btn primary" href="#/factures/nouvelle/${encodeURIComponent(c.key)}">Facturer</a><a class="btn" href="#/contacts/modifier/${encodeURIComponent(c.key)}">Modifier</a></div></div>
+    ${typeof pcSansAdressePour === 'function' && pcSansAdressePour(c.key) ? `<p class="pc-alerte">🎁 Précommande à livrer : il manque l'adresse. <a href="#/contacts/modifier/${encodeURIComponent(c.key)}">Compléter</a></p>` : ''}
     ${lignesContact(c)}
     ${c.notes ? `<div><h3>Notes</h3><div class="notes">${esc(c.notes)}</div></div>` : ''}
     <div><h3>Factures</h3>${invs.length ? `<p class="hint">Facturé : <span class="num">${chf(billed)}</span>${open ? ` · à encaisser : <span class="num">${chf(open)}</span>` : ''}</p>
