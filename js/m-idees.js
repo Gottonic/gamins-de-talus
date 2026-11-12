@@ -43,8 +43,17 @@ function ideesHtml() {
       ${ideeJoindreHtml()}
       <details><summary class="hint">+ Détails</summary>${txt('idee-det', 'Détails (facultatif)', '', { name: 'details', rows: 3 })}</details></form>
     <div class="idees">${ouv.length ? ouv.map(ligne).join('') : '<p class="empty">Rien en attente. 🌿</p>'}</div>
-    ${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>${IDEE.faites ? `<div class="idees">${faites.slice(0, 50).map(ligne).join('')}</div>` : ''}` : ''}</div>`;
+    <div class="row idees-pied">${ouv.length ? '<button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>' : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
+    ${faites.length && IDEE.faites ? `<div class="idees">${faites.slice(0, 50).map(ligne).join('')}</div>` : ''}</div>`;
 }
+/* Tout ce qui est en attente, en texte, à coller dans la conversation avec Claude */
+ACTIONS.ideesCopier = () => {
+  const ouv = idees().filter((x) => !x.fait);
+  const txt = `Gamins de Talus — bugs et idées (${ouv.length})\n` + ouv.map((x) => `- ${(IDEE_TYPES.find((y) => y[0] === x.type) || IDEE_TYPES[1])[1]} ${x.titre}${x.details ? ' : ' + x.details.replace(/\s*\n\s*/g, ' / ') : ''}${(x.captures || []).length ? ` (📷 ${x.captures.length} capture${x.captures.length > 1 ? 's' : ''} dans l'app)` : ''}${x.par ? ' — ' + nomDe(x.par) : ''}`).join('\n');
+  const fini = () => toast('Copié : colle-le dans la conversation avec Claude.');
+  const secours = () => { const t = document.createElement('textarea'); t.value = txt; t.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); fini(); } catch (e) { toast('Copie impossible.'); } t.remove(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(fini, secours); else secours();
+};
 ACTIONS.idees = () => { if (IDEE.cle) { IDEE.caps = []; IDEE.cle = ''; } openSheet(ideesHtml()); };
 const ideesRafraichir = () => {
   if (!(document.querySelector('#sheet .idees') || document.querySelector('#sheet .idee-ajout'))) return;
