@@ -43,18 +43,45 @@ function ideesHtml() {
       ${ideeJoindreHtml()}
       <details><summary class="hint">+ Détails</summary>${txt('idee-det', 'Détails (facultatif)', '', { name: 'details', rows: 3 })}</details></form>
     <div class="idees">${ouv.length ? ouv.map(ligne).join('') : '<p class="empty">Rien en attente. 🌿</p>'}</div>
-    <div class="row idees-pied">${ouv.length ? '<button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>' : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
+    <div class="row idees-pied">${ouv.length ? `<span class="row" style="gap:12px"><button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>${(() => { const n = ouv.reduce((a, x) => a + (x.captures || []).length, 0); return n ? (partageFichiersPossible() ? `<button type="button" class="btn link small" data-act="ideesPartager">Partager avec les captures (${n})</button>` : `<button type="button" class="btn link small" data-act="ideesCaptures">Télécharger les captures (${n})</button>`) : ''; })()}</span>` : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
     ${faites.length && IDEE.faites ? `<div class="idees">${faites.slice(0, 50).map(ligne).join('')}</div>` : ''}</div>`;
 }
-/* Tout ce qui est en attente, en texte, à coller dans la conversation avec Claude */
+/* Tout ce qui est en attente, en texte, à coller dans la conversation avec Claude.
+   Les captures : « Partager » (téléphone : texte + images vers l'app Claude) ou « Télécharger » (ordinateur : à glisser dans la conversation). */
+const partageFichiersPossible = () => { try { return !!(navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.png', { type: 'image/png' })] })); } catch (e) { return false; } };
+const IDEE_FICHIERS = {}; /* chemin → File, préparés à l'avance (le partage doit suivre le toucher sans attendre le réseau) */
+async function preparerCaptures(ouv) {
+  const caps = []; ouv.forEach((x) => (x.captures || []).forEach((c, i) => caps.push({ c, nom: `${x.type === 'bug' ? 'bug' : 'idee'}-${sansAccentsS(x.titre).replace(/[^a-z0-9]+/g, '-').slice(0, 30)}-${i + 1}` })));
+  await Fichiers.liensPour(caps.map((x) => x.c.chemin));
+  for (const { c, nom } of caps) {
+    if (IDEE_FICHIERS[c.chemin]) continue; const u = Fichiers.enCache(c.chemin); if (!u) continue;
+    try { const b = await (await fetch(u)).blob(), ext = (b.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg'); IDEE_FICHIERS[c.chemin] = new File([b], `${nom}.${ext}`, { type: b.type || 'image/jpeg' }); } catch (e) { /* hors ligne */ }
+  }
+  return caps.map((x) => IDEE_FICHIERS[x.c.chemin]).filter(Boolean);
+}
+const texteIdees = (ouv, jointes) => `Gamins de Talus — bugs et idées (${ouv.length})\n` + ouv.map((x) => `- ${(IDEE_TYPES.find((y) => y[0] === x.type) || IDEE_TYPES[1])[1]} ${x.titre}${x.details ? ' : ' + x.details.replace(/\s*\n\s*/g, ' / ') : ''}${(x.captures || []).length ? ` (📷 ${x.captures.length} capture${x.captures.length > 1 ? 's' : ''}${jointes ? ' jointe' + (x.captures.length > 1 ? 's' : '') : " dans l'app"})` : ''}${x.par ? ' — ' + nomDe(x.par) : ''}`).join('\n');
+ACTIONS.ideesPartager = async () => {
+  const ouv = idees().filter((x) => !x.fait), txt = texteIdees(ouv, true), files = ouv.flatMap((x) => (x.captures || []).map((c) => IDEE_FICHIERS[c.chemin])).filter(Boolean);
+  try { if (navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {}); } catch (e) { /* */ }
+  if (!files.length) { toast('Captures pas encore prêtes (réseau ?) : réessaie dans un instant.'); preparerCaptures(ouv); return; }
+  try { await navigator.share({ text: txt, files, title: 'Bugs et idées' }); }
+  catch (e) { if (e && e.name !== 'AbortError') toast('Partage impossible : ' + e.message); }
+};
+ACTIONS.ideesCaptures = async () => {
+  const ouv = idees().filter((x) => !x.fait); toast('Préparation des captures…');
+  const files = await preparerCaptures(ouv); if (!files.length) { toast('Captures introuvables (réseau ?).'); return; }
+  for (const f of files) { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000); }
+  try { await navigator.clipboard.writeText(texteIdees(ouv, true)); } catch (e) { /* */ }
+  toast(`${files.length} capture${files.length > 1 ? 's' : ''} téléchargée${files.length > 1 ? 's' : ''} et texte copié : colle le texte dans la conversation, puis glisse les captures.`, 7000);
+};
 ACTIONS.ideesCopier = () => {
   const ouv = idees().filter((x) => !x.fait);
-  const txt = `Gamins de Talus — bugs et idées (${ouv.length})\n` + ouv.map((x) => `- ${(IDEE_TYPES.find((y) => y[0] === x.type) || IDEE_TYPES[1])[1]} ${x.titre}${x.details ? ' : ' + x.details.replace(/\s*\n\s*/g, ' / ') : ''}${(x.captures || []).length ? ` (📷 ${x.captures.length} capture${x.captures.length > 1 ? 's' : ''} dans l'app)` : ''}${x.par ? ' — ' + nomDe(x.par) : ''}`).join('\n');
+  const txt = texteIdees(ouv);
   const fini = () => toast('Copié : colle-le dans la conversation avec Claude.');
   const secours = () => { const t = document.createElement('textarea'); t.value = txt; t.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); fini(); } catch (e) { toast('Copie impossible.'); } t.remove(); };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(fini, secours); else secours();
 };
-ACTIONS.idees = () => { if (IDEE.cle) { IDEE.caps = []; IDEE.cle = ''; } openSheet(ideesHtml()); };
+ACTIONS.idees = () => { if (partageFichiersPossible()) setTimeout(() => preparerCaptures(idees().filter((x) => !x.fait)), 0); if (IDEE.cle) { IDEE.caps = []; IDEE.cle = ''; } openSheet(ideesHtml()); };
 const ideesRafraichir = () => {
   if (!(document.querySelector('#sheet .idees') || document.querySelector('#sheet .idee-ajout'))) return;
   const t = $('idee-titre'), v = t ? t.value : ''; openSheet(ideesHtml()); const n = $('idee-titre'); if (n && v) n.value = v;
