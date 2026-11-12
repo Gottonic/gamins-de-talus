@@ -4,13 +4,13 @@
 'use strict';
 const NOUVEAUTES = [
   { id: '2026-11-12', titre: 'Quoi de neuf', points: [
+    '🐞 <b>Corrigé</b> : une note en cours d\'édition n\'est plus effacée dans la prospection en cas de modification, supprimer une tâche ne ferme plus l\'événement',
     '🧁 <b>Précommandes pour la Saint-Nicolas</b> mises en place, dans Ventes (stock réservé)',
     '💳 <b>TWINT</b> : paiements reçus enregistrés tout seuls, frais mis en dépense',
     '💬 <b>Discussion</b> : glisser pour répondre, coller ou déposer une photo, aperçu de toutes les photos',
     '📤 <b>Mails envoyés</b> visibles dans l\'app',
     '🧾 <b>Dépenses</b> : tickets convertis en PDF, total en haut, filtres en boutons (aussi pour les recettes)',
     '📊 <b>Statistiques de ventes par produit</b> ajoutées',
-    '🐞 <b>Corrigé</b> : une note en cours d\'édition n\'est plus effacée dans la prospection en cas de modification, supprimer une tâche ne ferme plus l\'événement',
   ] },
   { id: '2026-11-05', titre: 'Quoi de neuf', points: [
     '🗂 <b>Contacts</b> réunit les mails (onglet principal) et les contacts. La <b>Prospection</b> est passée dans Ventes.',
