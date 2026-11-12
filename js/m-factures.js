@@ -131,12 +131,13 @@ MODULES.factures = {
   render(sub, id) {
     if (sub === 'produits') { setTimeout(() => location.replace('#/factures/stock'), 0); return ''; }
     const pr = SOUS_PROSPECTION.includes(sub);
-    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), (standARemplir() && !priseStand()) || ardAFacturer().length > 0], ['precommandes', 'Précommandes' + (typeof pcOuvertes === 'function' && pcOuvertes().length ? ' · ' + pcOuvertes().length : '')], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub);
+    const t = tabs('factures', [['', 'Ventes'], ['selfservice', ['Self-service'].concat(standARemplir() ? ['à remplir'] : [], ardAFacturer().length ? ['à facturer'] : []).join(' · '), (standARemplir() && !priseStand()) || ardAFacturer().length > 0], ['precommandes', 'Précommandes' + (typeof pcOuvertes === 'function' && pcOuvertes().length ? ' · ' + pcOuvertes().length : '')], ['stock', 'Stock et prix'], ongletProspection()], sub === 'voir' || sub === 'nouvelle' ? '' : pr ? 'prospection' : sub === 'selfstats' ? 'selfservice' : sub);
     if (pr) return t + renderProspection(sub === 'pmodifier' ? 'modifier' : sub, id);
     if (sub === 'nouvelle') return t + renderNouvelleFacture(id);
     if (sub === 'stock') return t + renderStock();
     if (sub === 'selfservice') return t + renderSelfService();
     if (sub === 'precommandes') return t + renderPrecommandes();
+    if (sub === 'selfstats') return t + renderStatsSelf();
     return t + renderListeFactures(sub === 'voir' ? id : '');
   },
   after(sub) { if (sub === 'nouvelle') brancherBrouillon(); if (sub === 'stock') brancherStock(); if (SOUS_PROSPECTION.includes(sub)) afterContactsProspection(sub); },
@@ -168,41 +169,9 @@ function renderListeFactures(selKey) {
       <div class="stat bad"><span class="k">En retard</span><span class="v">${nLate ? `${nLate} · ${chf(late)}` : 'Aucune'}</span></div>
       <div class="stat"><span class="k">Vendu en ${y}</span><span class="v">${chf(year)}</span>${tSelf || tSp ? `<span class="s">${[tSelf ? `self-service ${chf(tSelf)}` : '', tSp ? `spontanées ${chf(tSp)}` : ''].filter(Boolean).join(' · ')}</span>` : ''}</div></div>
     <div class="split">
-      <div class="panel"><div class="between"><h2>Ventes</h2><div class="row"><button class="btn small" type="button" data-act="facCsv">Exporter (CSV)</button><button class="btn small" type="button" data-act="facMois">Facture du mois</button><button class="btn small" type="button" data-act="venteSpontanee">Vente spontanée</button><a class="btn primary small" href="#/factures/nouvelle">+ Vente</a></div></div>${table}${statsProduitsHtml()}</div>
+      <div class="panel"><div class="between"><h2>Ventes</h2><div class="row"><button class="btn small" type="button" data-act="facCsv">Exporter (CSV)</button><button class="btn small" type="button" data-act="facMois">Facture du mois</button><button class="btn small" type="button" data-act="venteSpontanee">Vente spontanée</button><a class="btn primary small" href="#/factures/nouvelle">+ Vente</a></div></div>${table}</div>
       <div>${sel ? renderDetailFacture(Object.assign({ key: selKey }, sel), dbl) : (list.length ? '<div class="panel"><p class="hint">Choisis une vente pour voir sa facture ou son bulletin, ou la marquer comme payée.</p></div>' : '')}</div>
     </div>`;
-}
-/* ---------- Ventes par produit (une année) : factures et bulletins (sans les factures du mois, qui les regroupent)
-   + self-service (mis en vente − invendus repris). Les ventes spontanées n'ont pas de détail par produit. ---------- */
-const STP_AN = { y: '' };
-ACTIONS.statsAn = (el) => { STP_AN.y = el.dataset.y; render(); };
-function statsProduits(y) {
-  const m = new Map();
-  const ligne = (nom, u) => { const k = String(nom).trim().toLowerCase() + '|' + (u || ''); let o = m.get(k); if (!o) { o = { nom: String(nom).trim(), u: u || '', qf: 0, vf: 0, qs: 0, vs: 0 }; m.set(k, o); } return o; };
-  for (const f of factures()) {
-    if (yearOf(f.date) !== y || facStatut(f) === 'annulee' || (f.regroupe || []).length) continue;
-    for (const l of f.lignes || []) { const p = l.produitId ? DB.get(l.produitId) : null, o = ligne((p && p.nom) || l.designation || '?', l.unite || (p && p.unite) || ''); o.qf += num(l.quantite); o.vf += num(l.quantite) * num(l.prix); }
-  }
-  if (typeof misesEnVente === 'function') for (const x of misesEnVente()) {
-    if (yearOf(x.date) !== y) continue;
-    (x.lignes || []).forEach((l, i) => { const p = DB.get(l.prod) || {}, o = ligne(l.nom || p.nom || '?', l.nom ? (l.unite || 'pièce') : (l.unite || p.unite || '')); const q = Math.max(0, num(l.qte) - num((x.retours || {})[i])); o.qs += q; o.vs += q * num(l.prix); });
-  }
-  if (typeof pointsStand === 'function') for (const pt of pointsStand()) {
-    if (yearOf(pt.date) !== y) continue;
-    for (const l of pt.lignes || []) { if (!(num(l.repris) > 0)) continue; const p = DB.get(l.prod) || {}, o = ligne(l.nom || p.nom || '?', l.nom ? (l.unite || 'pièce') : (l.unite || p.unite || '')); o.qs = Math.max(0, o.qs - num(l.repris)); o.vs = Math.max(0, o.vs - num(l.repris) * num(l.prix)); }
-  }
-  return [...m.values()].map((o) => Object.assign(o, { v: r2(o.vf + o.vs) })).filter((o) => o.v > 0 || o.qf + o.qs > 0).sort((a, b) => b.v - a.v);
-}
-function statsProduitsHtml() {
-  const ys = [...new Set(factures().map((f) => yearOf(f.date)).concat(typeof misesEnVente === 'function' ? misesEnVente().map((x) => yearOf(x.date)) : [], [todayISO().slice(0, 4)]))].filter(Boolean).sort().reverse();
-  const y = STP_AN.y && ys.includes(STP_AN.y) ? STP_AN.y : ys[0], l = statsProduits(y), tot = l.reduce((a, o) => a + o.v, 0);
-  const q = (n, u) => n ? `${fmtQty(r2(n))} <span class="hint">${esc(u === 'pièce' ? 'pc' : u)}</span>` : '';
-  const ouvert = ls.get('garde:statsProduits') === '1';
-  return `<details class="stats-prod" data-garde="garde:statsProduits"${ouvert ? ' open' : ''}><summary><b>📊 Ventes par produit</b> <span class="hint">${esc(y)} · ${chf(tot)}</span></summary>
-    ${ys.length > 1 ? `<div class="chips">${ys.map((x) => `<button type="button" class="chip${x === y ? ' on' : ''}" data-act="statsAn" data-y="${esc(x)}">${esc(x)}</button>`).join('')}</div>` : ''}
-    ${l.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Produit</th><th class="r">Factures</th><th class="r">Self-service</th><th class="r">Total</th><th class="r">Part</th></tr></thead><tbody>
-      ${l.map((o) => `<tr><td>${esc(o.nom)}</td><td class="r num">${o.vf ? `${q(o.qf, o.u)}<br>${money(o.vf)}` : ''}</td><td class="r num">${o.vs ? `${q(o.qs, o.u)}<br>${money(o.vs)}` : ''}</td><td class="r num"><b>${money(o.v)}</b></td><td class="r num">${tot ? Math.round(o.v / tot * 100) + ' %' : ''}</td></tr>`).join('')}</tbody></table></div>
-      <p class="hint">Self-service : ce qui a été mis en vente moins les invendus repris (le manque du stand y est compté). Les ventes spontanées ne sont pas détaillées par produit.</p>` : '<p class="empty">Pas encore de vente cette année.</p>'}</details>`;
 }
 function renderDetailFacture(f, dbl) {
   const s = facStatut(f), acts = [];

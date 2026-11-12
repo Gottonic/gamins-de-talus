@@ -246,7 +246,7 @@ function renderSelfService() {
     const o = agg.get(k) || { nom, u, q: 0, v: 0 }, q = Math.max(0, num(l.qte) - num((m.retours || {})[i])); o.q += q; o.v += q * num(l.prix); agg.set(k, o); });
   const aggL = [...agg.values()].sort((a, b) => b.v - a.v);
   return `${articlesHtml()}
-    <div class="row"><button class="btn primary" type="button" data-act="selfNouveau">Remplir le stand</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button></div>
+    <div class="row"><button class="btn primary" type="button" data-act="selfNouveau">Remplir le stand</button><button class="btn" type="button" data-act="ardNouveau">+ Payé par message</button><button class="btn" type="button" data-act="twImport">Importer le relevé TWINT</button><a class="btn" href="#/factures/selfstats">📊 Statistiques</a></div>
     ${rat ? `<div class="panel between"><span>🌱 ${rat} produit${rat > 1 ? 's' : ''} d'anciennes mises en vente : à compter comme récolte, ou pas.</span><button class="btn primary small" type="button" data-act="selfRattrapage">Voir et compter</button></div>` : ''}
     <div class="panel stand${E.aRemplir ? ' a-remplir' : ''}"><div class="between"><h2>Sur le stand</h2><span class="v-stand">≈ ${chf(Math.max(0, E.estime))}</span></div>
       ${E.aRemplir ? (() => { const pr = priseStand(); return `<div class="banner stand-alerte"><span>🧺 Le stand est presque vide (moins de ${chf(R.seuil)} de marchandise)${pr ? ` : <b>${esc(pr.par === Sync.me ? 'tu t\'en occupes' : nomDe(pr.par) + ' s\'en occupe')}</b>.` : ' : il est temps de le remplir.'}</span>${pr ? (pr.par === Sync.me ? '<button class="btn small" type="button" data-act="standPrise" data-off="1">Annuler</button>' : '') : '<button class="btn small primary" type="button" data-act="standPrise">Je m\'en occupe</button>'}</div>`; })() : ''}
@@ -679,6 +679,11 @@ function twDate(x) {
   m = t.match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})/); if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   return '';
 }
+/* L'heure du paiement, si le relevé la donne (date Excel avec heure, ou « 12.11.2026 14:32 ») : pour les statistiques */
+function twHeure(x) {
+  if (typeof x === 'number' && x % 1) { const m = Math.round((x % 1) * 1440); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+  const m = String(x || '').match(/\b(\d{1,2}):(\d{2})/); return m ? m[1].padStart(2, '0') + ':' + m[2] : '';
+}
 function twDevine(entete, lignes) {
   const h = entete.map((x) => sansAccentsS(x));
   const trouve = (res, test) => { let i = h.findIndex((x) => res.some((r) => r.test(x))); if (i < 0 && test) i = entete.findIndex((_, j) => lignes.slice(0, 20).filter((l) => test(l[j])).length >= Math.min(3, lignes.length)); return i; };
@@ -697,7 +702,7 @@ function twLigne(l, c) {
   const montantEstNet = c.net >= 0 && c.net === c.montant;
   const montant = montantEstNet && fr && brutOuNet > 0 ? r2(brutOuNet + fr) : brutOuNet;
   const frais = fr ? r2(fr) : (c.net >= 0 && c.net !== c.montant && montant > 0 ? Math.max(0, r2(montant - Math.abs(twNombre(l[c.net]) || montant))) : 0);
-  return { date: twDate(l[c.date]), montant, ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '', frais: montant > 0 && isFinite(frais) ? frais : 0 };
+  return { date: twDate(l[c.date]), heure: twHeure(l[c.date]), montant, ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '', frais: montant > 0 && isFinite(frais) ? frais : 0 };
 }
 ACTIONS.twImport = () => {
   openSheet(`${sheetHead('Importer le relevé TWINT', 'Fichier exporté de TWINT Business')}<div class="sbody">
@@ -747,7 +752,7 @@ function importerTransactionsTwint(tx) {
     const o = Object.assign({ cle, importe: new Date().toISOString(), par: Sync.me || '' }, t);
     const v = ventes.find((f) => !prises.has(f.key) && (f.payeeLe || f.date) === t.date && Math.abs(num(f.total) - t.montant) < 0.01);
     if (v) { o.utilise = v.key; prises.add(v.key); lies++; }
-    if (!o.frais) delete o.frais;
+    if (!o.frais) delete o.frais; if (!o.heure) delete o.heure;
     DB.put('tw:' + uid('w'), o); n++;
   }
   return { n, lies, frais: majFraisTwint(mois) };

@@ -666,7 +666,8 @@ function enregistrerTwintMail(k, quoi, date, montant, payeur, auto) {
   const s = quoi === 'self' && typeof misesEnVente === 'function' ? misesEnVente().find((x) => x.date <= date && (!x.closeLe || x.closeLe >= date)) : null;
   DB.put(rk, Object.assign({ date, montant, moyen: 'TWINT', par, client: quoi === 'self' ? (s ? s.lieu || 'Self-service' : 'Vente directe') : payeur || 'Paiement TWINT',
     libelle: quoi === 'self' ? `Vente directe${s ? ' du ' + fmtDate(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}` : `Paiement TWINT${payeur ? ' de ' + payeur : ''}`, remarque: (auto ? 'Enregistré tout seul depuis le mail TWINT : ' : 'Depuis le mail TWINT : ') + trunc(m.objet || '', 80), cree: new Date().toISOString(), creePar: auto ? '' : Sync.me || '' }, quoi === 'self' ? { vd: true } : {}, s ? { self: s.key } : {}));
-  DB.put('tw:twm-' + id, { cle: 'mail:' + k, src: 'mail', mail: k, date, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' });
+  const hd = new Date(m.date), heure = isNaN(hd) ? '' : String(hd.getHours()).padStart(2, '0') + ':' + String(hd.getMinutes()).padStart(2, '0');
+  DB.put('tw:twm-' + id, { cle: 'mail:' + k, src: 'mail', mail: k, date, heure, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' });
   /* Traité (sans en faire le référent de l'adresse TWINT) et lu aussi chez Infomaniak */
   const m2 = DB.get(k); if (m2) DB.put(k, Object.assign({}, m2, { statut: 'traite', traitePar: auto ? '' : Sync.me || '', twAttente: null }));
   if (!LOCAL_MODE) boite(k, 'lu').catch(() => {});
