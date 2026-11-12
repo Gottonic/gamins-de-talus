@@ -1138,6 +1138,14 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 .idee-t .hint { flex: none; }
 .idee.fait .idee-t > span:first-child { text-decoration: line-through; color: var(--muted); }
 .idee-ajout { gap: 8px; }
+.idee-joindre { display: flex; flex-direction: column; gap: 6px; }
+.idee-joindre-l { align-self: flex-start; cursor: pointer; }
+.idee-caps { display: flex; gap: 8px; flex-wrap: wrap; }
+.idee-caps:empty { display: none; }
+.idee-cap { position: relative; width: 76px; height: 76px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--soft); }
+.idee-cap a { display: block; width: 100%; height: 100%; cursor: zoom-in; }
+.idee-cap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.idee-cap-x { position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 12px; border: 0; background: rgba(0,0,0,.62); color: #fff; font-size: 13px; line-height: 24px; padding: 0; cursor: pointer; }
 .nouv h3 { margin: 4px 0; }
 .nouv ul { margin: 4px 0 14px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .stand-alerte { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
