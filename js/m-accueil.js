@@ -108,4 +108,4 @@ function retourHtml() {
     ${lignes.length ? `<div class="retour-l">${lignes.join('')}</div>` : '<p>Rien de spécial pour toi. 🌿</p>'}</section>`;
 }
 ACTIONS.retourVu = (el) => { DB.put('cfg:notif:' + Sync.me, Object.assign({}, DB.get('cfg:notif:' + Sync.me) || {}, { retourVu: el.dataset.v })); };
-ACTIONS.goSansJ = () => { FIN.sansJ = true; FIN.annee = ''; FIN.type = ''; FIN.par = ''; FIN.q = ''; go('#/finances/depenses'); };
+ACTIONS.goSansJ = () => { FIN.sansJ = true; FIN.annee = ''; FIN.f = {}; FIN.q = ''; go('#/finances/depenses'); };

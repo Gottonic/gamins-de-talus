@@ -102,7 +102,7 @@ function renderMessages() {
     html += `<div class="msg${mien ? ' mine' : ''}${suite && !m.repond ? ' suite' : ''}${m.epingle ? ' pinned' : ''}${me && (m.mentions || []).includes(me) ? ' pour-moi' : ''}" data-msg="${esc(m.key)}" id="m-${esc(m.key.slice(4))}">
       ${!mien && (!suite || m.repond) ? `<span class="msg-who">${esc(nomDe(m.de))}</span>` : ''}
       ${m.repond ? `<button type="button" class="msg-cite" data-act="msgVoir" data-key="${esc(m.repond)}">↪ ${cite ? `<b>${esc(nomDe(cite.de))}</b> ${esc(trunc(apercuMsg(cite), 70))}` : 'message supprimé'}</button>` : ''}
-      <div class="bubble${m.photo && !m.photo.expire ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${taillePhoto(m.photo)}></button>` : ''}${m.sondage ? sondageHtml(m) : ''}${m.fichier ? fichierMsgHtml(m.fichier) : ''}${m.sondage ? '' : surlignerMentions(texteMsg(m.texte || ''), m.mentions)}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div>${reactionsHtml(m)}</div>`;
+      <div class="bubble${(m.photo && !m.photo.expire) || (m.fichier && !m.fichier.expire && /^image\//.test(m.fichier.type || '') && !/svg/.test(m.fichier.type)) ? ' has-photo' : ''}">${m.photo && m.photo.expire ? '<span class="photo-expiree">📷 Photo retirée après 6 mois</span>' : ''}${m.photo && !m.photo.expire ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(m.photo.chemin)}" data-titre="${esc(nomDe(m.de) + ' · ' + jourMsg(m.cree) + ' ' + heureMsg(m.cree))}"><img data-fichier="${esc(m.photo.chemin)}" alt="Photo de ${esc(nomDe(m.de))}"${taillePhoto(m.photo)}></button>` : ''}${m.sondage ? sondageHtml(m) : ''}${m.fichier ? fichierMsgHtml(m.fichier) : ''}${m.sondage ? '' : surlignerMentions(texteMsg(m.texte || ''), m.mentions)}<span class="msg-t">${m.epingle ? '📌 ' : ''}${heureMsg(m.cree)}${m.modifieLe ? ' · modifié' : ''} <button type="button" class="msg-menu" data-act="msgMenu" data-key="${esc(m.key)}" title="Options" aria-label="Options du message">⋯</button></span></div>${reactionsHtml(m)}</div>`;
   });
   /* « Vu par » sous le dernier message */
   const der = ms[ms.length - 1];
@@ -185,10 +185,13 @@ async function envoyerMessage() {
   const msg = { de: Sync.me, texte, cree }; if (photo) msg.photo = photo; if (fichier) msg.fichier = fichier;
   const mentions = mentionsDe(texte); if (mentions.length) msg.mentions = mentions;
   const cite = MSG.repondA && DB.get(MSG.repondA); if (cite) msg.repond = MSG.repondA; MSG.repondA = '';
-  DB.put('msg:' + uid('m'), msg);
+  /* Une réponse ne prévient que l'auteur du message cité (et les @mentions) */
+  if (cite && cite.de && cite.de !== Sync.me) msg.pour = [cite.de];
+  const vises = [...new Set(mentions.concat(msg.pour || []))];
+  const mk = 'msg:' + uid('m'); DB.put(mk, msg);
   DB.put('lu:' + Sync.me, { jusqua: cree });
   Sync.schedule(0);
-  notifierDiscord(Sync.me, (mentions.length ? mentions.map((k) => '@' + nomDe(k)).join(' ') + ' · ' : '') + (cite ? `↪ (réponse à ${nomDe(cite.de)} : « ${trunc(apercuMsg(cite), 50)} ») ` : '') + (texte || (fichier ? '📎 ' + fichier.nom : '')), ph && ph.blob, mentions);
+  notifierDiscord(Sync.me, (mentions.length ? mentions.map((k) => '@' + nomDe(k)).join(' ') + ' · ' : '') + (cite ? `↪ (réponse à ${nomDe(cite.de)} : « ${trunc(apercuMsg(cite), 50)} ») ` : '') + (texte || (fichier ? '📎 ' + fichier.nom : '')), ph && ph.blob, vises, mk);
   if (ph) Fichiers.local[photo.chemin] = Fichiers.local[photo.chemin] || ph.apercu;
   if (ph && !LOCAL_MODE) Fichiers.liens[photo.chemin] = { url: ph.apercu, exp: Date.now() + 50 * 60000 };
   render(); const n = $('msg-txt'); if (n && matchMedia('(pointer: fine)').matches) n.focus();
@@ -272,12 +275,60 @@ ACTIONS.msgPlus = () => openSheet(`${sheetHead('Ajouter')}<div class="sbody"><di
   <button type="button" class="menu-it" data-act="sondageNouveau" data-type="dates">📅 Un sondage de dates</button></div></div>`);
 const FICHIER_MSG_MAX = 5 * 1024 * 1024;
 function choisirFichierMsg(f) {
-  if (!f) return; if (f.size > FICHIER_MSG_MAX) { toast(`Trop lourd : ${tailleTxt(f.size)} (5 Mo au plus). Mets-le plutôt dans le Drive.`, 6000); return; }
+  if (!f) return;
+  /* Une image (même choisie comme fichier, glissée ou collée) part comme photo : elle a son aperçu dans la discussion */
+  if (/^image\/(jpeg|png|webp|heic|heif|gif|bmp)$/i.test(f.type || '')) { choisirPhoto(f); return; } if (f.size > FICHIER_MSG_MAX) { toast(`Trop lourd : ${tailleTxt(f.size)} (5 Mo au plus). Mets-le plutôt dans le Drive.`, 6000); return; }
   const t = $('msg-txt'); if (t) MSG.draft = t.value; MSG.fichier = f; render();
 }
 ACTIONS.msgFichierOff = () => { MSG.fichier = null; render(); };
+/* Glisser-déposer sur la discussion (ordinateur) et Ctrl+V d'une image ou d'un document dans la case du message */
+function deposerFichiersMsg(files) {
+  const l = [...(files || [])]; if (!l.length) return false;
+  const img = l.find((f) => /^image\//.test(f.type || '')), doc = l.find((f) => !/^image\//.test(f.type || ''));
+  if (img) choisirPhoto(img); if (doc) choisirFichierMsg(doc);
+  if (l.length > (img ? 1 : 0) + (doc ? 1 : 0)) toast('Une photo et un fichier par message : envoie les autres ensuite.', 5000);
+  return true;
+}
+document.addEventListener('paste', (e) => {
+  if (ROUTE.mod !== 'messages' || !e.target.closest || !e.target.closest('.chat')) return;
+  const fs = e.clipboardData && e.clipboardData.files;
+  if (fs && fs.length && deposerFichiersMsg(fs)) e.preventDefault();
+});
+document.addEventListener('dragover', (e) => {
+  if (ROUTE.mod !== 'messages' || !e.dataTransfer || ![...(e.dataTransfer.types || [])].includes('Files')) return;
+  const c = e.target.closest && e.target.closest('.chat'); if (!c) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; c.classList.add('depot');
+});
+document.addEventListener('dragleave', (e) => { const c = e.target.closest && e.target.closest('.chat'); if (c && !c.contains(e.relatedTarget)) c.classList.remove('depot'); });
+document.addEventListener('drop', (e) => {
+  if (ROUTE.mod !== 'messages') return; const c = e.target.closest && e.target.closest('.chat'); if (!c) return;
+  c.classList.remove('depot');
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); deposerFichiersMsg(e.dataTransfer.files); }
+});
+/* Glisser une bulle vers la droite (téléphone) : y répondre */
+(() => {
+  let b = null, x0 = 0, y0 = 0, dx = 0, actif = false;
+  document.addEventListener('touchstart', (e) => {
+    const m = e.target.closest && e.target.closest('.msg[data-msg]'); if (!m || ROUTE.mod !== 'messages' || e.touches.length !== 1) { b = null; return; }
+    b = m; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; actif = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!b) return; const x = e.touches[0].clientX - x0, y = e.touches[0].clientY - y0;
+    if (!actif) { if (Math.abs(y) > 12 && Math.abs(y) > Math.abs(x)) { b = null; return; } if (x > 12 && x > Math.abs(y) * 1.5) actif = true; else return; }
+    dx = Math.max(0, Math.min(90, x)); b.style.transform = `translateX(${dx}px)`; b.classList.toggle('glisse-ok', dx >= 60);
+  }, { passive: true });
+  const fin = () => {
+    if (!b) return; const m = b; b = null;
+    m.style.transition = 'transform .15s'; m.style.transform = ''; setTimeout(() => { m.style.transition = ''; m.classList.remove('glisse-ok'); }, 160);
+    if (actif && dx >= 60) { if (navigator.vibrate) navigator.vibrate(10); ACTIONS.msgRepondre({ dataset: { key: m.dataset.msg } }); }
+    actif = false; dx = 0;
+  };
+  document.addEventListener('touchend', fin, { passive: true }); document.addEventListener('touchcancel', fin, { passive: true });
+})();
 function fichierMsgHtml(f) {
   if (f.expire) return '<span class="photo-expiree">📎 Fichier retiré après 6 mois</span>';
+  /* Une image envoyée comme fichier : on montre l'aperçu, comme une photo */
+  if (/^image\//.test(f.type || '') && !/svg/.test(f.type)) return `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(f.chemin)}" data-titre="${esc(f.nom)}"><img data-fichier="${esc(f.chemin)}" alt="${esc(f.nom)}"></button>`;
   const vue = /^image\/|pdf/.test(f.type || '') || /\.pdf$/i.test(f.nom);
   return vue ? `<button type="button" class="msg-fichier" data-act="voirFichier" data-fichier="${esc(f.chemin)}" data-titre="${esc(f.nom)}">📎 <b>${esc(trunc(f.nom, 40))}</b> <small>${tailleTxt(f.taille)}</small></button>`
     : `<a class="msg-fichier" data-fichier="${esc(f.chemin)}" download="${esc(f.nom)}" target="_blank" rel="noopener">📎 <b>${esc(trunc(f.nom, 40))}</b> <small>${tailleTxt(f.taille)}</small></a>`;
@@ -418,16 +469,16 @@ function posterDiscord(webhook, contenu, image) {
   return fetch(webhook, { method: 'POST', mode: 'no-cors', body: fd });
 }
 /* Hors des jours et heures choisis : le message Discord attend (résumé envoyé par le serveur dès que la plage s'ouvre) */
-function mettreEnAttenteDiscord(p, contenu) {
+function mettreEnAttenteDiscord(p, contenu, ref) {
   if (LOCAL_MODE || !Sync.sb || !navigator.onLine) return;
-  Sync.sb.from('rows').upsert({ key: `notifq:${p}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, data: { quand: new Date().toISOString(), discord: contenu }, deleted: false }, { onConflict: 'key' }).then(() => {}, () => {});
+  Sync.sb.from('rows').upsert({ key: `notifq:${p}:${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`, data: { quand: new Date().toISOString(), discord: contenu, ref: ref || '' }, deleted: false }, { onConflict: 'key' }).then(() => {}, () => {});
 }
 const discordEnAttente = (p) => !!discordDe(p).webhook && (DB.get('cfg:notif:' + p) || {}).d_messages !== false && typeof dansPlageNotif === 'function' && !dansPlageNotif(p);
-function notifierDiscord(de, texte, image, mentions) {
+function notifierDiscord(de, texte, image, mentions, ref) {
   if (LOCAL_MODE) return;
   for (const p of personnes()) {
     const vis = !mentions || !mentions.length || mentions.includes(p.k);
-    if (p.k !== de && vis && discordEnAttente(p.k) && (!enSourdine(p.k) || (mentions || []).includes(p.k))) mettreEnAttenteDiscord(p.k, `${LIEN_MSG} ${image ? '📷 ' : ''}**${nomDe(de)}**${texte ? ' : ' + trunc(texte, 300) : image ? ' : une photo' : ''}`);
+    if (p.k !== de && vis && discordEnAttente(p.k) && (!enSourdine(p.k) || (mentions || []).includes(p.k))) mettreEnAttenteDiscord(p.k, `${LIEN_MSG} ${image ? '📷 ' : ''}**${nomDe(de)}**${texte ? ' : ' + trunc(texte, 300) : image ? ' : une photo' : ''}`, ref);
   }
   /* Un message avec des @mentions ne prévient que les personnes mentionnées */
   const vise = (k) => !mentions || !mentions.length || mentions.includes(k);
@@ -532,7 +583,8 @@ function renderMails() {
   const c = cfgMails(), etat = DB.get('cfg:mails:etat') || {}, all = mails();
   const f = MAIL.filtre, list = all.filter((m) => f === 'tous' ? true : f === 'moi' ? !mailFini(m) && m.par === Sync.me : f === 'traites' ? mailFini(m) : !mailFini(m));
   const nMoi = mailsPourMoi().length;
-  const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', `Pour moi${nMoi ? ' · ' + nMoi : ''}`], ['traites', 'Traités'], ['tous', 'Tous']].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}${k === 'moi' && nMoi && f !== k ? ' fort' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
+  const env = mailsEnvoyes();
+  const chips = [['atraiter', `À traiter · ${mailsATraiter().length}`], ['moi', `Pour moi${nMoi ? ' · ' + nMoi : ''}`], ['traites', 'Traités'], ['tous', 'Tous'], ['envoyes', `📤 Envoyés${env.length ? ' · ' + env.length : ''}`]].map(([k, l]) => `<button class="chip${f === k ? ' on' : ''}${k === 'moi' && nMoi && f !== k ? ' fort' : ''}" type="button" data-act="mailFiltre" data-k="${k}">${esc(l)}</button>`).join('');
   if (!all.length && !etat.derniere) return `<div class="panel"><h2>Mails</h2><p>Les mails reçus sur votre adresse commune (${esc(c.adresse || 'Infomaniak')}) apparaîtront ici : qui s'en occupe, ce qui est traité, en lien avec vos contacts.</p>
     <p class="hint">Il reste à installer la fonction « mails » dans Supabase (voir le README, partie « Mails »). Ensuite, la boîte est relevée chaque fois que quelqu'un ouvre cette page, et toutes les 10 minutes par Supabase.</p>
     <div class="row"><button class="btn primary" type="button" data-act="mailEcrire">✉️ Nouveau mail</button><button class="btn" type="button" data-act="mailRelever">Essayer de relever maintenant</button><button class="btn" type="button" data-act="mailCfg">Réglages</button></div></div>`;
@@ -545,7 +597,7 @@ function renderMails() {
       ${ct ? `<a class="hint" href="#/${ct.prospect ? 'contacts/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc((m.de && m.de.adresse) || '')}</span>`}
       ${MAIL.complet[m.key] ? mailCompletHtml(m) : `<p class="mail-extrait${MAIL.ouvert === m.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(m.key)}">${esc(m.extrait || '')}</p>
       <button class="btn link small" type="button" data-act="mailLire" data-key="${esc(m.key)}">${MAIL.charge === m.key ? 'Chargement…' : 'Lire en entier et voir les pièces jointes'}</button>`}
-      <div class="mail-etat">${confie ? `<span class="hint">${esc(confie)}</span>` : ''}${(m.reponses || []).length ? `<span class="hint">↩ répondu par ${esc(m.reponses.map((r) => nomDe(r.par) + ' le ' + fmtDateCourt(String(r.le).slice(0, 10))).join(', '))}</span>` : ''}${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
+      <div class="mail-etat">${confie ? `<span class="hint">${esc(confie)}</span>` : ''}${(m.reponses || []).length ? `<span class="hint">↩ répondu par ${esc(m.reponses.map((r) => nomDe(r.par) + ' le ' + fmtDateCourt(String(r.le).slice(0, 10))).join(', '))}</span>` : (() => { const r = reponsesEnvoyees(m); return r.length ? `<span class="hint">↩ répondu le ${esc(fmtDateCourt(isoDate(new Date(r[r.length - 1].date))))} (depuis la boîte)</span>` : ''; })()}${vus.length ? `<span class="hint">vu par ${esc(vus.map(nomDe).join(', '))}</span>` : ''}</div>
       ${estMailTwint(m) ? twintMailHtml(m) : ''}
       <div class="row mail-actions">
         <button class="btn primary small" type="button" data-act="mailRepondre" data-key="${esc(m.key)}">↩ Répondre</button>
@@ -554,7 +606,21 @@ function renderMails() {
   return `<div class="panel"><div class="between"><h2>Mails${c.adresse ? ' · ' + esc(c.adresse) : ''}</h2><div class="row"><button class="btn primary small" type="button" data-act="mailEcrire">✉️ Nouveau mail</button><button class="btn small" type="button" data-act="mailRelever">Relever</button><button class="btn small" type="button" data-act="mailCfg">Réglages</button></div></div>
     <p class="hint">Les mails partent de ${esc(c.adresse || 'votre adresse')} ; une copie va dans « Envoyés ». <a href="${esc(c.webmail)}" target="_blank" rel="noopener">Ouvrir la boîte Infomaniak</a>. Dernière relève ${esc(depuis(etat.derniere))}${etat.erreur ? ` · <span class="bad">problème : ${esc(etat.erreur)}</span>` : ''}. Le bouton à côté de « Répondre » dit où en est chaque mail ; on clique dessus pour le confier à quelqu'un, le marquer traité, l'archiver…</p>
     <div class="chips">${chips}</div>
-    ${list.length ? list.slice(0, 80).map(carte).join('') : '<p class="empty">Rien ici.</p>'}</div>`;
+    ${f === 'envoyes' ? (env.length ? env.slice(0, 80).map(carteEnvoye).join('') : '<p class="empty">Aucun mail envoyé relevé pour l\'instant (la fonction « mails » les copie depuis le dossier « Envoyés »).</p>')
+      : list.length ? list.slice(0, 80).map(carte).join('') : '<p class="empty">Rien ici.</p>'}</div>`;
+}
+/* ---------- Mails envoyés (dossier « Envoyés » d'Infomaniak, copiés par la fonction « mails ») : mailenv:… ---------- */
+const mailsEnvoyes = () => DB.all('mailenv:').sort((a, b) => String(b.date).localeCompare(String(a.date)));
+/* La réponse envoyée à un mail reçu (par son Message-ID) */
+const reponsesEnvoyees = (m) => (m && m.messageId ? mailsEnvoyes().filter((e) => e.inReplyTo && e.inReplyTo === m.messageId) : []);
+function carteEnvoye(e) {
+  const a = (e.a || [])[0] || {}, ct = contactDuMail(a.adresse);
+  return `<div class="mail envoye">
+    <div class="between"><b>→ ${esc((e.a || []).map((x) => x.nom || x.adresse).join(', ') || '?')}</b><span class="hint">${esc(depuis(e.date))}</span></div>
+    <div class="mail-objet">${esc(e.objet || '(sans objet)')}</div>
+    ${ct ? `<a class="hint" href="#/${ct.prospect ? 'contacts/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc(a.adresse || '')}</span>`}
+    <p class="mail-extrait${MAIL.ouvert === e.key ? ' open' : ''}" data-act="mailOuvrir" data-key="${esc(e.key)}">${esc(e.extrait || '')}</p>
+    ${(e.pieces || []).length ? `<p class="hint">📎 ${esc(e.pieces.join(', '))}</p>` : ''}</div>`;
 }
 /* ---------- Mail « paiement TWINT reçu » → recette en un clic ----------
    Vente directe : la recette est rattachée à la vente directe en cours ce jour-là (s'il y en a une). Autre vente : une recette simple.
@@ -568,7 +634,12 @@ function montantDansTexte(t) {
 const payeurDansTexte = (t) => { const r = /(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/u.exec(String(t || '')); return r ? r[1] : ''; };
 function twintMailHtml(m) {
   const tw = DB.all('tw:').find((t) => t.mail === m.key), r = tw && tw.utilise && DB.get(tw.utilise);
-  if (r) return `<p class="twint-fait">✓ Enregistré : ${chf(r.montant)} · ${esc(estVenteDirecte(r) ? 'vente directe' : 'autre vente')} <a href="#" data-act="recEdit" data-key="${esc(tw.utilise)}">voir</a></p>`;
+  if (r && String(tw.utilise).startsWith('fac:')) return `<p class="twint-fait">✓ Facture ${esc(r.numero || '')} payée par TWINT (${chf(r.total)})</p>`;
+  if (r) return `<p class="twint-fait">✓ Enregistré : ${chf(r.montant)} · ${esc(estVenteDirecte(r) ? 'vente directe' : 'autre vente')}${r.remarque && /tout seul/.test(r.remarque) ? ' (tout seul)' : ''} <a href="#" data-act="recEdit" data-key="${esc(tw.utilise)}">voir</a></p>`;
+  if (m.twAttente) {
+    const fs = (m.twAttente.factures || []).map((k) => Object.assign({ key: k }, DB.get(k) || {})).filter((f) => f.numero && f.statut === 'ouverte');
+    if (fs.length) return `<div class="twint-acts"><p class="hint">💳 <b>${chf(m.twAttente.montant)}</b> par TWINT : c'est le montant ${fs.length > 1 ? 'de ces factures ouvertes' : 'd\'une facture ouverte'}. C'est elle ?</p><div class="row">${fs.map((f) => `<button class="btn small primary" type="button" data-act="twFacture" data-key="${esc(m.key)}" data-fac="${esc(f.key)}">Oui : ${esc(f.numero)} · ${esc((f.client && f.client.nom) || '')}</button>`).join('')}<button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="self">Non, vente directe</button><button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="autre">Non, autre vente</button></div></div>`;
+  }
   const mt = montantDansTexte((m.objet || '') + ' ' + (m.extrait || ''));
   return `<div class="row twint-acts"><span class="hint">💳 Paiement TWINT${mt ? ' de <b>' + chf(mt) + '</b>' : ''} :</span><button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="self">Enregistrer comme vente directe</button><button class="btn small" type="button" data-act="twMail" data-key="${esc(m.key)}" data-quoi="autre">Enregistrer comme autre vente</button></div>`;
 }
@@ -577,7 +648,7 @@ ACTIONS.twMail = async (el) => {
   if (DB.all('tw:').some((t) => t.mail === k && t.utilise && DB.get(t.utilise))) { toast('Déjà enregistré.'); return; }
   let txt = (m.objet || '') + ' ' + (m.extrait || ''), mt = montantDansTexte(txt);
   if (!mt && !LOCAL_MODE && Sync.sb) { try { const c = MAIL.complet[k] || await boite(k, 'lire'); txt += ' ' + (c.texte || ''); mt = montantDansTexte(txt); } catch (e) { /* on demandera */ } }
-  const date = String(m.date || todayISO()).slice(0, 10);
+  const date = jourDuMail(m);
   if (!mt) { twMailFeuille(k, quoi, date, payeurDansTexte(txt)); return; }
   enregistrerTwintMail(k, quoi, date, mt, payeurDansTexte(txt));
 };
@@ -587,15 +658,56 @@ function twMailFeuille(k, quoi, date, payeur) {
     <div class="row-end"><button class="btn primary" type="submit">Enregistrer comme ${quoi === 'self' ? 'vente directe' : 'autre vente'}</button></div></form>`);
 }
 FORMS.twMail = (v) => { const mt = r2(num(v.montant)); if (!(mt > 0)) { toast('Indique le montant.'); return; } closeSheet(); enregistrerTwintMail(v.key, v.quoi, v.date, mt, v.payeur); };
-function enregistrerTwintMail(k, quoi, date, montant, payeur) {
-  const m = DB.get(k) || {}, rk = 'rec:' + uid('r'), par = (typeof titulaireCompte === 'function' && titulaireCompte()) || Sync.me || '';
+/* Le jour du mail (heure de Suisse), pas celui où on l'enregistre */
+const jourDuMail = (m) => { const d = new Date(m && m.date); return isNaN(d) ? todayISO() : isoDate(d); };
+function enregistrerTwintMail(k, quoi, date, montant, payeur, auto) {
+  const id = String(k).replace(/^mail:/, '').replace(/[^\w-]/g, '');
+  const m = DB.get(k) || {}, rk = 'rec:twm-' + id, par = (typeof titulaireCompte === 'function' && titulaireCompte()) || Sync.me || '';
   const s = quoi === 'self' && typeof misesEnVente === 'function' ? misesEnVente().find((x) => x.date <= date && (!x.closeLe || x.closeLe >= date)) : null;
   DB.put(rk, Object.assign({ date, montant, moyen: 'TWINT', par, client: quoi === 'self' ? (s ? s.lieu || 'Self-service' : 'Vente directe') : payeur || 'Paiement TWINT',
-    libelle: quoi === 'self' ? `Vente directe${s ? ' du ' + fmtDate(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}` : `Paiement TWINT${payeur ? ' de ' + payeur : ''}`, remarque: 'Depuis le mail TWINT : ' + trunc(m.objet || '', 80), cree: new Date().toISOString(), creePar: Sync.me || '' }, quoi === 'self' ? { vd: true } : {}, s ? { self: s.key } : {}));
-  DB.put('tw:' + uid('w'), { cle: 'mail:' + k, src: 'mail', mail: k, date, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' });
-  majMail(k, { statut: 'traite', traitePar: Sync.me || '' });
-  toast(`${chf(montant)} enregistrés comme ${quoi === 'self' ? 'vente directe' + (s ? ' (' + (s.lieu || 'self-service') + ')' : '') : 'autre vente'}. Mail marqué traité.`, 5000);
+    libelle: quoi === 'self' ? `Vente directe${s ? ' du ' + fmtDate(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}` : `Paiement TWINT${payeur ? ' de ' + payeur : ''}`, remarque: (auto ? 'Enregistré tout seul depuis le mail TWINT : ' : 'Depuis le mail TWINT : ') + trunc(m.objet || '', 80), cree: new Date().toISOString(), creePar: auto ? '' : Sync.me || '' }, quoi === 'self' ? { vd: true } : {}, s ? { self: s.key } : {}));
+  DB.put('tw:twm-' + id, { cle: 'mail:' + k, src: 'mail', mail: k, date, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' });
+  /* Traité (sans en faire le référent de l'adresse TWINT) et lu aussi chez Infomaniak */
+  const m2 = DB.get(k); if (m2) DB.put(k, Object.assign({}, m2, { statut: 'traite', traitePar: auto ? '' : Sync.me || '', twAttente: null }));
+  if (!LOCAL_MODE) boite(k, 'lu').catch(() => {});
+  toast(`${auto ? '💳 Paiement TWINT : ' : ''}${chf(montant)} enregistrés comme ${quoi === 'self' ? 'vente directe' + (s ? ' (' + (s.lieu || 'self-service') + ')' : '') : 'autre vente'}${auto ? ' (jour du mail : ' + fmtDateCourt(date) + ')' : ''}. Mail marqué traité.`, 5000);
 }
+/* ---------- Mails TWINT tout seuls : un paiement reçu devient une vente directe, au jour du mail ----------
+   Sauf si le montant est celui d'une facture ouverte : on demande (dans le mail) si c'est elle.
+   Clés fixes (rec:twm-…, tw:twm-…) : deux appareils qui le font en même temps n'en créent pas deux. */
+const TW_AUTO_DEPUIS = '2026-11-12';
+const estPaiementTwint = (m) => estMailTwint(m) && /re[çc]u|paiement|payment|zahlung|erhalten|bezahlt|pagamento/i.test((m.objet || '') + ' ' + (m.extrait || ''));
+const facturesOuvertesDe = (mt) => (typeof factures === 'function' ? factures() : []).filter((f) => f.numero && f.statut === 'ouverte' && Math.abs(r2(f.total) - mt) < 0.005);
+let twAutoEnCours = false;
+async function twintAuto() {
+  if (twAutoEnCours || !Sync.me || typeof mails !== 'function') return; twAutoEnCours = true;
+  try {
+    for (const m of mails()) {
+      if (!estPaiementTwint(m) || m.statut === 'traite' || m.statut === 'ignore' || m.twAttente || jourDuMail(m) < TW_AUTO_DEPUIS) continue;
+      if (DB.all('tw:').some((t) => t.mail === m.key)) continue;
+      let txt = (m.objet || '') + ' ' + (m.extrait || ''), mt = montantDansTexte(txt);
+      if (!mt && !LOCAL_MODE && Sync.sb && navigator.onLine) { try { const c = MAIL.complet[m.key] || await boite(m.key, 'lire'); MAIL.complet[m.key] = c; txt += ' ' + (c.texte || ''); mt = montantDansTexte(txt); } catch (e) { /* reste à la main */ } }
+      if (!mt) continue;
+      const cur = DB.get(m.key); if (!cur || cur.statut === 'traite' || cur.twAttente || DB.all('tw:').some((t) => t.mail === m.key)) continue;
+      const fs = facturesOuvertesDe(mt);
+      sansAnnuler(() => {
+        if (fs.length) DB.put(m.key, Object.assign({}, cur, { twAttente: { montant: mt, factures: fs.map((f) => f.key), payeur: payeurDansTexte(txt) } }));
+        else enregistrerTwintMail(m.key, 'self', jourDuMail(m), mt, payeurDansTexte(txt), true);
+      });
+    }
+  } finally { twAutoEnCours = false; }
+}
+setTimeout(twintAuto, 3000);
+/* Le montant est celui d'une facture ouverte : c'est elle → payée par TWINT au jour du mail */
+ACTIONS.twFacture = (el) => {
+  const k = el.dataset.key, m = DB.get(k), f = DB.get(el.dataset.fac); if (!m || !f) return;
+  const date = jourDuMail(m), id = String(k).replace(/^mail:/, '').replace(/[^\w-]/g, '');
+  DB.put(el.dataset.fac, Object.assign({}, f, { statut: 'payee', payeeLe: date, payeePar: 'twint', encaissePar: titulaireCompte() || Sync.me || '' }));
+  DB.put('tw:twm-' + id, { cle: 'mail:' + k, src: 'mail', mail: k, date, montant: r2(f.total), ref: f.numero || '', texte: (m.twAttente && m.twAttente.payeur) || m.objet || '', utilise: el.dataset.fac, importe: new Date().toISOString(), par: Sync.me || '' });
+  DB.put(k, Object.assign({}, DB.get(k), { statut: 'traite', traitePar: Sync.me || '', twAttente: null }));
+  if (!LOCAL_MODE) boite(k, 'lu').catch(() => {});
+  toast(`Facture ${f.numero} payée par TWINT le ${fmtDateCourt(date)}.`, 5000);
+};
 
 const ouvrirWebmail = () => { try { window.open(cfgMails().webmail, '_blank', 'noopener'); } catch (e) { /* */ } };
 const majMail = (k, o) => {
@@ -640,7 +752,7 @@ ACTIONS.mailAssigner = (el) => {
   closeSheet(); toast(p ? (p === Sync.me ? 'Pour toi.' : `Confié à ${nomDe(p)}.`) : 'Confié à personne.');
   /* Prévenir la personne à qui on le confie (notification « Un mail qu'on me confie ») */
   const m = DB.get(el.dataset.key);
-  if (p && p !== Sync.me && m && !LOCAL_MODE && Sync.sb && navigator.onLine) Sync.sb.functions.invoke('notifier', { body: { confier: { personne: p, objet: m.objet || '', de: (m.de && (m.de.nom || m.de.adresse)) || '' } } }).catch(() => {});
+  if (p && p !== Sync.me && m && !LOCAL_MODE && Sync.sb && navigator.onLine) Sync.sb.functions.invoke('notifier', { body: { confier: { personne: p, key: el.dataset.key, objet: m.objet || '', de: (m.de && (m.de.nom || m.de.adresse)) || '' } } }).catch(() => {});
 };
 ACTIONS.mailWebmail = () => { closeSheet(); ouvrirWebmail(); };
 ACTIONS.mailRelever = () => releverMails(true);

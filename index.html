@@ -170,6 +170,21 @@ button.gear { border: 0; background: none; cursor: pointer; padding: 0; }
 .msg-fichier { display: inline-flex; gap: 6px; align-items: baseline; font: inherit; color: inherit; background: rgba(0,0,0,.06); border: 0; border-radius: 8px; padding: 6px 10px; margin-bottom: 4px; cursor: pointer; text-decoration: none; max-width: 100%; }
 .msg.mine .msg-fichier { background: rgba(255,255,255,.18); color: #fff; }
 .bubble.has-photo .msg-t { padding: 0 8px; }
+.fin-total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.fin-total .k { color: var(--muted); font-size: 13px; }
+.fin-total .v { font-size: 26px; font-variant-numeric: tabular-nums; }
+.fin-filtres { display: grid; gap: 6px; margin-bottom: 10px; }
+.fin-filtres .fin-q { max-width: 340px; padding: 6px 10px; font-size: 14px; }
+.fin-filtre { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fin-filtre > .hint { min-width: 72px; font-size: 12px; }
+.fin-filtre .chips { margin: 0; gap: 4px; }
+.chip.small { padding: 3px 9px; font-size: 12.5px; min-height: 0; }
+.stats-prod { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.stats-prod summary { cursor: pointer; padding: 4px 0; }
+.stats-prod .chips { margin: 8px 0; }
+.chat.depot { outline: 3px dashed var(--c-messages); outline-offset: -6px; }
+.msg.glisse-ok::before { content: '↪'; position: absolute; left: -26px; top: 50%; transform: translateY(-50%); font-size: 18px; opacity: .7; }
+.msg { position: relative; }
 .msg-photo { display: block; border: 0; padding: 0; background: none; cursor: zoom-in; margin-bottom: 4px; }
 .msg-photo img { display: block; max-width: min(280px, 62vw); max-height: 340px; height: auto; border-radius: 12px; background: color-mix(in srgb, var(--line) 60%, transparent); min-width: 120px; min-height: 90px; object-fit: cover; }
 .msg-prev { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 14px; }

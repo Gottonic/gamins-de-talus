@@ -161,7 +161,7 @@ const Sync = {
       /* Des lignes sautées (envoyées pendant la lecture) : on les relira, pour ne rien manquer */
       DB.lastPull = minSaute && (!maxTs || minSaute < maxTs) ? minSaute : maxTs; if (minSaute) this.relire = true;
       this.persist(); this.lastOk = Date.now(); this.err = ''; UI.status();
-      if (changed) { UI.dataChanged(); if (typeof attribuerMailsAuto === 'function') setTimeout(attribuerMailsAuto, 0); }
+      if (changed) { UI.dataChanged(); if (typeof attribuerMailsAuto === 'function') setTimeout(attribuerMailsAuto, 0); if (typeof twintAuto === 'function') setTimeout(twintAuto, 50); }
       return true;
     } catch (e) { this.err = (e && e.message) || String(e); UI.status(); return false; }
   },
@@ -235,6 +235,32 @@ function renderGardeFocus() {
 function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 function parseRoute() { const p = location.hash.replace(/^#\/?/, '').split('/'); ROUTE.mod = p[0] || ''; ROUTE.sub = p[1] || ''; ROUTE.id = decodeURIComponent(p[2] || ''); }
 
+/* Champs modifiés à la main dans les formulaires de la page (pour ne pas perdre une note quand la page se redessine) */
+function idForm(f) { const k = f.querySelector('input[type=hidden][name=key]'); return f.dataset.form + '|' + (k ? k.value : ''); }
+function saisiesEnCours(root) {
+  const out = [];
+  root.querySelectorAll('form[data-form]').forEach((f) => {
+    if (f.dataset.envoye) return;
+    const id = idForm(f);
+    for (const el of f.elements) {
+      if (!el.name || el.type === 'hidden' || el.type === 'file' || el.type === 'submit' || el.type === 'button') continue;
+      if (el.type === 'checkbox' || el.type === 'radio') { if (el.checked !== el.defaultChecked && el.checked) out.push({ id, name: el.name, v: el.value, coche: true }); else if (el.type === 'checkbox' && el.checked !== el.defaultChecked) out.push({ id, name: el.name, v: el.value, coche: false }); }
+      else if (el.tagName === 'SELECT') { const o = el.options[el.selectedIndex]; if (o && !o.defaultSelected) out.push({ id, name: el.name, v: el.value }); }
+      else if (el.value !== el.defaultValue) out.push({ id, name: el.name, v: el.value });
+    }
+  });
+  return out;
+}
+function remettreSaisies(root, tape) {
+  const forms = {}; root.querySelectorAll('form[data-form]').forEach((f) => { forms[idForm(f)] = f; });
+  for (const t of tape) {
+    const f = forms[t.id]; if (!f) continue;
+    const els = [...f.elements].filter((el) => el.name === t.name);
+    if (t.coche !== undefined) { const el = els.find((x) => x.value === t.v) || els[0]; if (el) el.checked = t.coche; }
+    else if (els[0]) els[0].value = t.v;
+  }
+}
+
 function render() {
   parseRoute();
   const m = MODULES[ROUTE.mod];
@@ -247,8 +273,11 @@ function render() {
   const sy = window.scrollY, prev = String(render._last || '').replace(/^#\/?/, '').split('/');
   const same = render._last === location.hash || (!!m && !!m.garderDefilement && prev[0] === ROUTE.mod && m.garderDefilement(ROUTE.sub, prev[1] || ''));
   render._last = location.hash;
+  /* Même page : ce qui a été tapé dans un formulaire (pas encore enregistré) est remis après le nouvel affichage */
+  const tape = same ? saisiesEnCours(view) : null;
   try { view.innerHTML = m ? m.render(ROUTE.sub, ROUTE.id) : renderAccueil(); }
   catch (e) { console.error(e); view.innerHTML = `<div class="panel"><p class="err">Cette page n'a pas pu s'afficher : ${esc(e.message)}. Tes données ne sont pas touchées.</p></div>`; }
+  if (tape && tape.length) remettreSaisies(view, tape);
   if (same) window.scrollTo(0, sy); else window.scrollTo(0, 0);
   if (m && m.after) try { m.after(ROUTE.sub, ROUTE.id); } catch (e) { console.error(e); }
 }
@@ -305,12 +334,19 @@ function csv(head, rows) { const q = (v) => `"${String(v ?? '').replace(/"/g, '"
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-act]'); if (!a || a.disabled) return;
   const f = ACTIONS[a.dataset.act]; if (!f) return;
-  e.preventDefault(); f(a, e);
+  e.preventDefault();
+  const form = a.closest('form[data-form]');
+  if (form) utiliseForm(form, () => f(a, e)); else f(a, e);
 });
 document.addEventListener('submit', (e) => {
   const form = e.target.closest('form[data-form]'); if (!form) return;
-  e.preventDefault(); const f = FORMS[form.dataset.form]; if (f) f(formValues(form), form);
+  e.preventDefault(); const f = FORMS[form.dataset.form]; if (!f) return;
+  utiliseForm(form, () => f(formValues(form), form));
 });
+/* Un formulaire qu'on vient d'envoyer (ou dont un bouton vient de servir) n'est pas remis tel quel au prochain affichage.
+   La marque s'efface dès qu'on y retape quelque chose. */
+function utiliseForm(form, fn) { form.dataset.envoye = '1'; return fn(); }
+document.addEventListener('input', (e) => { const f = e.target.closest && e.target.closest('form[data-envoye]'); if (f) delete f.dataset.envoye; });
 ACTIONS.close = () => closeSheet();
 ACTIONS.annuler = () => annuler();
 ACTIONS.go = (el) => go(el.dataset.href);

@@ -7,7 +7,20 @@ const depenses = () => DB.all('dep:');
 const recettesDirectes = () => DB.all('rec:');
 const reglements = () => DB.all('reg:');
 const recettesToutes = () => recettesUnifiees(recettesDirectes(), factures(), cfg());
-const FIN = { annee: '', type: '', par: '', q: '', sansJ: false };
+const FIN = { annee: '', type: '', par: '', q: '', sansJ: false, f: {} };
+/* Filtres en boutons : plusieurs choix possibles par rangée (FIN.f[nom] = liste de valeurs ; vide = tout) */
+const finSel = (nom) => FIN.f[nom] || (FIN.f[nom] = []);
+const finGarde = (nom, v) => { const l = finSel(nom); return !l.length || l.includes(String(v)); };
+ACTIONS.finFiltre = (el) => { const nom = el.dataset.f, v = el.dataset.v, l = finSel(nom); if (v === '') FIN.f[nom] = []; else { const i = l.indexOf(v); if (i >= 0) l.splice(i, 1); else l.push(v); } render(); };
+ACTIONS.finFiltresOff = () => { FIN.f = {}; FIN.q = ''; FIN.sansJ = false; render(); };
+function chipsFiltre(titre, nom, options) {
+  if (options.length < 2) return '';
+  const l = finSel(nom);
+  return `<div class="fin-filtre"><span class="hint">${esc(titre)}</span><div class="chips">${options.map(([v, lib, n]) => `<button type="button" class="chip small${l.includes(String(v)) ? ' on' : ''}" data-act="finFiltre" data-f="${esc(nom)}" data-v="${esc(v)}" aria-pressed="${l.includes(String(v))}">${esc(lib)}${n != null ? `<span class="n">${esc(n)}</span>` : ''}</button>`).join('')}</div></div>`;
+}
+function chipsAnnees(ys) { return `<div class="fin-filtre"><span class="hint">Année</span><div class="chips"><button type="button" class="chip small${!FIN.annee ? ' on' : ''}" data-act="finAnnee" data-y="">Toutes</button>${ys.map((y) => `<button type="button" class="chip small${FIN.annee === y ? ' on' : ''}" data-act="finAnnee" data-y="${esc(y)}">${esc(y)}</button>`).join('')}</div></div>`; }
+const compteCourt = (c) => `${c} ${trunc(compteInfo(c).nom || '', 22)}`.trim();
+function totalFinHtml(tot, n, mot, filtre) { return `<div class="fin-total"><span class="k">${filtre ? 'Total filtré' : 'Total'}</span><b class="v">${chf(tot)}</b><span class="hint">${n} ${mot}${n > 1 ? 's' : ''}${filtre ? ` · <a href="#" data-act="finFiltresOff">tout voir</a>` : ''}</span></div>`; }
 /* Garanties : sur la dépense de l'achat (garantie = date de fin, garantieNote = n° de série, vendeur…). Le justificatif
    d'une dépense sous garantie reste dans l'app tant que la garantie court (c'est la preuve d'achat). */
 const sousGarantie = (d, t) => !!d.garantie && d.garantie >= (t || todayISO());
@@ -73,8 +86,9 @@ function renderDepenses() {
   const ys = anneesFin();
   let list = depenses().sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.n || 0) - (a.n || 0));
   if (FIN.annee) list = list.filter((d) => yearOf(d.date) === FIN.annee);
-  if (FIN.type) list = list.filter((d) => (d.type || 'charge') === FIN.type);
-  if (FIN.par) list = list.filter((d) => d.par === FIN.par);
+  /* Les boutons de catégorie montrent ce qu'il y a dans l'année choisie */
+  const base = list, parCat = {}; for (const d of base) { const c = compteDe(d); parCat[c] = (parCat[c] || 0) + num(d.montant); }
+  list = list.filter((d) => finGarde('dType', d.type || 'charge') && finGarde('dPar', d.par) && finGarde('dCat', compteDe(d)));
   if (FIN.q) { const q = FIN.q.toLowerCase(); list = list.filter((d) => [d.objet, libCompte(compteDe(d)), d.justificatif, d.remarque, money(d.montant)].join(' ').toLowerCase().includes(q)); }
   const nSansJ = depenses().filter(sansJustificatif), gs = garanties();
   if (FIN.sansJ) list = list.filter(sansJustificatif);
@@ -82,11 +96,13 @@ function renderDepenses() {
   const banner = nSansJ.length ? `<div class="banner"><span><b>${nSansJ.length} dépense${nSansJ.length > 1 ? 's' : ''} sans justificatif</b> (${chf(nSansJ.reduce((a, d) => a + num(d.montant), 0))}). Sans ticket ni facture, la dépense ne peut pas être justifiée en comptabilité.</span>
     <button class="btn small" type="button" data-act="finSansJ">${FIN.sansJ ? 'Voir toutes les dépenses' : 'Voir seulement celles-ci'}</button></div>` : '';
   return `<div class="panel" data-depot="nouvelle"><div class="between"><h2>Dépenses</h2><div class="row"><button class="btn small" type="button" data-act="depCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="depEdit">+ Dépense</a></div></div>
-    <div class="grid2">
-      ${fld('fin-q', 'Rechercher', `<input id="fin-q" type="search" value="${esc(FIN.q)}" placeholder="Objet, justificatif…">`)}
-      ${sel('fin-annee', 'Année', FIN.annee, [['', 'Toutes']].concat(ys.map((y) => [y, y])))}
-      ${sel('fin-type', 'Type', FIN.type, [['', 'Tous'], ['charge', 'Charges'], ['investissement', 'Investissements']])}
-      ${sel('fin-par', 'Payé par', FIN.par, [['', 'Tous']].concat(persOptions()))}
+    ${totalFinHtml(tot, list.length, 'dépense', list.length !== base.length || !!FIN.q || FIN.sansJ)}
+    <div class="fin-filtres">
+      <input id="fin-q" class="fin-q" type="search" value="${esc(FIN.q)}" placeholder="🔍 Rechercher : objet, justificatif…" aria-label="Rechercher">
+      ${chipsAnnees(ys)}
+      ${chipsFiltre('Type', 'dType', [['charge', 'Charges'], ['investissement', 'Investissements']])}
+      ${chipsFiltre('Payé par', 'dPar', persOptions().map(([k, l]) => [k, l]))}
+      ${chipsFiltre('Catégories', 'dCat', Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([c, t]) => [c, compteCourt(c), Math.round(t)]))}
     </div>
     ${banner}
     ${gs.length ? `<details class="garanties"${gs.some((d) => d.garantie <= addDays(todayISO(), 60)) ? ' open' : ''}><summary>🛡️ <b>${gs.length} achat${gs.length > 1 ? 's' : ''} sous garantie</b></summary><div class="items">${gs.map((d) => `<button type="button" class="item" data-act="depEdit" data-key="${esc(d.key)}"><span class="who"><strong>${esc(d.objet)}</strong><span class="meta">acheté le ${fmtDate(d.date)} · ${chf(d.montant)}${d.garantieNote ? ' · ' + esc(d.garantieNote) : ''}${(d.fichiers || []).length ? ' · 📎 preuve d\'achat' : ' · ⚠️ pas de ticket joint'}</span></span><span class="num${d.garantie <= addDays(todayISO(), 60) ? ' bad' : ''}">jusqu'au ${fmtDate(d.garantie)}<br><span class="hint">${esc(finGarantieTxt(d.garantie))}</span></span></button>`).join('')}</div></details>` : ''}
@@ -203,10 +219,20 @@ ACTIONS.depCsv = () => {
 function renderRecettes() {
   const ys = anneesFin();
   let list = recettesToutes(); if (FIN.annee) list = list.filter((r) => yearOf(r.date) === FIN.annee);
+  const base = list, parCat = {}, moyens = {}; for (const r of base) { const c = compteRecette(r); parCat[c] = (parCat[c] || 0) + num(r.montant); moyens[r.moyen || '—'] = (moyens[r.moyen || '—'] || 0) + 1; }
+  list = list.filter((r) => finGarde('rMoyen', r.moyen || '—') && finGarde('rPar', r.par) && finGarde('rCat', compteRecette(r)));
+  if (FIN.q) { const q = FIN.q.toLowerCase(); list = list.filter((r) => [r.libelle, r.ref, r.moyen, compteRecette(r), money(r.montant)].join(' ').toLowerCase().includes(q)); }
   const tot = list.reduce((a, r) => a + num(r.montant), 0);
   return `<div class="panel"><div class="between"><h2>Recettes</h2><div class="row"><button class="btn small" type="button" data-act="recCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="recEdit">+ Autre entrée</a></div></div>
     <p class="hint">Les ventes arrivent ici toutes seules depuis <a href="#/factures">Ventes</a> : factures payées, ventes sans facture, encaissements de la vente directe. Ici, on saisit seulement l'argent qui n'est pas une vente : subvention, remboursement, indemnité…</p>
-    <div class="grid2">${sel('fin-annee', 'Année', FIN.annee, [['', 'Toutes']].concat(ys.map((y) => [y, y])))}</div>
+    ${totalFinHtml(tot, list.length, 'recette', list.length !== base.length || !!FIN.q)}
+    <div class="fin-filtres">
+      <input id="fin-q" class="fin-q" type="search" value="${esc(FIN.q)}" placeholder="🔍 Rechercher : client, libellé…" aria-label="Rechercher">
+      ${chipsAnnees(ys)}
+      ${chipsFiltre('Moyen', 'rMoyen', Object.entries(moyens).sort((a, b) => b[1] - a[1]).map(([m, n]) => [m, m, n]))}
+      ${chipsFiltre('Encaissé par', 'rPar', persOptions().map(([k, l]) => [k, l]))}
+      ${chipsFiltre('Catégories', 'rCat', Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([c, t]) => [c, compteCourt(c), Math.round(t)]))}
+    </div>
     ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Client / libellé</th><th>Compte</th><th>Moyen</th><th>Encaissé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((r) => r.src === 'facture'
       ? `<tr class="click" data-act="go" data-href="#/factures/voir/${encodeURIComponent(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle)} <span class="tpill">${esc(r.ref)}</span></td><td title="${esc(libCompte(compteRecette(r)))}" class="num">${esc(compteRecette(r))}</td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`
       : `<tr class="click" data-act="recEdit" data-key="${esc(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle || '—')}</td><td title="${esc(libCompte(compteRecette(r)))}" class="num">${esc(compteRecette(r))}</td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`).join('')}</tbody>
@@ -270,5 +296,10 @@ FORMS.reg = (v) => {
 
 /* Suppression générique (va dans la corbeille) */
 ACTIONS.delItem = (el) => confirmSheet('Supprimer ' + (el.dataset.what || 'cet élément') + ' ?', 'Il reste récupérable dans la corbeille (Réglages → Données).', 'delItemOk', 'Supprimer', { key: el.dataset.key });
-ACTIONS.delItemOk = (el) => { DB.del(el.dataset.key); closeSheet(); toast('Supprimé. Récupérable dans la corbeille.'); };
+ACTIONS.delItemOk = (el) => {
+  DB.del(el.dataset.key);
+  /* Une tâche supprimée depuis la fenêtre d'un événement ou d'un jour : on revient à cette fenêtre */
+  if (String(el.dataset.key).startsWith('t:') && typeof PL !== 'undefined' && PL.rafraichir) PL.rafraichir(); else closeSheet();
+  toast('Supprimé. Récupérable dans la corbeille.');
+};
 

@@ -102,7 +102,17 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
      par l'app elle-même (avec les photos) ; ici : les mails et la journée, si la personne l'a coché (d_mails, d_jour). */
   const discord: Record<string, any> = {}; for (const r of await lire('cfg:discord:')) discord[r.key.split(':')[2]] = r.data || {};
   const surDiscord = (p: string, quoi: string) => !!(discord[p] && discord[p].webhook) && (prefs[p] || {})['d_' + quoi] === true;
-  const discordEnvois: { personne: string; contenu: string; prioritaire?: boolean }[] = [];
+  const discordEnvois: { personne: string; contenu: string; prioritaire?: boolean; ref?: string }[] = [];
+  /* Le référent d'une adresse : ligne mref:<adresse> (posée par l'app), sinon le contact principal du contact qui a cette adresse */
+  const referentMail = async (adr: string, date: string) => {
+    if (!adr) return '';
+    const r = ((await sb.from('rows').select('data').eq('key', 'mref:' + adr).eq('deleted', false).maybeSingle()).data || {}).data;
+    if (r && r.personne) return !r.le || !date || date >= r.le ? String(r.personne) : '';
+    const c = (await lire('ct:')).map((x) => x.data || {}).find((x) => String(x.email || '').trim().toLowerCase() === adr);
+    if (!c) return '';
+    const pr = c.prospection || {}; if (pr.referent !== undefined) return String(pr.referent || '');
+    const e = (c.journal || []).find((x: any) => x.par); return e ? String(e.par) : '';
+  };
   /* Jours et heures où chacun accepte d'être dérangé : prefs.plage = { jours: [1..7] (1 = lundi), de: 'HH:MM', a: 'HH:MM' } */
   const maintenant = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Zurich', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
   const jourSem = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf((maintenant.find((x) => x.type === 'weekday') as any)?.value || '') + 1;
@@ -123,25 +133,30 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     return pr.sourdineVacances !== false && evsTous.some((e) => e.type === 'vacances' && aLieu(e, jourZ) && (!e.qui || e.qui === 'ensemble' || String(e.qui).split('+').includes(p)));
   };
   /* Ce qu'il faut envoyer, à qui */
-  const envois: { personne: string; message: any; prioritaire?: boolean }[] = [];
+  const envois: { personne: string; message: any; prioritaire?: boolean; ref?: string }[] = [];
   if (corps.test) envois.push({ personne: membre, message: { titre: 'Gamins de Talus', texte: 'Les notifications marchent sur cet appareil 🎉', url: APP + '#/reglages/notifications', tag: 'test' } });
   else if (corps.confier) {
     const c = corps.confier, p = String(c.personne || '');
     if (p && p !== membre) {
-      if (veut(p, 'assignes')) envois.push({ personne: p, message: { titre: '📧 ' + nom(membre) + ' te confie un mail', texte: court((c.de ? c.de + ' : ' : '') + (c.objet || '(sans objet)'), 140), url: APP + '#/mails', tag: 'confie' } });
+      if (veut(p, 'assignes')) envois.push({ personne: p, ref: c.key || '', message: { titre: '📧 ' + nom(membre) + ' te confie un mail', texte: court((c.de ? c.de + ' : ' : '') + (c.objet || '(sans objet)'), 140), url: APP + '#/mails', tag: 'confie' } });
       if (surDiscord(p, 'assignes')) discordEnvois.push({ personne: p, contenu: `[🔗](<${APP}#/mails>) 📧 **${nom(membre)}** te confie un mail` + (discord[p].texte === false ? '' : ` : ${court((c.de ? c.de + ' : ' : '') + (c.objet || '(sans objet)'), 200)}`) });
     }
   }
   else if (String(corps.key || '').startsWith('msg:')) {
     const m = corps.data || {};
     /* Un message avec des @mentions ne prévient que les personnes mentionnées */
-    const vises: string[] = Array.isArray(m.mentions) ? m.mentions : [];
-    for (const p of personnes) if (p.k !== m.de && (!vises.length || vises.includes(p.k)) && veut(p.k, 'messages')) envois.push({ personne: p.k, message: { titre: '💬 ' + nom(m.de) + (vises.includes(p.k) ? ' te mentionne' : ''), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } , prioritaire: vises.includes(p.k) });
+    /* Une réponse (glisser sur un message) ne prévient que l'auteur du message cité (m.pour) */
+    const mentions: string[] = Array.isArray(m.mentions) ? m.mentions : [], pour: string[] = Array.isArray(m.pour) ? m.pour : [];
+    const vises: string[] = [...new Set(mentions.concat(pour))];
+    for (const p of personnes) if (p.k !== m.de && (!vises.length || vises.includes(p.k)) && veut(p.k, 'messages')) envois.push({ personne: p.k, ref: corps.key, message: { titre: '💬 ' + nom(m.de) + (mentions.includes(p.k) ? ' te mentionne' : pour.includes(p.k) ? ' te répond' : ''), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } , prioritaire: vises.includes(p.k) });
   } else if (String(corps.key || '').startsWith('mail:')) {
     const m = corps.data || {}, de = (m.de && (m.de.nom || m.de.adresse)) || '?';
+    /* Une adresse qui a son référent (celui qui s'occupe de ses mails, ou le contact principal du contact) : seul lui est prévenu */
+    const ref = await referentMail(String((m.de && m.de.adresse) || '').trim().toLowerCase(), String(m.date || ''));
     for (const p of personnes) {
-      if (veut(p.k, 'mails')) envois.push({ personne: p.k, message: { titre: '📧 ' + court(de, 40), texte: court(m.objet || '(sans objet)', 140), url: APP + '#/mails', tag: 'mail' } });
-      if (surDiscord(p.k, 'mails')) discordEnvois.push({ personne: p.k, contenu: `[🔗](<${APP}#/mails>) 📧 ` + (discord[p.k].texte === false ? 'Nouveau mail' : `**${court(de, 60)}** : ${court(m.objet || '(sans objet)', 200)}`) });
+      if (ref && p.k !== ref) continue;
+      if (veut(p.k, 'mails')) envois.push({ personne: p.k, ref: corps.key, message: { titre: '📧 ' + court(de, 40) + (ref ? ' (pour toi)' : ''), texte: court(m.objet || '(sans objet)', 140), url: APP + '#/mails', tag: 'mail' } });
+      if (surDiscord(p.k, 'mails')) discordEnvois.push({ personne: p.k, ref: corps.key, contenu: `[🔗](<${APP}#/mails>) 📧 ` + (discord[p.k].texte === false ? 'Nouveau mail' : `**${court(de, 60)}** : ${court(m.objet || '(sans objet)', 200)}`) });
     }
   } else if (String(corps.key || '').startsWith('ev:')) {
     /* Nouvel événement : les personnes concernées (sauf celle qui l'a créé), seulement si elles l'ont coché (« evenements ») */
@@ -176,12 +191,20 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
   /* Hors des jours et heures choisis : mis de côté, envoyé en résumé dès que la plage s'ouvre (le programme du jour expire le soir même) */
   if (!corps.test && !corps.resume) {
     const file: any[] = [], id = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    for (let i = envois.length - 1; i >= 0; i--) if (!dansPlage(envois[i].personne)) { const e = envois.splice(i, 1)[0]; file.push({ key: `notifq:${e.personne}:${id()}`, data: { quand: new Date().toISOString(), tag: e.message.tag || '', push: e.message, expire: e.message.tag === 'jour' ? jourZ : '' }, deleted: false }); }
-    for (let i = discordEnvois.length - 1; i >= 0; i--) if (!dansPlage(discordEnvois[i].personne)) { const e = discordEnvois.splice(i, 1)[0]; file.push({ key: `notifq:${e.personne}:${id()}`, data: { quand: new Date().toISOString(), discord: e.contenu, expire: /Aujourd'hui/.test(e.contenu) ? jourZ : '' }, deleted: false }); }
+    for (let i = envois.length - 1; i >= 0; i--) if (!dansPlage(envois[i].personne)) { const e = envois.splice(i, 1)[0]; file.push({ key: `notifq:${e.personne}:${id()}`, data: { quand: new Date().toISOString(), tag: e.message.tag || '', push: e.message, ref: e.ref || '', expire: e.message.tag === 'jour' ? jourZ : '' }, deleted: false }); }
+    for (let i = discordEnvois.length - 1; i >= 0; i--) if (!dansPlage(discordEnvois[i].personne)) { const e = discordEnvois.splice(i, 1)[0]; file.push({ key: `notifq:${e.personne}:${id()}`, data: { quand: new Date().toISOString(), discord: e.contenu, ref: e.ref || '', expire: /Aujourd'hui/.test(e.contenu) ? jourZ : '' }, deleted: false }); }
     if (file.length) await sb.from('rows').upsert(file, { onConflict: 'key' });
   }
   /* Le résumé : ce qui attend, pour chacun dont la plage est ouverte (et pas en sourdine) */
   const aRetirer: string[] = [];
+  const ligne = async (k: string) => { const r = (await sb.from('rows').select('data,deleted').eq('key', k).maybeSingle()).data; return r ? (r.deleted ? null : (r.data || {})) : null; };
+  const dejaVu = async (p: string, ref: string) => {
+    if (!ref) return false;
+    const o = await ligne(ref); if (!o) return true; /* supprimé */
+    if (ref.startsWith('mail:')) return o.statut === 'traite' || o.statut === 'ignore' || !!(o.vus && o.vus[p]) || (!!o.par && o.par !== p);
+    if (ref.startsWith('msg:')) { const lu = await ligne('lu:' + p); return !!(lu && lu.jusqua && String(lu.jusqua) >= String(o.cree || '')); }
+    return false;
+  };
   if (corps.resume) {
     const LIB: Record<string, [string, string]> = { msg: ['message', 'messages'], mail: ['mail', 'mails'], confie: ['mail confié', 'mails confiés'], ev: ['nouvel événement', 'nouveaux événements'], jour: ['programme du jour', 'programmes du jour'] };
     const parP: Record<string, any[]> = {};
@@ -189,7 +212,9 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     for (const [p, xs0] of Object.entries(parP)) {
       if (!dansPlage(p)) continue;
       const xs = xs0.sort((a, b) => String(a.quand).localeCompare(String(b.quand))); xs.forEach((x) => aRetirer.push(x.key));
-      const vivants = xs.filter((x) => !x.expire || x.expire >= jourZ);
+      /* Ce qui a déjà été traité ou lu entre-temps (un mail traité le soir, un message lu) ne revient pas dans le résumé */
+      const vivants: any[] = [];
+      for (const x of xs) { if (x.expire && x.expire < jourZ) continue; if (await dejaVu(p, x.ref)) continue; vivants.push(x); }
       if (enSourdine(p)) continue; /* en sourdine : l'accueil fera le résumé au retour */
       const push = vivants.filter((x) => x.push).map((x) => x.push), dis = vivants.filter((x) => x.discord).map((x) => x.discord);
       if (push.length === 1) envois.push({ personne: p, message: push[0] });

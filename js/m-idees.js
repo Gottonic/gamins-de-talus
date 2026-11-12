@@ -43,7 +43,7 @@ function ideesHtml() {
       ${ideeJoindreHtml()}
       <details><summary class="hint">+ Détails</summary>${txt('idee-det', 'Détails (facultatif)', '', { name: 'details', rows: 3 })}</details></form>
     <div class="idees">${ouv.length ? ouv.map(ligne).join('') : '<p class="empty">Rien en attente. 🌿</p>'}</div>
-    <div class="row idees-pied">${ouv.length ? `<span class="row" style="gap:12px"><button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>${(() => { const n = ouv.reduce((a, x) => a + (x.captures || []).length, 0); return n ? (partageFichiersPossible() ? `<button type="button" class="btn link small" data-act="ideesPartager">Partager avec les captures (${n})</button>` : `<button type="button" class="btn link small" data-act="ideesCaptures">Télécharger les captures (${n})</button>`) : ''; })()}</span>` : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
+    <div class="row idees-pied">${ouv.length ? `<span class="row" style="gap:12px"><button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>${ouv.length > 1 ? '<button type="button" class="btn link small" data-act="ideesToutFait">☑ Tout cocher</button>' : ''}${(() => { const n = ouv.reduce((a, x) => a + (x.captures || []).length, 0); return n ? (partageFichiersPossible() ? `<button type="button" class="btn link small" data-act="ideesPartager">Partager avec les captures (${n})</button>` : `<button type="button" class="btn link small" data-act="ideesCaptures">Télécharger les captures (${n})</button>`) : ''; })()}</span>` : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
     ${faites.length && IDEE.faites ? `<div class="idees">${faites.slice(0, 50).map(ligne).join('')}</div>` : ''}</div>`;
 }
 /* Tout ce qui est en attente, en texte, à coller dans la conversation avec Claude.
@@ -87,6 +87,12 @@ const ideesRafraichir = () => {
   const t = $('idee-titre'), v = t ? t.value : ''; openSheet(ideesHtml()); const n = $('idee-titre'); if (n && v) n.value = v;
 };
 ACTIONS.ideeType = (el) => { IDEE.type = el.dataset.k; const t = $('idee-titre'), v = t ? t.value : ''; openSheet(ideesHtml()); const n = $('idee-titre'); if (n) { n.value = v; n.focus(); } };
+/* Tout cocher d'un coup (après les avoir données à Claude, par ex.) ; ↶ Annuler les remet toutes */
+ACTIONS.ideesToutFait = () => {
+  const ouv = idees().filter((x) => !x.fait); if (!ouv.length) return;
+  const le = todayISO(); for (const x of ouv) { const o = Object.assign({}, x); delete o.key; DB.put(x.key, Object.assign(o, { fait: true, faitPar: Sync.me || '', faitLe: le })); }
+  openSheet(ideesHtml()); toast(`${ouv.length} cochées. ↶ en haut pour annuler.`, 5000);
+};
 ACTIONS.ideeFaites = () => { IDEE.faites = !IDEE.faites; openSheet(ideesHtml()); };
 FORMS.ideeAjout = (v) => {
   if (!String(v.titre || '').trim()) { toast('Écris le titre.'); return; }

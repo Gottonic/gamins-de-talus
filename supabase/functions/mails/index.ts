@@ -3,7 +3,8 @@
 // avec l'en-tête « x-cron: <CRON_SECRET> ».
 // Secrets à définir dans Supabase (Edge Functions → Secrets) : IMAP_USER, IMAP_PASSWORD
 //   (facultatifs : IMAP_HOST = mail.infomaniak.com, IMAP_PORT = 993, CRON_SECRET).
-// Seuls l'expéditeur, l'objet, la date et le début du texte (1500 caractères) sont copiés dans la base. La relève ne modifie
+// Seuls l'expéditeur, l'objet, la date et le début du texte (1500 caractères) sont copiés dans la base (pareil pour les
+// mails envoyés, dossier « Envoyés » → lignes mailenv:…). La relève ne modifie
 // rien dans la boîte. Le texte complet et les pièces jointes sont lus à la demande et restent chez Infomaniak.
 // Envoi : { envoyer: { a, cc?, objet, texte, inReplyTo?, pieces: [{ nom, type, base64 }] } } par un membre connecté → envoyé par le SMTP
 // d'Infomaniak (port 465, mêmes identifiants), et une copie est rangée dans le dossier « Envoyés » de la boîte.
@@ -54,22 +55,35 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
       depuis = Math.max(depuis, uid);
     }
     nouvelEtat = { uidValidity: uv, dernierUid: depuis };
+    /* Les mails envoyés (depuis l'app, le webmail ou un téléphone) : copiés aussi, en lignes mailenv:… (pas de notification) */
+    try {
+      const l = await client.list(); const d = l.find((x: any) => x.specialUse === '\\Sent') || l.find((x: any) => /^(sent|envoy)/i.test(x.name));
+      if (d) {
+        const sbox = await client.mailboxOpen(d.path, { readOnly: true }); const suv = String(sbox.uidValidity);
+        let sdepuis = etat.envoyesUv === suv ? Number(etat.envoyesUid || 0) : 0, su: number[] = [];
+        if (sdepuis > 0) su = (await client.search({ uid: `${sdepuis + 1}:*` }, { uid: true })) || [];
+        else { const dd = new Date(Date.now() - 30 * 864e5); su = ((await client.search({ since: dd }, { uid: true })) || []).slice(-30); }
+        su = su.filter((u) => u > sdepuis).sort((a, b) => a - b).slice(0, 50);
+        const envoyes: any[] = [];
+        for (const uid of su) {
+          const msg: any = await client.fetchOne(String(uid), { uid: true, envelope: true, internalDate: true, source: { start: 0, maxLength: 200000 } }, { uid: true });
+          if (!msg) continue;
+          let parsed: any = {}; try { parsed = await PostalMime.parse(msg.source); } catch (_) { parsed = {}; }
+          const e0 = msg.envelope || {};
+          envoyes.push({ key: `mailenv:${suv}-${uid}`, data: { a: (e0.to || []).map((x: any) => ({ nom: x.name || '', adresse: String(x.address || '').toLowerCase() })), objet: e0.subject || parsed.subject || '', date: new Date(e0.date || msg.internalDate || Date.now()).toISOString(), extrait: texteDe(parsed), uid, messageId: e0.messageId || '', inReplyTo: e0.inReplyTo || parsed.inReplyTo || '', pieces: (parsed.attachments || []).filter((a: any) => a.filename).map((a: any) => a.filename).slice(0, 8) }, deleted: false });
+          sdepuis = Math.max(sdepuis, uid);
+        }
+        if (envoyes.length) await sb.from('rows').upsert(envoyes, { onConflict: 'key', ignoreDuplicates: true });
+        nouvelEtat.envoyesUv = suv; nouvelEtat.envoyesUid = sdepuis;
+      }
+    } catch (e) { log('envoyés : ' + String((e as Error).message || e)); }
   } finally { await client.logout().catch(() => {}); }
   if (nouveaux.length) {
     const { error } = await sb.from('rows').upsert(nouveaux, { onConflict: 'key', ignoreDuplicates: true }); // ne jamais écraser un mail déjà traité
     if (error) throw error;
   }
   await sb.from('rows').upsert({ key: 'cfg:mails:etat', data: { ...etat, ...nouvelEtat, derniere: new Date().toISOString(), erreur: '', nouveaux: nouveaux.length }, deleted: false }, { onConflict: 'key' });
-  /* Prévenir sur Discord ceux qui l'ont activé */
-  if (nouveaux.length) {
-    const { data: wh } = await sb.from('rows').select('key,data').like('key', 'cfg:discord:%').eq('deleted', false);
-    for (const w of wh || []) {
-      if (!w.data || !w.data.webhook) continue;
-      const lignes = nouveaux.slice(0, 5).map((m) => `📧 **${m.data.de.nom || m.data.de.adresse}** : ${m.data.objet || '(sans objet)'}`).join('\n') + (nouveaux.length > 5 ? `\n… et ${nouveaux.length - 5} autres` : '');
-      const fd = new FormData(); fd.append('payload_json', JSON.stringify({ username: 'Gamins de Talus', content: `[🔗](<${APP}#/mails>) ${nouveaux.length} nouveau${nouveaux.length > 1 ? 'x' : ''} mail${nouveaux.length > 1 ? 's' : ''}\n${lignes}`.slice(0, 1900), allowed_mentions: { parse: [] } }));
-      await fetch(w.data.webhook, { method: 'POST', body: fd }).catch(() => {});
-    }
-  }
+  /* Discord : c'est la fonction notifier qui prévient (selon les choix de chacun, ses heures, et le référent de l'adresse) */
   log(`mails : ${nouveaux.length} nouveau(x)`);
   return nouveaux.length;
 }

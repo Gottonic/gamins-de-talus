@@ -67,9 +67,29 @@ async function preparerFichier(file, usage) {
     return { blob: file, ext: 'pdf', type: 'application/pdf', nom: file.name || 'document.pdf' };
   }
   const r = await reduireImage(file, usage === 'justif' ? 2600 : 1600, usage === 'justif' ? 0.88 : 0.82);
+  /* Un justificatif en photo devient un PDF (une page, la photo dedans) : la comptabilité ne reçoit que des PDF */
+  if (r && usage === 'justif') { try { return { blob: await jpegEnPdf(r.blob, r.w, r.h), ext: 'pdf', type: 'application/pdf', w: r.w, h: r.h, nom: (file.name || 'justificatif').replace(/\.\w+$/, '') + '.pdf' }; } catch (e) { /* on garde la photo */ } }
   if (r) return { blob: r.blob, ext: 'jpg', type: 'image/jpeg', w: r.w, h: r.h, nom: (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg' };
   if (/^image\//.test(file.type) && file.size <= FICHIER_MAX) return { blob: file, ext: (file.name || '').split('.').pop() || 'img', type: file.type, nom: file.name || 'image' };
   throw new Error("ce fichier n'a pas pu être lu comme une photo");
+}
+/* Un PDF d'une page avec une image JPEG (sans bibliothèque : l'image est mise telle quelle, filtre DCTDecode).
+   La page fait la largeur d'une feuille A4 (595 pt), la hauteur suit la photo. */
+async function jpegEnPdf(blob, w, h) {
+  const img = new Uint8Array(await blob.arrayBuffer()), enc = new TextEncoder();
+  const W = 595.28, H = Math.round(W * h / w * 100) / 100;
+  const parts = [], offs = []; let n = 0;
+  const add = (x) => { const b = typeof x === 'string' ? enc.encode(x) : x; parts.push(b); n += b.length; };
+  const obj = (i, body) => { offs[i] = n; add(`${i} 0 obj\n`); body(); add('\nendobj\n'); };
+  add('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  obj(1, () => add('<< /Type /Catalog /Pages 2 0 R >>'));
+  obj(2, () => add('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'));
+  obj(3, () => add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`));
+  obj(4, () => { add(`<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.length} >>\nstream\n`); add(img); add('\nendstream'); });
+  const c = `q ${W} 0 0 ${H} 0 0 cm /Im0 Do Q`;
+  obj(5, () => add(`<< /Length ${c.length} >>\nstream\n${c}\nendstream`));
+  const x = n; add(`xref\n0 6\n0000000000 65535 f \n${[1, 2, 3, 4, 5].map((i) => String(offs[i]).padStart(10, '0') + ' 00000 n \n').join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${x}\n%%EOF\n`);
+  return new Blob(parts, { type: 'application/pdf' });
 }
 const cheminFichier = (dossier, ext) => `${dossier}/${todayISO().slice(0, 7)}/${uid('f')}.${ext}`;
 
