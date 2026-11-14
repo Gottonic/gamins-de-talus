@@ -109,6 +109,13 @@ Recoller `supabase/functions/mails/index.ts` dans la fonction `mails` et redépl
 4. Dans l'app, sur chaque appareil : **Réglages → Notifications → Activer sur cet appareil**, puis « Envoyer un test ».
    Sur iPhone, il faut d'abord ajouter l'app à l'écran d'accueil (Partager → Sur l'écran d'accueil).
 
+## Mise à jour du 14.11.2026 (lien privé « mes heures »)
+
+Pour qu'une autre app perso (Locus, de Nicolas) puisse lire **ses propres heures**, en lecture seule :
+coller `supabase/mise-a-jour-2026-11-14-lien-heures.sql` dans Supabase → SQL Editor → Run.
+Chaque membre peut créer une clé secrète qui ne donne accès qu'à ses lignes d'heures (`h:`), rien d'autre ;
+Supabase n'en garde que l'empreinte, et une nouvelle clé remplace l'ancienne. Rien ne change dans l'app GDT.
+
 ## Installer l'app
 
 - **Téléphone** : ouvrir l'adresse dans le navigateur → menu → **Installer** ou **Ajouter à l'écran d'accueil**.
