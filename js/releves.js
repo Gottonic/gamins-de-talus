@@ -14,8 +14,7 @@ const relEtat = (y) => DB.get('cfg:releves:' + y) || {};
 /* ---------- Lecture ---------- */
 async function lireReleveTwint(file) {
   const rows = /\.csv$/i.test(file.name) || file.type === 'text/csv' ? lireCsv(await file.text()) : await lireXlsx(file);
-  let hi = rows.findIndex((r) => r.filter((x) => typeof x === 'string' && x.trim() && !twDate(x) && !isFinite(twNombre(x))).length >= 2); if (hi < 0) hi = 0;
-  const entete = rows[hi].map((x, j) => String(x || 'Colonne ' + (j + 1))), lignes = rows.slice(hi + 1).filter((r) => r.some((x) => String(x).trim())), c = twDevine(entete, lignes);
+  const { lignes, c } = twTableau(rows);
   if (c.date < 0 || c.montant < 0) throw new Error('colonnes date / montant introuvables');
   return lignes.map((l) => twLigne(l, c))
     .filter((t) => t.date && isFinite(t.montant) && t.montant !== 0).sort((a, b) => a.date.localeCompare(b.date));

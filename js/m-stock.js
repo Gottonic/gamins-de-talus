@@ -698,7 +698,7 @@ function lireCsv(texte) {
 const twNombre = (x) => { if (typeof x === 'number') return x; const t = String(x || '').replace(/CHF|Fr\.|\s|'|’/g, ''); if (!t) return NaN; return Number(/,\d{1,2}$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '')); };
 function twDate(x) {
   if (typeof x === 'number' && x > 20000 && x < 80000) return isoDate(new Date(Date.UTC(1899, 11, 30) + Math.floor(x) * 864e5 + 12 * 3600e3)); // date Excel (la partie décimale est l'heure)
-  const t = String(x || '').trim(); let m = t.match(/(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  const t = String(x || '').trim(); let m = t.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`; /* 2026-11-16, 2026.11.16 */
   m = t.match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})/); if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   return '';
 }
@@ -709,23 +709,59 @@ function twHeure(x) {
 }
 function twDevine(entete, lignes) {
   const h = entete.map((x) => sansAccentsS(x));
-  const trouve = (res, test) => { let i = h.findIndex((x) => res.some((r) => r.test(x))); if (i < 0 && test) i = entete.findIndex((_, j) => lignes.slice(0, 20).filter((l) => test(l[j])).length >= Math.min(3, lignes.length)); return i; };
+  /* Les motifs dans l'ordre de préférence : le premier qui trouve une colonne l'emporte */
+  const trouve = (res, test, sauf) => {
+    for (const r of res) { const i = h.findIndex((x) => r.test(x) && !(sauf && sauf.test(x))); if (i >= 0) return i; }
+    return test ? entete.findIndex((_, j) => lignes.slice(0, 20).filter((l) => test(l[j])).length >= Math.min(3, lignes.length)) : -1;
+  };
   return {
-    date: trouve([/^date/, /datum/, /date.*trans/, /zeit/, /time/], (v) => !!twDate(v)),
-    montant: trouve([/montant(?!.*frais)/, /betrag/, /amount/, /brut/, /total/], (v) => isFinite(twNombre(v)) && twNombre(v) !== 0 && !twDate(v)),
-    ref: trouve([/^ref|referen|^id\b|transaction.?id|transaktions.?id/]),
+    date: trouve([/^date/, /datum/, /date.*trans/], (v) => !!twDate(v)),
+    heure: trouve([/^heure/, /^zeit/, /^uhrzeit/, /^time/]),
+    montant: trouve([/^montant de la transaction/, /^montant(?!.*(frais|net|rabais))/, /betrag/, /amount/, /brut/, /total/], (v) => isFinite(twNombre(v)) && twNombre(v) !== 0 && !twDate(v), /frais|cout|rabais|net\b/),
+    ref: trouve([/commande|order/, /reference.*transaction|transaktions.?ref/, /transaction.?id|transaktions.?id/, /^ref|referen/, /^id\b/], null, /terminal|commercant|commerce|merchant|handler/),
     texte: trouve([/description|beschreibung|message|nachricht|texte|libelle|magasin|store|point/]),
-    frais: trouve([/frais|gebuhr|fee|commission|kommission|taxe/]),
+    frais: trouve([/frais/, /couts? de transaction|cout/, /gebuhr|kosten/, /fee|cost/, /commission|kommission|taxe/]),
     net: trouve([/\bnet/]),
+    type: trouve([/^type/, /^typ\b/, /^art\b/]),
+    statut: trouve([/^statut/, /^status/]),
   };
 }
+/* La ligne des titres : celle qui a le plus de noms de colonnes connus (un relevé TWINT commence par un résumé de quelques lignes) */
+function twEntete(rows) {
+  const motCle = /^(date|datum|heure|zeit|uhrzeit|time|type|typ|statut|status|montant|betrag|amount|frais|couts?|kosten|gebuhr|fee|reference|referenz|id de commande|description|texte|commerce)\b/;
+  let best = -1, score = 1;
+  rows.slice(0, 80).forEach((r, i) => { const n = r.filter((x) => typeof x === 'string' && motCle.test(sansAccentsS(x))).length; if (n > score) { score = n; best = i; } });
+  if (best >= 0) return best;
+  const i = rows.findIndex((r) => r.filter((x) => typeof x === 'string' && x.trim() && !twDate(x) && !isFinite(twNombre(x))).length >= 2); return i < 0 ? 0 : i;
+}
+function twTableau(rows) {
+  const hi = twEntete(rows), entete = (rows[hi] || []).map((x, j) => String(x || 'Colonne ' + (j + 1))), lignes = rows.slice(hi + 1).filter((r) => r.some((x) => String(x).trim()));
+  const c = twDevine(entete, lignes); c.montantNet = twMontantEstNet(lignes, c);
+  return { entete, lignes, c };
+}
+/* TWINT Business donne le montant APRÈS ses frais (6.91 + 0.09 de frais = 7.00 payés par le client).
+   On le reconnaît : montant + frais tombe sur des prix ronds (5 ct), le montant seul non. La recette = ce que le client a payé. */
+function twMontantEstNet(lignes, c) {
+  if (c.frais < 0 || c.montant < 0) return false;
+  const rond = (v) => Math.abs(Math.round(v * 20) - v * 20) < 0.001;
+  let n = 0, seul = 0, avec = 0;
+  for (const l of lignes) { const m = twNombre(l[c.montant]), f = Math.abs(twNombre(l[c.frais])); if (!(m > 0) || !(f > 0)) continue; n++; if (rond(m)) seul++; if (rond(m + f)) avec++; }
+  return n >= 3 && avec >= 0.6 * n && avec > seul;
+}
+/* Seulement les paiements : pas les versements de TWINT sur le compte (« Décompte commerçant »), ni ce qui a échoué ou été annulé */
+const TW_PAS_PAIEMENT = /decompte|abrechnung|auszahlung|settlement|payout|versement/;
+const TW_ECHEC = /annul|echou|refus|abandon|fail|cancel|storn|abgelehnt|expire/;
+const TW_REMBOURSEMENT = /rembours|gutschrift|ruckerstatt|refund|credit/;
 /* Une ligne du relevé → paiement { date, montant (brut), ref, texte, frais } ; les frais TWINT : colonne « frais », ou brut − net */
 function twLigne(l, c) {
   const brutOuNet = r2(twNombre(l[c.montant])), fr = c.frais >= 0 ? Math.abs(twNombre(l[c.frais])) || 0 : 0;
-  const montantEstNet = c.net >= 0 && c.net === c.montant;
+  const montantEstNet = (c.net >= 0 && c.net === c.montant) || !!c.montantNet;
   const montant = montantEstNet && fr && brutOuNet > 0 ? r2(brutOuNet + fr) : brutOuNet;
   const frais = fr ? r2(fr) : (c.net >= 0 && c.net !== c.montant && montant > 0 ? Math.max(0, r2(montant - Math.abs(twNombre(l[c.net]) || montant))) : 0);
-  return { date: twDate(l[c.date]), heure: twHeure(l[c.date]), montant, ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '', frais: montant > 0 && isFinite(frais) ? frais : 0 };
+  const type = c.type >= 0 ? sansAccentsS(l[c.type]) : '', statut = c.statut >= 0 ? sansAccentsS(l[c.statut]) : '';
+  if (TW_PAS_PAIEMENT.test(type) || TW_ECHEC.test(statut) || TW_ECHEC.test(type)) return { date: '', montant: 0 };
+  const signe = TW_REMBOURSEMENT.test(type) && montant > 0 ? -1 : 1;
+  return { date: twDate(l[c.date]), heure: (c.heure >= 0 && twHeure(l[c.heure])) || twHeure(l[c.date]), montant: r2(signe * montant), ref: c.ref >= 0 ? String(l[c.ref] || '').trim() : '', texte: c.texte >= 0 ? String(l[c.texte] || '').trim() : '', frais: montant > 0 && isFinite(frais) ? frais : 0 };
 }
 ACTIONS.twImport = () => {
   openSheet(`${sheetHead('Importer le relevé TWINT', 'Fichier exporté de TWINT Business')}<div class="sbody">
@@ -735,8 +771,7 @@ ACTIONS.twImport = () => {
     const f = e.target.files[0]; if (!f) return; const res = $('tw-res'); res.innerHTML = '<p class="hint">Lecture…</p>';
     try {
       const rows = /\.csv$/i.test(f.name) || f.type === 'text/csv' ? lireCsv(await f.text()) : await lireXlsx(f);
-      let hi = rows.findIndex((r) => r.filter((x) => typeof x === 'string' && x.trim() && !twDate(x) && !isFinite(twNombre(x))).length >= 2); if (hi < 0) hi = 0;
-      TW.entete = rows[hi].map((x, j) => String(x || 'Colonne ' + (j + 1))); TW.lignes = rows.slice(hi + 1).filter((r) => r.some((x) => String(x).trim())); TW.cols = twDevine(TW.entete, TW.lignes);
+      const T = twTableau(rows); TW.entete = T.entete; TW.lignes = T.lignes; TW.cols = T.c;
       twApercu();
     } catch (err) { res.innerHTML = `<p class="errors">Fichier illisible : ${esc(err.message)}</p>`; }
   });
@@ -746,10 +781,10 @@ function twApercu() {
   const tx = twTransactions();
   const fr = r2(tx.reduce((a, t) => a + (t.frais || 0), 0));
   res.innerHTML = `<div class="grid2">${[['date', 'Colonne date'], ['montant', 'Colonne montant'], ['frais', 'Frais TWINT (facultatif)'], ['ref', 'Référence (facultatif)'], ['texte', 'Texte (facultatif)']].map(([k, l]) => `<div class="field"><label for="tw-${k}">${l}</label><select id="tw-${k}" data-twc="${k}">${opts(c[k])}</select></div>`).join('')}</div>
-    <p class="hint">${tx.length} paiement${tx.length > 1 ? 's' : ''} reconnu${tx.length > 1 ? 's' : ''}${tx.length ? `, du ${fmtDate(tx[0].date)} au ${fmtDate(tx[tx.length - 1].date)}, total ${chf(tx.reduce((a, t) => a + t.montant, 0))}` : ''}.${fr ? ` Frais TWINT : <b>${chf(fr)}</b> (enregistrés en dépense, un total par mois, compte 6900 Frais bancaires).` : tx.length ? ' Pas de colonne de frais trouvée : choisis-la ci-dessus si le fichier en a une.' : ''}</p>
+    <p class="hint">${tx.length} paiement${tx.length > 1 ? 's' : ''} reconnu${tx.length > 1 ? 's' : ''}${tx.length ? `, du ${fmtDate(tx[0].date)} au ${fmtDate(tx[tx.length - 1].date)}, total ${chf(tx.reduce((a, t) => a + t.montant, 0))}${c.montantNet ? ' payés par les clients (le relevé donne les montants après frais)' : ''}` : ''}.${fr ? ` Frais TWINT : <b>${chf(fr)}</b> (enregistrés en dépense, un total par mois, compte 6900 Frais bancaires).` : tx.length ? ' Pas de colonne de frais trouvée : choisis-la ci-dessus si le fichier en a une.' : ''}</p>
     ${tx.length ? `<div class="table-wrap"><table class="list"><tbody>${tx.slice(0, 5).map((t) => `<tr><td class="num">${fmtDate(t.date)}</td><td>${esc(trunc(t.texte || t.ref, 40))}</td><td class="r num">${money(t.montant)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     <div class="row-end"><button class="btn primary" type="button" data-act="twImportOk"${tx.length ? '' : ' disabled'}>Importer</button></div>`;
-  res.querySelectorAll('select[data-twc]').forEach((el) => el.addEventListener('change', () => { TW.cols[el.dataset.twc] = Number(el.value); twApercu(); }));
+  res.querySelectorAll('select[data-twc]').forEach((el) => el.addEventListener('change', () => { TW.cols[el.dataset.twc] = Number(el.value); TW.cols.montantNet = twMontantEstNet(TW.lignes, TW.cols); twApercu(); }));
 }
 function twTransactions() {
   const c = TW.cols; if (!TW.lignes || c.date < 0 || c.montant < 0) return [];
