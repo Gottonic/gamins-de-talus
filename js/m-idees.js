@@ -41,7 +41,7 @@ function ideesHtml() {
       <div class="chips">${IDEE_TYPES.map(([k, e, n]) => `<button type="button" class="chip${IDEE.type === k ? ' on' : ''}" data-act="ideeType" data-k="${k}">${e} ${n}</button>`).join('')}</div>
       <div class="ab-ligne"><input name="titre" id="idee-titre" placeholder="${IDEE.type === 'bug' ? 'Ce qui ne marche pas…' : 'Ton idée, une nouvelle fonction…'}" autocomplete="off" enterkeyhint="done" aria-label="Titre"><button class="btn primary ab-plus" type="submit" aria-label="Ajouter">+</button></div>
       ${ideeJoindreHtml()}
-      <details><summary class="hint">+ Détails</summary>${txt('idee-det', 'Détails (facultatif)', '', { name: 'details', rows: 3 })}</details></form>
+      <textarea id="idee-det" name="details" rows="1" class="idee-ext" style="width:100%;margin-top:8px;resize:none;overflow:hidden;min-height:0" placeholder="Détails (facultatif)" aria-label="Détails"></textarea></form>
     <div class="idees">${ouv.length ? ouv.map(ligne).join('') : '<p class="empty">Rien en attente. 🌿</p>'}</div>
     <div class="row idees-pied">${ouv.length ? `<span class="row" style="gap:12px"><button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>${ouv.length > 1 ? '<button type="button" class="btn link small" data-act="ideesToutFait">☑ Tout cocher</button>' : ''}${(() => { const n = ouv.reduce((a, x) => a + (x.captures || []).length, 0); return n ? (partageFichiersPossible() ? `<button type="button" class="btn link small" data-act="ideesPartager">Partager avec les captures (${n})</button>` : `<button type="button" class="btn link small" data-act="ideesCaptures">Télécharger les captures (${n})</button>`) : ''; })()}</span>` : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
     ${faites.length && IDEE.faites ? `<div class="idees">${faites.slice(0, 50).map(ligne).join('')}</div>` : ''}</div>`;
@@ -86,7 +86,11 @@ const ideesRafraichir = () => {
   if (!(document.querySelector('#sheet .idees') || document.querySelector('#sheet .idee-ajout'))) return;
   const t = $('idee-titre'), v = t ? t.value : ''; openSheet(ideesHtml()); const n = $('idee-titre'); if (n && v) n.value = v;
 };
-ACTIONS.ideeType = (el) => { IDEE.type = el.dataset.k; const t = $('idee-titre'), v = t ? t.value : ''; openSheet(ideesHtml()); const n = $('idee-titre'); if (n) { n.value = v; n.focus(); } };
+/* changer Bug/Idée garde le titre et les détails déjà écrits (bug signalé par Nicolas, 18.11) */
+ACTIONS.ideeType = (el) => { IDEE.type = el.dataset.k; const t = $('idee-titre'), v = t ? t.value : '', d = $('idee-det'), dv = d ? d.value : ''; openSheet(ideesHtml()); const nd = $('idee-det'); if (nd) { nd.value = dv; ideeAgrandir(nd); } const n = $('idee-titre'); if (n) { n.value = v; n.focus(); } };
+/* champ « Détails » sur une ligne, qui s'agrandit en écrivant (comme dans Locus, 18.11) */
+function ideeAgrandir(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; }
+document.addEventListener('input', (e) => { if (e.target && e.target.classList && e.target.classList.contains('idee-ext')) ideeAgrandir(e.target); });
 /* Tout cocher d'un coup (après les avoir données à Claude, par ex.) ; ↶ Annuler les remet toutes */
 ACTIONS.ideesToutFait = () => {
   const ouv = idees().filter((x) => !x.fait); if (!ouv.length) return;
