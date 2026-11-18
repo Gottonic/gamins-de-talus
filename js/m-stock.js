@@ -593,15 +593,17 @@ FORMS.ardFacturer = (v) => {
   const af = paiementsMessage().filter((x) => !x.facture);
   for (const ck of Object.keys(v).filter((x) => x.startsWith('c_')).map((x) => x.slice(2))) {
     const c = DB.get(ck), xs = af.filter((x) => x.contactId === ck).sort((a, b) => String(a.date).localeCompare(b.date)); if (!c || !xs.length || !c.npa || !c.localite) continue;
-    const mois = new Map(); for (const x of xs) { const m = x.date.slice(0, 7), o = mois.get(m) || { n: 0, t: 0 }; o.n++; o.t = r2(o.t + num(x.montant)); mois.set(m, o); }
-    const lignes = [...mois.entries()].map(([m, o]) => ({ designation: `Ventes directes ${MOIS[Number(m.slice(5)) - 1]} ${m.slice(0, 4)} · ${o.n} achat${o.n > 1 ? 's' : ''}`, quantite: 1, unite: 'forfait', prix: o.t }));
+    /* Les autres ventes à facturer du même client (ex. une précommande livrée « payée plus tard ») vont sur la même facture */
+    const ventes = typeof aFacturer === 'function' ? aFacturer(ck).sort((a, b) => String(a.date).localeCompare(b.date)) : [];
+    const lignes = lignesDuStand(xs).concat(lignesDesVentes(ventes));
     const n = prochainNumero(date), emetteur = { nom: s.nom, titulaire: s.titulaire, rue: s.rue, numero: s.numero, npa: s.npa, localite: s.localite, telephone: s.telephone, email: s.email, iban: cleanIban(s.iban), mention: s.mention };
     const inv = Object.assign({}, n, { date, livraison: '', bulletin: '', delai, echeance: addDays(date, delai), emetteur,
       client: { id: ck, nom: billName(c), attn: attnName(c), rue: c.rue || '', numero: c.numero || '', npa: c.npa || '', localite: c.localite || '' }, lignes,
       remarque: trunc(`Achats en vente directe payés par message, du ${fmtDateCourt(xs[0].date)} au ${fmtDate(xs[xs.length - 1].date)}`, 110),
-      paiement: 'virement', statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '', facture: true, stock: false, cree: new Date().toISOString(), creePar: Sync.me || '' });
+      paiement: 'virement', statut: 'ouverte', payeeLe: '', payeePar: '', encaissePar: '', facture: true, stock: false, cree: new Date().toISOString(), creePar: Sync.me || '' }, ventes.length ? { regroupe: ventes.map((f) => f.key) } : {});
     inv.total = factureTotal(inv); const fk = 'fac:' + uid('f'); DB.put(fk, inv); faites.push(n.numero);
     for (const x of xs) DB.put(x.key, Object.assign({}, DB.get(x.key), { facture: fk }));
+    for (const f of ventes) DB.put(f.key, Object.assign({}, DB.get(f.key), { groupe: fk }));
   }
   closeSheet(); toast(faites.length ? `${faites.length} facture${faites.length > 1 ? 's' : ''} créée${faites.length > 1 ? 's' : ''} : ${faites.join(', ')}. Elles sont dans Ventes.` : 'Aucune facture créée.', 6000);
   if (faites.length) go('#/factures');

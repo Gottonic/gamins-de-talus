@@ -6,6 +6,8 @@
 // Seuls l'expéditeur, l'objet, la date et le début du texte (1500 caractères) sont copiés dans la base (pareil pour les
 // mails envoyés, dossier « Envoyés » → lignes mailenv:…). La relève ne modifie
 // rien dans la boîte. Le texte complet et les pièces jointes sont lus à la demande et restent chez Infomaniak.
+// Mails programmés : lignes mailprog:… envoyées à chaque relève et par Supabase Cron ({ programmes: true }).
+// Paiements TWINT reçus : enregistrés tout de suite en vente directe (comme l'app), mail marqué lu.
 // Envoi : { envoyer: { a, cc?, objet, texte, inReplyTo?, pieces: [{ nom, type, base64 }] } } par un membre connecté → envoyé par le SMTP
 // d'Infomaniak (port 465, mêmes identifiants), et une copie est rangée dans le dossier « Envoyés » de la boîte.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -31,7 +33,7 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
   const etat = (etatRow.data && etatRow.data.data) || {};
   const client = new ImapFlow({ host: env('IMAP_HOST') || 'mail.infomaniak.com', port: Number(env('IMAP_PORT') || 993), secure: (env('IMAP_SECURE') || 'true') !== 'false', auth: { user: env('IMAP_USER')!, pass: env('IMAP_PASSWORD')! }, logger: false, tls: { rejectUnauthorized: (env('IMAP_TLS_STRICT') || 'true') !== 'false' } });
   const nouveaux: any[] = [];
-  let nouvelEtat: any = {};
+  let nouvelEtat: any = {}, twPrets: any = { uids: [], lignes: [] };
   await client.connect();
   try {
     const box = await client.mailboxOpen('INBOX', { readOnly: true });
@@ -55,6 +57,11 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
       depuis = Math.max(depuis, uid);
     }
     nouvelEtat = { uidValidity: uv, dernierUid: depuis };
+    /* Paiements TWINT : préparés ici (traités tout de suite, sans attendre qu'on ouvre l'app), et marqués « lus » chez Infomaniak */
+    try {
+      twPrets = await preparerTwint(sb, nouveaux, log);
+      if (twPrets.uids.length) { await client.mailboxOpen('INBOX'); await client.messageFlagsAdd(twPrets.uids.join(','), ['\\Seen'], { uid: true }).catch(() => {}); }
+    } catch (e) { log('twint : ' + String((e as Error).message || e)); }
     /* Les mails envoyés (depuis l'app, le webmail ou un téléphone) : copiés aussi, en lignes mailenv:… (pas de notification) */
     try {
       const l = await client.list(); const d = l.find((x: any) => x.specialUse === '\\Sent') || l.find((x: any) => /^(sent|envoy)/i.test(x.name));
@@ -82,10 +89,76 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
     const { error } = await sb.from('rows').upsert(nouveaux, { onConflict: 'key', ignoreDuplicates: true }); // ne jamais écraser un mail déjà traité
     if (error) throw error;
   }
+  if (twPrets.lignes.length) { const { error } = await sb.from('rows').upsert(twPrets.lignes, { onConflict: 'key', ignoreDuplicates: true }); if (error) log('twint : ' + error.message); }
+  await envoyerProgrammes(sb, env, log).catch((e) => log('programmés : ' + String((e as Error).message || e)));
   await sb.from('rows').upsert({ key: 'cfg:mails:etat', data: { ...etat, ...nouvelEtat, derniere: new Date().toISOString(), erreur: '', nouveaux: nouveaux.length }, deleted: false }, { onConflict: 'key' });
   /* Discord : c'est la fonction notifier qui prévient (selon les choix de chacun, ses heures, et le référent de l'adresse) */
   log(`mails : ${nouveaux.length} nouveau(x)`);
   return nouveaux.length;
+}
+
+/* ---------- Paiements TWINT reçus par mail → vente directe, au jour du mail (comme l'app : mêmes clés, jamais en double) ----------
+   Sauf : montant = une facture ouverte (l'app demande « c'est elle ? »), ou une vente déjà notée payée par TWINT ce jour-là (on la relie). */
+const estPaiementTwint = (d: any) => /twint/i.test(((d.de && d.de.adresse) || '') + ' ' + ((d.de && d.de.nom) || '') + ' ' + (d.objet || '')) && /re[çc]u|paiement|payment|zahlung|erhalten|bezahlt|pagamento/i.test((d.objet || '') + ' ' + (d.extrait || ''));
+function montantDansTexte(t: string) {
+  const r = /(?:CHF|Fr\.?)\s*([0-9'’]{1,7}(?:[.,]\d{1,2})?)|([0-9'’]{1,7}(?:[.,]\d{1,2})?)\s*(?:CHF|Fr\.)/i.exec(String(t || ''));
+  if (!r) return 0; const v = Number(String(r[1] || r[2]).replace(/['’]/g, '').replace(',', '.')); return v > 0 ? Math.round(v * 100) / 100 : 0;
+}
+const payeurDansTexte = (t: string) => { const r = /(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/u.exec(String(t || '')); return r ? r[1] : ''; };
+const jourZurich = (iso: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Zurich' }).format(new Date(iso));
+const heureZurich = (iso: string) => new Intl.DateTimeFormat('fr-CH', { timeZone: 'Europe/Zurich', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+const fmtJour = (d: string) => `${d.slice(8)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
+async function preparerTwint(sb: any, nouveaux: any[], log: (s: string) => void) {
+  const tws = nouveaux.filter((m) => estPaiementTwint(m.data)), out = { uids: [] as number[], lignes: [] as any[] };
+  if (!tws.length) return out;
+  const lire = async (p: string) => ((await sb.from('rows').select('key,data').like('key', p + '%').eq('deleted', false)).data || []).map((r: any) => Object.assign({ key: r.key }, r.data || {}));
+  const [facs, selfs, twsDeja, reg] = [await lire('fac:'), await lire('self:'), await lire('tw:'), ((await sb.from('rows').select('data').eq('key', 'cfg:reglages').maybeSingle()).data || {}).data || {}];
+  const pris = new Set(twsDeja.map((t: any) => t.utilise).filter(Boolean));
+  for (const m of tws) {
+    const d = m.data, mt = montantDansTexte((d.objet || '') + ' ' + (d.extrait || '')); if (!mt) continue;
+    if (Date.now() - Date.parse(d.date) > 3 * 864e5) continue; /* un vieux mail (boîte réorganisée) : pas tout seul */
+    const jour = jourZurich(d.date), id = String(m.key).replace(/^mail:/, '').replace(/[^\w-]/g, ''), payeur = payeurDansTexte((d.objet || '') + ' ' + (d.extrait || '')), maintenant = new Date().toISOString();
+    const ouvertes = facs.filter((f: any) => f.numero && f.statut === 'ouverte' && Math.abs(Number(f.total) - mt) < 0.005);
+    if (ouvertes.length) { d.twAttente = { montant: mt, factures: ouvertes.map((f: any) => f.key), payeur }; continue; } /* l'app demandera */
+    const tw: any = { cle: 'mail:' + m.key, src: 'mail', mail: m.key, date: jour, heure: heureZurich(d.date), montant: mt, ref: '', texte: payeur || d.objet || '', importe: maintenant, par: '', auto: 'serveur' };
+    const vt = facs.find((f: any) => f.statut === 'payee' && f.payeePar === 'twint' && (f.payeeLe || f.date) === jour && Math.abs(Number(f.total) - mt) < 0.005 && !pris.has(f.key));
+    if (vt) { tw.utilise = vt.key; tw.ref = vt.numero || ''; pris.add(vt.key); }
+    else {
+      const s = selfs.filter((x: any) => x.date <= jour && (!x.closeLe || x.closeLe >= jour)).sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)))[0];
+      const rk = 'rec:twm-' + id; tw.utilise = rk;
+      out.lignes.push({ key: rk, deleted: false, data: Object.assign({ date: jour, montant: mt, moyen: 'TWINT', par: reg.compteDe || '', client: s ? s.lieu || 'Self-service' : 'Vente directe', vd: true,
+        libelle: `Vente directe${s ? ' du ' + fmtJour(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}`, remarque: 'Enregistré tout seul depuis le mail TWINT : ' + String(d.objet || '').slice(0, 80), cree: maintenant, creePar: '' }, s ? { self: s.key } : {}) });
+    }
+    out.lignes.push({ key: 'tw:twm-' + id, deleted: false, data: tw });
+    Object.assign(d, { statut: 'traite', traitePar: '', twAuto: true });
+    out.uids.push(Number(d.uid));
+  }
+  if (out.uids.length) log(`twint : ${out.uids.length} paiement(s) enregistré(s)`);
+  return out;
+}
+
+/* ---------- Mails programmés : lignes mailprog:<id> = { a, cc?, objet, texte, le (date et heure ISO), rec: '' | 'semaine' | 'mois', statut: 'prevu' | 'envoye' | 'erreur' } ----------
+   Envoyés à chaque relève, et toutes les 15 minutes par Supabase Cron ({ programmes: true }). Récurrent : la prochaine date est recalculée. */
+async function envoyerProgrammes(sb: any, env: (k: string) => string | undefined, log: (s: string) => void) {
+  const { data } = await sb.from('rows').select('key,data').like('key', 'mailprog:%').eq('deleted', false);
+  const maintenant = new Date().toISOString(), dus = (data || []).filter((r: any) => r.data && r.data.statut === 'prevu' && r.data.le && r.data.le <= maintenant);
+  if (!dus.length) return 0;
+  const reg = ((await sb.from('rows').select('data').eq('key', 'cfg:reglages').maybeSingle()).data || {}).data || {};
+  let n = 0;
+  for (const r of dus) {
+    const o = r.data, suite: any = { envois: (o.envois || []).concat([maintenant]).slice(-24), envoyeLe: maintenant, erreur: '' };
+    try { await envoyerMail(env, { a: o.a, cc: o.cc || undefined, objet: o.objet, texte: o.texte }, reg.nom || 'Gamins de Talus'); n++; }
+    catch (e) { suite.erreur = String((e as any).response || (e as Error).message || e).slice(0, 300); suite.statut = 'erreur'; }
+    if (!suite.erreur) {
+      if (o.rec === 'semaine' || o.rec === 'mois') {
+        const d = new Date(o.le); do { if (o.rec === 'semaine') d.setUTCDate(d.getUTCDate() + 7); else d.setUTCMonth(d.getUTCMonth() + 1); } while (d.toISOString() <= maintenant);
+        suite.le = d.toISOString(); suite.statut = 'prevu';
+      } else suite.statut = 'envoye';
+    }
+    await sb.from('rows').update({ data: Object.assign({}, o, suite) }).eq('key', r.key);
+  }
+  log(`programmés : ${n} envoyé(s)`);
+  return n;
 }
 
 /* ---------- Gestion d'un mail de la boîte de réception (à la demande, rien n'est stocké dans Supabase) ----------
@@ -170,6 +243,10 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     if (cron && h && h === cron) return json({ erreur: 'réservé aux membres' }, 403);
     try { return json(await gererBoite(env, corps.boite)); }
     catch (e) { return json({ erreur: String((e as any).responseText || (e as Error).message || e).slice(0, 300) }, 500); }
+  }
+  if (corps && corps.programmes) {
+    try { return json({ envoyes: await envoyerProgrammes(sb, env, console.log) }); }
+    catch (e) { return json({ erreur: String((e as Error).message || e).slice(0, 300) }, 500); }
   }
   if (corps && corps.envoyer) {
     if (cron && h && h === cron) return json({ erreur: 'envoi réservé aux membres' }, 403);

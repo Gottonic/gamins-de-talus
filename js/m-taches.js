@@ -49,7 +49,8 @@ function trierAPlanifier(l) {
     || importanceDe(a) - importanceDe(b) || String(a.echeance || '9').localeCompare(String(b.echeance || '9')) || String(a.cree || '').localeCompare(String(b.cree || '')));
 }
 /* L'ordre des tâches dans une journée ou un jour (glisser par la poignée ⋮⋮) */
-const triOrdre = (a, b) => (a.statut === 'termine') - (b.statut === 'termine') || (a.ordre ?? 1e9) - (b.ordre ?? 1e9) || importanceDe(a) - importanceDe(b) || String(a.cree || '').localeCompare(String(b.cree || ''));
+/* Faites en bas ; les urgentes (🔥) toujours en haut ; sinon l'ordre choisi en glissant */
+const triOrdre = (a, b) => (a.statut === 'termine') - (b.statut === 'termine') || importanceDe(a) - importanceDe(b) || (a.ordre ?? 1e9) - (b.ordre ?? 1e9) || String(a.cree || '').localeCompare(String(b.cree || ''));
 document.addEventListener('pointerdown', (e) => {
   const h = e.target.closest && e.target.closest('[data-poignee]'); if (!h) return;
   const item = h.closest('[data-tache]'), box = item && item.closest('.tri-taches'); if (!box) return;
@@ -309,9 +310,19 @@ ACTIONS.taResume = (el) => {
   openSheet(`${titreTacheHead(t, k)}<div class="sbody">${resumeTacheHtml(t, k)}
     ${catTache(t).sous === 'livraison' && t.contactId ? `<div class="row"><button class="btn" type="button" data-act="taFacture" data-key="${esc(k)}">🧾 Créer la facture</button></div>` : ''}
     <div class="row-end"><button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette tâche">Supprimer</button>${!done ? `<button class="btn" type="button" data-act="taPlanifier" data-key="${esc(k)}">📅 Changer le jour</button>` : ''}
-      <button class="btn primary" type="button" data-act="taFaiteOk" data-key="${esc(k)}">${done ? 'Rouvrir' : '✓ Faite'}</button>${retour ? '<button class="btn link" type="button" data-act="plRetour">‹ Retour</button>' : ''}</div></div>`);
+      ${TA.modifie === k ? `<button class="btn primary" type="button" data-act="taFermer">✓ Enregistrer et fermer</button>` : `<button class="btn primary" type="button" data-act="taFaiteOk" data-key="${esc(k)}">${done ? 'Rouvrir' : '✓ Faite'}</button>`}${retour ? '<button class="btn link" type="button" data-act="plRetour">‹ Retour</button>' : ''}</div></div>`);
 };
 ACTIONS.taFacture = (el) => { const t = DB.get(el.dataset.key); if (!t || !t.contactId) return; draftF.livraison = jourPlanifie(t) || todayISO(); draftF.date = todayISO(); closeSheet(); go('#/factures/nouvelle/' + encodeURIComponent(t.contactId)); };
+/* Une tâche qu'on vient de modifier (tout s'enregistre au fur et à mesure) : « Faite » laisse la place à « Enregistrer et fermer » */
+ACTIONS.taFermer = () => { TA.modifie = null; if (PL.rafraichir) PL.rafraichir(); else closeSheet(); toast('Enregistré.'); };
+const marquerTacheModifiee = () => {
+  const b = document.querySelector('#sheet [data-act="taFaiteOk"]'); if (!b || TA.fenetre !== 'taResume') return;
+  TA.modifie = b.dataset.key; b.dataset.act = 'taFermer'; b.textContent = '✓ Enregistrer et fermer';
+};
+document.addEventListener('change', (e) => { if (e.target.closest && e.target.closest('#sheet') && !e.target.closest('.ta-sous')) setTimeout(marquerTacheModifiee, 0); });
+document.addEventListener('input', (e) => { if (e.target.closest && e.target.closest('#sheet') && e.target.matches('textarea, input[type=text], input:not([type])')) marquerTacheModifiee(); });
+document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('#sheet [data-act]'); if (a && /^ta(Set|Vite|Titre|Cu|Partie|Li)/.test(a.dataset.act)) setTimeout(marquerTacheModifiee, 0); }, true);
+new MutationObserver(() => { if ($('scrim').hidden) TA.modifie = null; }).observe($('scrim'), { attributes: true, attributeFilter: ['hidden'] });
 ACTIONS.taFaiteOk = (el) => { ACTIONS.taTick(el); if (PL.rafraichir) PL.rafraichir(); else closeSheet(); };
 ACTIONS.plRetour = () => { if (PL.rafraichir) PL.rafraichir(); else closeSheet(); };
 document.addEventListener('change', (e) => {

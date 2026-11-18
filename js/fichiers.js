@@ -68,10 +68,18 @@ async function preparerFichier(file, usage) {
   }
   const r = await reduireImage(file, usage === 'justif' ? 2600 : 1600, usage === 'justif' ? 0.88 : 0.82);
   /* Un justificatif en photo devient un PDF (une page, la photo dedans) : la comptabilité ne reçoit que des PDF */
-  if (r && usage === 'justif') { try { return { blob: await jpegEnPdf(r.blob, r.w, r.h), ext: 'pdf', type: 'application/pdf', w: r.w, h: r.h, nom: (file.name || 'justificatif').replace(/\.\w+$/, '') + '.pdf' }; } catch (e) { /* on garde la photo */ } }
+  if (r && usage === 'justif') { try { return { blob: await jpegEnPdf(r.blob, r.w, r.h), ext: 'pdf', type: 'application/pdf', w: r.w, h: r.h, mini: await miniature(r.blob), nom: (file.name || 'justificatif').replace(/\.\w+$/, '') + '.pdf' }; } catch (e) { /* on garde la photo */ } }
   if (r) return { blob: r.blob, ext: 'jpg', type: 'image/jpeg', w: r.w, h: r.h, nom: (file.name || 'photo').replace(/\.\w+$/, '') + '.jpg' };
   if (/^image\//.test(file.type) && file.size <= FICHIER_MAX) return { blob: file, ext: (file.name || '').split('.').pop() || 'img', type: file.type, nom: file.name || 'image' };
   throw new Error("ce fichier n'a pas pu être lu comme une photo");
+}
+/* Petite image (≈ 15 Ko) gardée avec un justificatif devenu PDF : son aperçu dans la liste, sans rien télécharger */
+async function miniature(blob, cote = 240) {
+  try {
+    const img = await createImageBitmap(blob), r = Math.min(1, cote / Math.max(img.width, img.height)), w = Math.round(img.width * r), h = Math.round(img.height * r);
+    const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.6);
+  } catch (e) { return ''; }
 }
 /* Un PDF d'une page avec une image JPEG (sans bibliothèque : l'image est mise telle quelle, filtre DCTDecode).
    La page fait la largeur d'une feuille A4 (595 pt), la hauteur suit la photo. */

@@ -13,6 +13,19 @@ const finSel = (nom) => FIN.f[nom] || (FIN.f[nom] = []);
 const finGarde = (nom, v) => { const l = finSel(nom); return !l.length || l.includes(String(v)); };
 ACTIONS.finFiltre = (el) => { const nom = el.dataset.f, v = el.dataset.v, l = finSel(nom); if (v === '') FIN.f[nom] = []; else { const i = l.indexOf(v); if (i >= 0) l.splice(i, 1); else l.push(v); } render(); };
 ACTIONS.finFiltresOff = () => { FIN.f = {}; FIN.q = ''; FIN.sansJ = false; render(); };
+/* Catégories : un sélecteur (il y en a beaucoup) ; celles choisies s'affichent en puces qu'on retire d'un clic */
+function selectFiltre(titre, nom, options) {
+  if (options.length < 2) return '';
+  const l = finSel(nom), lib = Object.fromEntries(options.map(([v, x]) => [String(v), x]));
+  return `<div class="fin-filtre"><span class="hint">${esc(titre)}</span><div class="chips">${l.map((v) => `<button type="button" class="chip small on" data-act="finFiltre" data-f="${esc(nom)}" data-v="${esc(v)}" title="Retirer">${esc(lib[v] || v)} ×</button>`).join('')}
+    <select class="fin-sel" data-fin-sel="${esc(nom)}" aria-label="${esc(titre)}"><option value="">${l.length ? '+ une autre…' : 'Toutes · choisir…'}</option>${options.filter(([v]) => !l.includes(String(v))).map(([v, x, n]) => `<option value="${esc(v)}">${esc(x)}${n != null ? ' · ' + esc(n) : ''}</option>`).join('')}</select></div></div>`;
+}
+document.addEventListener('change', (e) => { const s = e.target.closest && e.target.closest('select[data-fin-sel]'); if (!s || !s.value) return; const l = finSel(s.dataset.finSel); if (!l.includes(s.value)) l.push(s.value); render(); });
+/* Trier un tableau en cliquant son en-tête (une 2e fois : dans l'autre sens) */
+const FIN_TRI = { dep: { c: 'date', s: -1 }, rec: { c: 'date', s: -1 } };
+ACTIONS.finTri = (el) => { const t = FIN_TRI[el.dataset.t]; if (t.c === el.dataset.c) t.s = -t.s; else { t.c = el.dataset.c; t.s = el.dataset.c === 'date' || el.dataset.c === 'montant' ? -1 : 1; } render(); };
+const thTri = (t, c, lib, r) => { const x = FIN_TRI[t]; return `<th${r ? ' class="r"' : ''}><button type="button" class="th-tri${x.c === c ? ' on' : ''}" data-act="finTri" data-t="${t}" data-c="${c}">${esc(lib)}${x.c === c ? (x.s > 0 ? ' ▲' : ' ▼') : ''}</button></th>`; };
+function trierFin(t, l, cle) { const x = FIN_TRI[t], f = cle[x.c] || cle.date; return l.slice().sort((a, b) => { const va = f(a), vb = f(b); const r = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'fr', { sensitivity: 'base' }); return r * x.s || String(b.date).localeCompare(String(a.date)); }); }
 function chipsFiltre(titre, nom, options) {
   if (options.length < 2) return '';
   const l = finSel(nom);
@@ -92,6 +105,7 @@ function renderDepenses() {
   if (FIN.q) { const q = FIN.q.toLowerCase(); list = list.filter((d) => [d.objet, libCompte(compteDe(d)), d.justificatif, d.remarque, money(d.montant)].join(' ').toLowerCase().includes(q)); }
   const nSansJ = depenses().filter(sansJustificatif), gs = garanties();
   if (FIN.sansJ) list = list.filter(sansJustificatif);
+  list = trierFin('dep', list, { date: (d) => String(d.date), objet: (d) => d.objet || '', compte: (d) => libCompte(compteDe(d)), par: (d) => nomDe(d.par), montant: (d) => num(d.montant) });
   const tot = list.reduce((a, d) => a + num(d.montant), 0);
   const banner = nSansJ.length ? `<div class="banner"><span><b>${nSansJ.length} dépense${nSansJ.length > 1 ? 's' : ''} sans justificatif</b> (${chf(nSansJ.reduce((a, d) => a + num(d.montant), 0))}). Sans ticket ni facture, la dépense ne peut pas être justifiée en comptabilité.</span>
     <button class="btn small" type="button" data-act="finSansJ">${FIN.sansJ ? 'Voir toutes les dépenses' : 'Voir seulement celles-ci'}</button></div>` : '';
@@ -102,11 +116,11 @@ function renderDepenses() {
       ${chipsAnnees(ys)}
       ${chipsFiltre('Type', 'dType', [['charge', 'Charges'], ['investissement', 'Investissements']])}
       ${chipsFiltre('Payé par', 'dPar', persOptions().map(([k, l]) => [k, l]))}
-      ${chipsFiltre('Catégories', 'dCat', Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([c, t]) => [c, compteCourt(c), Math.round(t)]))}
+      ${selectFiltre('Catégories', 'dCat', Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([c, t]) => [c, compteCourt(c), Math.round(t)]))}
     </div>
     ${banner}
     ${gs.length ? `<details class="garanties"${gs.some((d) => d.garantie <= addDays(todayISO(), 60)) ? ' open' : ''}><summary>🛡️ <b>${gs.length} achat${gs.length > 1 ? 's' : ''} sous garantie</b></summary><div class="items">${gs.map((d) => `<button type="button" class="item" data-act="depEdit" data-key="${esc(d.key)}"><span class="who"><strong>${esc(d.objet)}</strong><span class="meta">acheté le ${fmtDate(d.date)} · ${chf(d.montant)}${d.garantieNote ? ' · ' + esc(d.garantieNote) : ''}${(d.fichiers || []).length ? ' · 📎 preuve d\'achat' : ' · ⚠️ pas de ticket joint'}</span></span><span class="num${d.garantie <= addDays(todayISO(), 60) ? ' bad' : ''}">jusqu'au ${fmtDate(d.garantie)}<br><span class="hint">${esc(finGarantieTxt(d.garantie))}</span></span></button>`).join('')}</div></details>` : ''}
-    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Objet</th><th>Compte</th><th>Payé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}" data-depot="ligne"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}${sousGarantie(d) ? ` <span class="clip" title="Garantie jusqu'au ${fmtDate(d.garantie)}">🛡️</span>` : ''}</td><td title="${esc(libCompte(compteDe(d)))}"><span class="num">${esc(compteDe(d))}</span> ${esc(trunc(compteInfo(compteDe(d)).nom, 26))}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
+    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr>${thTri('dep', 'date', 'Date')}${thTri('dep', 'objet', 'Objet')}${thTri('dep', 'compte', 'Catégorie')}${thTri('dep', 'par', 'Payé par')}${thTri('dep', 'montant', 'Montant', true)}</tr></thead><tbody>${list.map((d) => `<tr class="click${sansJustificatif(d) ? ' nojust' : ''}" data-act="depEdit" data-key="${esc(d.key)}" data-depot="ligne"><td class="num">${fmtDate(d.date)}</td><td>${esc(d.objet)}${d.type === 'investissement' ? ' <span class="tpill">Invest.</span>' : ''}${sansJustificatif(d) ? ' <span class="pill nojust">Justificatif manquant</span>' : ''}${d.fichiers && d.fichiers.length ? ` <span class="clip" title="${d.fichiers.length} fichier(s) joint(s)">📎${d.fichiers.length > 1 ? d.fichiers.length : ''}</span>` : ''}${sousGarantie(d) ? ` <span class="clip" title="Garantie jusqu'au ${fmtDate(d.garantie)}">🛡️</span>` : ''}</td><td title="${esc(libCompte(compteDe(d)))}"><span class="num">${esc(compteDe(d))}</span> ${esc(trunc(compteInfo(compteDe(d)).nom, 26))}</td><td>${esc(nomDe(d.par))}</td><td class="r num">${money(d.montant)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="4">${list.length} dépense${list.length > 1 ? 's' : ''}</td><td class="r num">${money(tot)}</td></tr></tfoot></table></div>` : '<p class="empty">Aucune dépense ne correspond.</p>'}
     <p class="hint depot-aide">Depuis un dossier de l'ordinateur : glisse un ticket ou une facture (photo ou PDF) sur une ligne pour l'y joindre, ou ailleurs dans ce cadre pour créer une nouvelle dépense avec.</p>
   </div>`;
@@ -156,7 +170,7 @@ ACTIONS.depEdit = (el) => {
 function fichiersDep() {
   if (!DEP.fichiers.length) return '';
   return `<div class="fich-list">${DEP.fichiers.map((x, i) => `<span class="fich">
-    <button type="button" class="fich-voir" data-act="${x.expire ? 'aucun' : 'voirFichier'}" data-fichier="${esc(x.chemin)}" data-titre="${esc(x.nom || '')}">${x.expire ? '<span class="fich-pdf" style="color:var(--muted);font-size:11px;text-align:center">dans l\'archive</span>' : x.type === 'application/pdf' ? '<span class="fich-pdf">PDF</span>' : `<img data-fichier="${esc(x.chemin)}" alt="Justificatif">`}<small>${esc(trunc(x.nom || 'fichier', 22))}</small></button>
+    <button type="button" class="fich-voir" data-act="${x.expire ? 'aucun' : 'voirFichier'}" data-fichier="${esc(x.chemin)}" data-titre="${esc(x.nom || '')}">${x.expire ? '<span class="fich-pdf" style="color:var(--muted);font-size:11px;text-align:center">dans l\'archive</span>' : x.mini ? `<img src="${esc(x.mini)}" alt="Justificatif"><span class="fich-badge">PDF</span>` : x.type === 'application/pdf' ? '<span class="fich-pdf">📄<b>PDF</b></span>' : `<img data-fichier="${esc(x.chemin)}" alt="Justificatif">`}<small title="${esc(x.nom || '')}">${esc(trunc(x.nom || 'fichier', 30))}</small></button>
     <button type="button" class="fich-x" data-act="depFichierOff" data-i="${i}" aria-label="Retirer ce fichier">×</button></span>`).join('')}</div>`;
 }
 function majFichiersDep() {
@@ -171,7 +185,7 @@ async function joindreDep(file) {
     const f = await preparerFichier(file, 'justif');
     const chemin = await Fichiers.envoyer(f.blob, cheminFichier('justificatifs', f.ext));
     if (!LOCAL_MODE) Fichiers.liens[chemin] = { url: URL.createObjectURL(f.blob), exp: Date.now() + 50 * 60000 };
-    DEP.fichiers.push({ chemin, nom: f.nom, type: f.type, ajoute: new Date().toISOString(), par: Sync.me || '' });
+    DEP.fichiers.push(Object.assign({ chemin, nom: f.nom, type: f.type, ajoute: new Date().toISOString(), par: Sync.me || '' }, f.mini ? { mini: f.mini } : {}));
     majFichiersDep(); toast('Justificatif joint.');
   } catch (e) { if (et) et.textContent = ''; majFichiersDep(); toast("Le justificatif n'est pas parti : " + e.message, 6000); }
 }
@@ -222,6 +236,7 @@ function renderRecettes() {
   const base = list, parCat = {}, moyens = {}; for (const r of base) { const c = compteRecette(r); parCat[c] = (parCat[c] || 0) + num(r.montant); moyens[r.moyen || '—'] = (moyens[r.moyen || '—'] || 0) + 1; }
   list = list.filter((r) => finGarde('rMoyen', r.moyen || '—') && finGarde('rPar', r.par) && finGarde('rCat', compteRecette(r)));
   if (FIN.q) { const q = FIN.q.toLowerCase(); list = list.filter((r) => [r.libelle, r.ref, r.moyen, compteRecette(r), money(r.montant)].join(' ').toLowerCase().includes(q)); }
+  list = trierFin('rec', list, { date: (r) => String(r.date), objet: (r) => r.libelle || '', compte: (r) => libCompte(compteRecette(r)), moyen: (r) => r.moyen || '', par: (r) => nomDe(r.par), montant: (r) => num(r.montant) });
   const tot = list.reduce((a, r) => a + num(r.montant), 0);
   return `<div class="panel"><div class="between"><h2>Recettes</h2><div class="row"><button class="btn small" type="button" data-act="recCsv">Exporter (CSV)</button><a class="btn primary small" href="#" data-act="recEdit">+ Autre entrée</a></div></div>
     <p class="hint">Les ventes arrivent ici toutes seules depuis <a href="#/factures">Ventes</a> : factures payées, ventes sans facture, encaissements de la vente directe. Ici, on saisit seulement l'argent qui n'est pas une vente : subvention, remboursement, indemnité…</p>
@@ -231,9 +246,9 @@ function renderRecettes() {
       ${chipsAnnees(ys)}
       ${chipsFiltre('Moyen', 'rMoyen', Object.entries(moyens).sort((a, b) => b[1] - a[1]).map(([m, n]) => [m, m, n]))}
       ${chipsFiltre('Encaissé par', 'rPar', persOptions().map(([k, l]) => [k, l]))}
-      ${chipsFiltre('Catégories', 'rCat', Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([c, t]) => [c, compteCourt(c), Math.round(t)]))}
+      ${selectFiltre('Catégories', 'rCat', Object.entries(parCat).sort((a, b) => b[1] - a[1]).map(([c, t]) => [c, compteCourt(c), Math.round(t)]))}
     </div>
-    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr><th>Date</th><th>Client / libellé</th><th>Compte</th><th>Moyen</th><th>Encaissé par</th><th class="r">Montant</th></tr></thead><tbody>${list.map((r) => r.src === 'facture'
+    ${list.length ? `<div class="table-wrap"><table class="list"><thead><tr>${thTri('rec', 'date', 'Date')}${thTri('rec', 'objet', 'Client / libellé')}${thTri('rec', 'compte', 'Catégorie')}${thTri('rec', 'moyen', 'Moyen')}${thTri('rec', 'par', 'Encaissé par')}${thTri('rec', 'montant', 'Montant', true)}</tr></thead><tbody>${list.map((r) => r.src === 'facture'
       ? `<tr class="click" data-act="go" data-href="#/factures/voir/${encodeURIComponent(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle)} <span class="tpill">${esc(r.ref)}</span></td><td title="${esc(libCompte(compteRecette(r)))}" class="num">${esc(compteRecette(r))}</td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`
       : `<tr class="click" data-act="recEdit" data-key="${esc(r.key)}"><td class="num">${fmtDate(r.date)}</td><td>${esc(r.libelle || '—')}</td><td title="${esc(libCompte(compteRecette(r)))}" class="num">${esc(compteRecette(r))}</td><td>${esc(r.moyen)}</td><td>${esc(nomDe(r.par))}</td><td class="r num">${money(r.montant)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="5">${list.length} recette${list.length > 1 ? 's' : ''}</td><td class="r num">${money(tot)}</td></tr></tfoot></table></div>` : '<p class="empty">Aucune recette pour cette période.</p>'}</div>`;

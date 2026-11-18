@@ -135,7 +135,10 @@ FORMS.mdp = async (v) => {
   } catch (e) { b.disabled = false; b.textContent = 'Enregistrer'; toast('Pas changé : ' + e.message, 6000); }
 };
 
-$('scrim').addEventListener('click', (e) => { if (e.target === $('scrim')) ACTIONS.close(); });
+/* Clic à côté de la fenêtre : seulement s'il commence ET finit à côté (sélectionner du texte en glissant hors de la fenêtre ne la ferme plus) */
+let appuiSurScrim = false;
+$('scrim').addEventListener('pointerdown', (e) => { appuiSurScrim = e.target === $('scrim'); });
+$('scrim').addEventListener('click', (e) => { const ok = e.target === $('scrim') && appuiSurScrim; appuiSurScrim = false; if (ok) fermerSiRienEnCours(); });
 
 /* Fenêtre synchro + compte */
 ACTIONS.syncSheet = () => {

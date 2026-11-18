@@ -204,7 +204,9 @@ const UI = {
     else if (!navigator.onLine) { cls = 'off'; txt = 'Hors ligne' + (DB.dirty.size ? ' · ' + DB.dirty.size : ''); tip = 'Hors ligne : les changements partiront au retour du réseau'; }
     else if (Sync.err) { cls = 'err'; txt = 'Problème' + (DB.dirty.size ? ' · ' + DB.dirty.size : ''); tip = 'Problème de synchro : ' + Sync.err; }
     else if (force === 'envoi' || DB.dirty.size) { cls = 'pend'; txt = 'Envoi…' + (DB.dirty.size ? ' ' + DB.dirty.size : ''); tip = 'Envoi en cours'; }
-    el.className = 'sync ' + cls; el.textContent = txt; el.title = tip;
+    /* Une pastille discrète : ✓ enregistré, roue qui tourne pendant l'envoi, ! en cas de problème (le détail au survol et en touchant) */
+    const ic = { ok: '✓', pend: '', err: '!', off: LOCAL_MODE ? 'Essai' : '⌁' }[cls];
+    el.className = 'sync ' + cls + (LOCAL_MODE ? ' essai' : ''); el.textContent = ic; el.title = tip; el.setAttribute('aria-label', txt);
   },
   /* Différé d'un instant : pendant un « change », le navigateur n'a pas encore déplacé le focus vers la case suivante. */
   dataChanged() {
@@ -266,7 +268,7 @@ function render() {
   const m = MODULES[ROUTE.mod];
   const view = $('view');
   document.body.dataset.mod = m ? ROUTE.mod : 'accueil';
-  $('title').textContent = m ? m.titre : cfg().nom;
+  $('title').textContent = m ? m.titre : 'GDT';
   $('home-btn').hidden = !m;
   $('drive').classList.toggle('on', ROUTE.mod === 'drive');
   /* Même adresse, ou un module qui demande de garder la position (ouvrir une fiche depuis une liste) : on ne remonte pas en haut */
@@ -333,6 +335,8 @@ function csv(head, rows) { const q = (v) => `"${String(v ?? '').replace(/"/g, '"
 /* Délégation des clics et des formulaires */
 document.addEventListener('click', (e) => {
   const a = e.target.closest('[data-act]'); if (!a || a.disabled) return;
+  /* Un lien dans un élément cliquable (ex. un lien dans le texte d'un mail) s'ouvre normalement */
+  const lien = e.target.closest('a[href]'); if (lien && lien !== a && a.contains(lien) && !lien.dataset.act) return;
   const f = ACTIONS[a.dataset.act]; if (!f) return;
   e.preventDefault();
   const form = a.closest('form[data-form]');
@@ -353,4 +357,70 @@ ACTIONS.close = () => closeSheet();
 ACTIONS.annuler = () => annuler();
 ACTIONS.go = (el) => go(el.dataset.href);
 ACTIONS.closeGo = (el) => { closeSheet(); go(el.dataset.href); };
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('scrim').hidden) ACTIONS.close(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('scrim').hidden) fermerSiRienEnCours(); });
+
+/* ---------- Ne pas perdre ce qu'on tape dans une fenêtre ----------
+   Dès qu'on a écrit quelque chose : « Fermer » devient « Enregistrer et fermer » (+ « Annuler » à côté).
+   Un clic à côté de la fenêtre (ou Échap) ne la ferme plus : rien n'est perdu par mégarde.
+   Un formulaire marqué data-brouillon (ex. un mail) garde son brouillon lui-même : « Fermer » le met de côté. */
+function formModifie() {
+  const sh = $('sheet'); if (!sh || $('scrim').hidden) return null;
+  for (const f of sh.querySelectorAll('form[data-form]')) {
+    if (f.dataset.envoye) continue;
+    for (const el of f.elements) {
+      if (!el.name || el.type === 'hidden' || el.disabled || el.readOnly) continue;
+      if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|email|tel|url|number|)$/i.test(el.type))) { if (el.value.trim() !== el.defaultValue.trim()) return f; }
+    }
+  }
+  return null;
+}
+function majBoutonFermer() {
+  const x = document.querySelector('#sheet .shead .xbtn'); if (!x) return;
+  const f = formModifie(), avecSauve = f && !f.dataset.brouillon;
+  if (avecSauve && x.dataset.act !== 'closeSave') {
+    x.dataset.act = 'closeSave'; x.textContent = 'Enregistrer et fermer'; x.classList.add('xbtn-save');
+    if (!x.previousElementSibling || !x.previousElementSibling.classList.contains('xbtn-annuler')) x.insertAdjacentHTML('beforebegin', '<button type="button" class="xbtn xbtn-annuler" data-act="close">Annuler</button>');
+  } else if (!avecSauve && x.dataset.act === 'closeSave') {
+    x.dataset.act = 'close'; x.textContent = 'Fermer'; x.classList.remove('xbtn-save');
+    const a = x.previousElementSibling; if (a && a.classList.contains('xbtn-annuler')) a.remove();
+  }
+}
+document.addEventListener('input', (e) => { if (e.target.closest && e.target.closest('#sheet')) majBoutonFermer(); });
+ACTIONS.closeSave = () => {
+  const f = formModifie(); if (!f) { closeSheet(); return; }
+  f.requestSubmit();
+  /* Enregistré si le formulaire a été remplacé (le travail est fait) ; resté là = il manque quelque chose : on ne ferme pas */
+  setTimeout(() => { if (!f.isConnected && !$('scrim').hidden) closeSheet(); }, 0);
+};
+function fermerSiRienEnCours() {
+  const f = formModifie();
+  if (f) { toast(f.dataset.brouillon ? 'Pas encore envoyé : « Fermer » le garde en brouillon.' : 'Pas encore enregistré : « Enregistrer et fermer », ou « Annuler ».', 4000); majBoutonFermer(); return; }
+  ACTIONS.close();
+}
+
+/* ---------- Moins de texte : les longues explications se replient derrière ⓘ ----------
+   (survol : l'infobulle ; toucher ou cliquer : le texte s'ouvre). Restent visibles : les textes courts, ceux qui donnent un état
+   (montants, chiffres, erreurs, avertissements) et ceux qui contiennent un bouton ou un champ. */
+const AIDE_MIN = 110;
+function plierAides(root) {
+  (root || document).querySelectorAll('p.hint:not([data-aide]), span.sub:not([data-aide]), p.sub:not([data-aide])').forEach((el) => {
+    el.dataset.aide = '1';
+    if (el.id || el.closest('[data-aide-garder], .empty, .banner, .errors') || el.querySelector('button, input, select, textarea, img, .bad, .err, .pill')) return;
+    const t = el.textContent.replace(/\s+/g, ' ').trim();
+    if (t.length < AIDE_MIN || /^[\d+−-]/.test(t) || /CHF|⚠|❗|problème|erreur|manque|manquant/i.test(t)) return;
+    const s = document.createElement('span'); s.className = 'aide-txt'; while (el.firstChild) s.appendChild(el.firstChild);
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'aide-btn'; b.textContent = 'ⓘ'; b.title = t.length > 400 ? t.slice(0, 397) + '…' : t;
+    b.setAttribute('aria-label', 'Explication'); b.setAttribute('aria-expanded', 'false');
+    el.classList.add('aide-pliee'); el.append(b, s);
+  });
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.aide-btn'); if (!b) return;
+  e.preventDefault(); e.stopPropagation(); const p = b.parentElement, o = !p.classList.contains('aide-ouverte');
+  p.classList.toggle('aide-ouverte', o); b.setAttribute('aria-expanded', String(o));
+}, true);
+(() => {
+  let prevu = false;
+  const passe = () => { prevu = false; plierAides(document.getElementById('view')); plierAides(document.getElementById('sheet')); };
+  new MutationObserver(() => { if (!prevu) { prevu = true; requestAnimationFrame(passe); } }).observe(document.body, { childList: true, subtree: true });
+})();

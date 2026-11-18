@@ -538,7 +538,7 @@ ACTIONS.blPdfOk = (el) => {
 function blSigneHtml(f) {
   const fs = f.blSigne || [];
   const vign = fs.map((x, i) => `<span class="fich">
-    <button type="button" class="fich-voir" data-act="${x.expire ? 'aucun' : 'voirFichier'}" data-fichier="${esc(x.chemin)}" data-titre="${esc('Bulletin ' + f.blNumero + ' signé')}">${x.expire ? '<span class="fich-pdf" style="color:var(--muted);font-size:11px;text-align:center">dans l\'archive</span>' : x.type === 'application/pdf' ? '<span class="fich-pdf">PDF</span>' : `<img data-fichier="${esc(x.chemin)}" alt="Bulletin signé">`}<small>${esc(fmtDate(String(x.ajoute || '').slice(0, 10)))}</small></button>
+    <button type="button" class="fich-voir" data-act="${x.expire ? 'aucun' : 'voirFichier'}" data-fichier="${esc(x.chemin)}" data-titre="${esc('Bulletin ' + f.blNumero + ' signé')}">${x.expire ? '<span class="fich-pdf" style="color:var(--muted);font-size:11px;text-align:center">dans l\'archive</span>' : x.mini ? `<img src="${esc(x.mini)}" alt="Bulletin signé"><span class="fich-badge">PDF</span>` : x.type === 'application/pdf' ? '<span class="fich-pdf">📄<b>PDF</b></span>' : `<img data-fichier="${esc(x.chemin)}" alt="Bulletin signé">`}<small>${esc(fmtDate(String(x.ajoute || '').slice(0, 10)))}</small></button>
     ${x.expire ? '' : `<button type="button" class="fich-x" data-act="blSigneOff" data-key="${esc(f.key)}" data-i="${i}" aria-label="Retirer cette photo">×</button>`}</span>`).join('');
   return `<div class="bl-signe"><span class="flabel">Bulletin signé</span>${fs.length ? `<div class="fich-list">${vign}</div>` : '<p class="hint" style="margin:2px 0 6px">Pas encore de photo. Utile pour les clients livrés régulièrement : c\'est votre preuve de livraison.</p>'}
     <label class="btn small justif-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>${fs.length ? 'Ajouter une page' : 'Photo du bulletin signé'}<input type="file" accept="image/*,application/pdf" data-bl-signe="${esc(f.key)}" hidden></label>
@@ -553,7 +553,7 @@ document.addEventListener('change', async (e) => {
     const chemin = await Fichiers.envoyer(p.blob, cheminFichier('justificatifs', p.ext));
     if (!LOCAL_MODE) Fichiers.liens[chemin] = { url: URL.createObjectURL(p.blob), exp: Date.now() + 50 * 60000 };
     const f = DB.get(k); if (!f) return;
-    DB.put(k, Object.assign({}, f, { blSigne: (f.blSigne || []).concat([{ chemin, nom: p.nom, type: p.type, ajoute: new Date().toISOString(), par: Sync.me || '' }]) }));
+    DB.put(k, Object.assign({}, f, { blSigne: (f.blSigne || []).concat([Object.assign({ chemin, nom: p.nom, type: p.type, ajoute: new Date().toISOString(), par: Sync.me || '' }, p.mini ? { mini: p.mini } : {})]) }));
     toast('Bulletin signé enregistré.'); render();
   } catch (err) { if (et) et.textContent = ''; toast("La photo n'est pas partie : " + err.message, 6000); }
 });
@@ -582,6 +582,7 @@ ACTIONS.facMois = () => {
     ${sel('fm-client', 'Client', FM.client, ids.map((k) => [k, `${displayName(DB.get(k))} (${parClient[k]})`]), { name: 'client' })}
     ${sel('fm-mois', 'Période', m, [['tout', 'Toutes les ventes pas encore facturées']].concat(mois.map((x) => [x, MOIS_FR[Number(x.slice(5)) - 1] + ' ' + x.slice(0, 4)])), { name: 'mois' })}
     <div class="items">${choisies.map((f) => `<label class="item" style="cursor:pointer"><input type="checkbox" name="v_${esc(f.key)}" checked> <span class="who"><strong>${esc(f.blNumero || 'Vente')} · ${fmtDate(f.date)}</strong><span class="meta">${esc((f.lignes || []).map((l) => l.designation).join(', '))}</span></span><span class="amt">${chf(f.total)}</span></label>`).join('')}</div>
+    ${(() => { const a = typeof paiementsMessage === 'function' ? paiementsMessage().filter((x) => !x.facture && x.contactId === FM.client) : []; return a.length ? `<label class="row" style="font-size:15px"><input type="checkbox" name="ard" checked> Avec ${a.length} achat${a.length > 1 ? 's' : ''} au stand payé${a.length > 1 ? 's' : ''} par message (${chf(a.reduce((t, x) => t + num(x.montant), 0))})</label>` : ''; })()}
     <div class="grid2">${inp('fm-date', 'Date de la facture', todayISO(), { name: 'date', type: 'date' })}</div>
     <p class="hint">La facture reprend le total par produit et cite les bulletins. Chaque vente reprise est marquée « Facturée » ; annuler la facture la libère.</p>
     <div class="row-end"><button class="btn primary" type="submit">Faire la facture</button></div></form>`);
@@ -593,13 +594,9 @@ FORMS.facMois = (v) => {
   if (!ventes.length) { toast('Coche au moins une vente.'); return; }
   const pb = problemesReglages(false); if (pb.length) { toast('Réglages : il manque ' + pb.join(', ')); return; }
   if (!c.npa || !c.localite) { toast(`${displayName(c)} n'a pas de NPA ou de localité (obligatoire pour le QR).`); return; }
-  /* Une ligne par produit et par prix (les quantités du mois s'additionnent) */
-  const agg = new Map();
-  for (const f of ventes) for (const l of f.lignes || []) {
-    const k = [l.designation, l.unite, r2(num(l.prix))].join('|'), a = agg.get(k);
-    if (a) a.quantite = r2(a.quantite + num(l.quantite)); else agg.set(k, Object.assign({ designation: l.designation, quantite: r2(num(l.quantite)), unite: l.unite, prix: r2(num(l.prix)) }, l.produitId ? { produitId: l.produitId } : {}, l.calibre != null ? { calibre: l.calibre, poids: l.poids } : {}));
-  }
-  const lignes = [...agg.values()];
+  /* Les achats au stand payés par message du même client vont sur la même facture (case cochée) */
+  const ard = v.ard && typeof paiementsMessage === 'function' ? paiementsMessage().filter((x) => !x.facture && x.contactId === v.client).sort((a, b) => String(a.date).localeCompare(b.date)) : [];
+  const lignes = lignesDesVentes(ventes).concat(lignesDuStand(ard));
   if (lignes.length > 11) { toast(`${lignes.length} lignes : c'est trop pour une page. Fais deux factures (par exemple par quinzaine).`, 6000); return; }
   const s = cfg(), date = v.date || todayISO(), n = prochainNumero(date), delai = num(s.delai) >= 0 ? num(s.delai) : 30;
   const nums = ventes.map((f) => f.blNumero || fmtDateCourt(f.date)), d0 = ventes[0].date, d1 = ventes[ventes.length - 1].date;
@@ -611,9 +608,23 @@ FORMS.facMois = (v) => {
   inv.total = factureTotal(inv);
   const key = 'fac:' + uid('f'); DB.put(key, inv);
   for (const f of ventes) DB.put(f.key, Object.assign({}, DB.get(f.key), { groupe: key }));
-  closeSheet(); toast(`Facture ${n.numero} faite : ${ventes.length} vente${ventes.length > 1 ? 's' : ''}, ${chf(inv.total)}.`, 5000);
+  for (const x of ard) DB.put(x.key, Object.assign({}, DB.get(x.key), { facture: key }));
+  closeSheet(); toast(`Facture ${n.numero} faite : ${ventes.length} vente${ventes.length > 1 ? 's' : ''}${ard.length ? ` + ${ard.length} achat${ard.length > 1 ? 's' : ''} au stand` : ''}, ${chf(inv.total)}.`, 5000);
   go('#/factures/voir/' + encodeURIComponent(key)); telechargerFacture(key);
 };
+/* Lignes d'une facture qui regroupe : une par produit et par prix (les quantités s'additionnent) ; le stand, une par mois */
+function lignesDesVentes(ventes) {
+  const agg = new Map();
+  for (const f of ventes) for (const l of f.lignes || []) {
+    const k = [l.designation, l.unite, r2(num(l.prix))].join('|'), a = agg.get(k);
+    if (a) a.quantite = r2(a.quantite + num(l.quantite)); else agg.set(k, Object.assign({ designation: l.designation, quantite: r2(num(l.quantite)), unite: l.unite, prix: r2(num(l.prix)) }, l.produitId ? { produitId: l.produitId } : {}, l.calibre != null ? { calibre: l.calibre, poids: l.poids } : {}));
+  }
+  return [...agg.values()];
+}
+function lignesDuStand(xs) {
+  const mois = new Map(); for (const x of xs) { const m = String(x.date).slice(0, 7), o = mois.get(m) || { n: 0, t: 0 }; o.n++; o.t = r2(o.t + num(x.montant)); mois.set(m, o); }
+  return [...mois.entries()].map(([m, o]) => ({ designation: `Ventes directes ${MOIS_FR[Number(m.slice(5)) - 1]} ${m.slice(0, 4)} · ${o.n} achat${o.n > 1 ? 's' : ''}`, quantite: 1, unite: 'forfait', prix: o.t }));
+}
 /* Faire la facture d'une vente enregistrée sans facture */
 ACTIONS.venteFacturer = (el) => {
   const k = el.dataset.key, f = DB.get(k); if (!f) return; closeSheet();

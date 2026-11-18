@@ -68,6 +68,7 @@ function aLieu(ev: any, jour: string) {
   const jours = Math.round((Date.parse(jour) - Date.parse(ev.date)) / 864e5);
   return jours % (rec === 'bihebdo' ? 14 : 7) === 0;
 }
+const estPaiementTwint = (d: any) => !!d.twAuto || (/twint/i.test(((d.de && d.de.adresse) || '') + ' ' + ((d.de && d.de.nom) || '') + ' ' + (d.objet || '')) && /re[çc]u|paiement|payment|zahlung|erhalten|bezahlt|pagamento/i.test((d.objet || '') + ' ' + (d.extrait || '')));
 const court = (s: string, n: number) => (String(s || '').length > n ? String(s).slice(0, n - 1) + '…' : String(s || ''));
 const json = (o: any, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -149,7 +150,8 @@ if (typeof Deno !== 'undefined' && Deno.serve) Deno.serve(async (req) => {
     const mentions: string[] = Array.isArray(m.mentions) ? m.mentions : [], pour: string[] = Array.isArray(m.pour) ? m.pour : [];
     const vises: string[] = [...new Set(mentions.concat(pour))];
     for (const p of personnes) if (p.k !== m.de && (!vises.length || vises.includes(p.k)) && veut(p.k, 'messages')) envois.push({ personne: p.k, ref: corps.key, message: { titre: '💬 ' + nom(m.de) + (mentions.includes(p.k) ? ' te mentionne' : pour.includes(p.k) ? ' te répond' : ''), texte: court(m.texte || (m.sondage ? (m.sondage.type === 'dates' ? '📅 Sondage de dates : ' : '📊 Sondage : ') + (m.sondage.question || '') : '') || (m.photo ? '📷 Photo' : '') || (m.fichier ? '📎 ' + (m.fichier.nom || 'Fichier') : ''), 140), url: APP + '#/messages', tag: 'msg' } , prioritaire: vises.includes(p.k) });
-  } else if (String(corps.key || '').startsWith('mail:')) {
+  } else if (String(corps.key || '').startsWith('mail:') && !estPaiementTwint(corps.data || {})) {
+    /* (un paiement TWINT reçu ne fait pas de notification : il est enregistré tout seul, l'app le résume à l'ouverture) */
     const m = corps.data || {}, de = (m.de && (m.de.nom || m.de.adresse)) || '?';
     /* Une adresse qui a son référent (celui qui s'occupe de ses mails, ou le contact principal du contact) : seul lui est prévenu */
     const ref = await referentMail(String((m.de && m.de.adresse) || '').trim().toLowerCase(), String(m.date || ''));

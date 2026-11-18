@@ -76,14 +76,16 @@ MODULES.calendrier = {
     if (sub === 'semaine') { setTimeout(() => location.replace('#/calendrier/heures'), 0); return ''; }
     if (sub === 'agenda') sub = '';
     const nUrg = tachesUrgentesPourMoi().length;
-    const t = tabs('calendrier', [['', "Vue d'ensemble"], ['taches', `Tâches${nUrg ? ' · ' + nUrg + ' échéance proche' : ''}`, nUrg > 0], ['mois', 'Calendrier'], ['heures', 'Heures']], sub === 'feuille' ? 'taches' : sub);
+    const t = tabs('calendrier', [['', "Vue d'ensemble"], ['taches', `Tâches${nUrg ? ' · ' + nUrg + ' échéance proche' : ''}`, nUrg > 0], ['mois', 'Calendrier'], ['heures', 'Heures'], ['journal', 'Journal']], sub === 'feuille' ? 'taches' : sub);
     if (sub === 'taches') return t + renderTaches();
     if (sub === 'feuille') { setTimeout(() => location.replace('#/calendrier/taches'), 0); return ''; }
+    if (sub === 'journal') return t + renderJournalGeneral();
     if (sub === 'mois') return t + (CAL.vue === 'semaine' ? renderSemaineCal() : renderMois());
     if (sub === 'heures') return t + `<div class="row"><button class="btn primary" type="button" data-act="heuresJour">+ Noter les heures du jour</button></div>` + renderSemaineHeures() + renderBilanHeures();
     return t + renderVue();
   },
   after(sub) {
+    if (sub === 'journal') { brancherJournal(); return; }
     if (sub === 'heures') { const s = $('h-annee'); if (s) s.addEventListener('change', () => { HEU.annee = s.value; render(); }); return; }
     if (!sub || sub === 'agenda' || sub === 'taches') brancherGlisserTaches($('view'));
     brancherHeures($('view'));

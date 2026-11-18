@@ -88,8 +88,11 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .bar h1 { font-family: var(--font-display); font-weight: 800; font-size: 22px; margin: 0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
 .home { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-weight: 700; display: inline-flex; gap: 6px; align-items: center; }
-.sync { font-size: 12.5px; border-radius: 999px; padding: 3px 10px; border: 1px solid var(--line); color: var(--muted); cursor: pointer; background: none; white-space: nowrap; }
-.sync.pend { color: var(--blue); border-color: var(--blue); }
+.sync { font-size: 13px; font-weight: 700; border-radius: 999px; width: 26px; height: 26px; padding: 0; display: inline-grid; place-items: center; border: 1px solid var(--line); color: var(--accent); cursor: pointer; background: none; white-space: nowrap; flex: none; }
+.sync.essai { width: auto; padding: 0 9px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.sync.pend { border-color: var(--line); border-top-color: var(--blue); animation: syncTourne .8s linear infinite; }
+@keyframes syncTourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sync.pend { animation: none; border-color: var(--blue); } }
 .sync.err { color: var(--late); background: var(--late-soft); border-color: transparent; }
 .sync.off { color: var(--muted); }
 @media (max-width: 480px) { .me { display: none; } }
@@ -178,6 +181,27 @@ button.gear { border: 0; background: none; cursor: pointer; padding: 0; }
 .fin-filtre { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .fin-filtre > .hint { min-width: 72px; font-size: 12px; }
 .fin-filtre .chips { margin: 0; gap: 4px; }
+.aide-pliee { display: block; }
+.aide-btn { border: 1px solid var(--line); background: var(--surface); color: var(--muted); width: 22px; height: 22px; border-radius: 50%; padding: 0; font-size: 13px; line-height: 1; cursor: help; vertical-align: middle; }
+.aide-btn:hover, .aide-ouverte > .aide-btn { color: var(--ink); border-color: var(--muted); }
+.aide-pliee > .aide-txt { display: none; }
+.aide-ouverte > .aide-txt { display: block; margin-top: 4px; }
+span.sub.aide-pliee { display: inline-block; }
+.jnl-filtres { gap: 10px; align-items: center; margin: 6px 0 4px; }
+.jnl-filtres input { max-width: 220px; padding: 6px 10px; font-size: 14px; }
+.jnl-jour { font-size: 13px; text-transform: none; color: var(--muted); margin: 18px 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.jnl-e + .jnl-e { margin-top: 6px; }
+.jnl-btn { display: flex; gap: 10px; width: 100%; text-align: left; border: 1px solid transparent; background: none; font: inherit; color: var(--ink); padding: 6px 8px; border-radius: 8px; cursor: pointer; text-decoration: none; }
+.jnl-btn:hover { background: var(--bg); border-color: var(--line); }
+.jnl-src { flex: none; width: 22px; text-align: center; }
+.jnl-c { min-width: 0; display: grid; gap: 4px; }
+.jnl-t { white-space: normal; overflow-wrap: anywhere; }
+.jnl-caps { display: flex; gap: 6px; flex-wrap: wrap; }
+.jnl-cap { border: 0; padding: 0; background: none; cursor: zoom-in; }
+.jnl-cap img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background: var(--bg); display: block; }
+.th-tri { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-transform: inherit; letter-spacing: inherit; white-space: nowrap; }
+.th-tri.on { color: var(--ink); }
+.fin-sel { font-size: 12.5px; padding: 3px 8px; border-radius: 999px; border: 1px dashed var(--line); background: var(--bg); color: var(--muted); max-width: 220px; }
 .chip.small { padding: 3px 9px; font-size: 12.5px; min-height: 0; }
 .pc-cadre { border-left: 4px solid var(--mod); }
 .pc-prods { display: grid; gap: 6px; margin: 6px 0 10px; }
@@ -231,10 +255,13 @@ button.gear { border: 0; background: none; cursor: pointer; padding: 0; }
 .grid3 .field { margin-bottom: 6px; }
 .fich-list { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
 .fich { position: relative; }
-.fich-voir { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 4px; cursor: zoom-in; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 96px; }
-.fich-voir img, .fich-pdf { width: 86px; height: 86px; object-fit: cover; border-radius: 7px; background: var(--bg); }
-.fich-pdf { display: grid; place-items: center; font-weight: 800; color: var(--danger); font-family: var(--font-display); }
-.fich-voir small { font-size: 11px; color: var(--muted); max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fich-voir { position: relative; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 5px; cursor: zoom-in; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 150px; }
+.fich-voir img, .fich-pdf { width: 138px; height: 170px; object-fit: cover; object-position: top; border-radius: 7px; background: var(--bg); }
+.fich-pdf { display: grid; place-content: center; justify-items: center; gap: 4px; font-size: 34px; color: var(--danger); }
+.fich-pdf b { font-size: 13px; font-family: var(--font-display); }
+.fich-badge { position: absolute; top: 10px; left: 10px; font-size: 10px; font-weight: 800; color: #fff; background: var(--danger); border-radius: 4px; padding: 1px 5px; }
+.fich-voir small { font-size: 10.5px; color: var(--muted); max-width: 138px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; }
+.justif-btn { border-style: dashed !important; padding: 16px 18px !important; min-height: 64px; width: 100%; justify-content: center; }
 .fich-x { position: absolute; top: -7px; right: -7px; width: 24px; height: 24px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; line-height: 1; }
 .clip { font-size: 13px; margin-left: 4px; }
 .mbar { display: inline-block; height: 9px; border-radius: 3px; vertical-align: 0; margin-right: 4px; }
@@ -572,6 +599,13 @@ textarea { resize: vertical; }
 .shead h2 { font-family: var(--font-display); font-weight: 600; font-size: 21px; margin: 0; display: flex; flex-direction: column; }
 .shead small { font-family: var(--font-body); font-size: 13px; color: var(--muted); font-weight: 400; }
 .xbtn { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 13px; }
+.pin-l { display: flex; align-items: stretch; gap: 2px; min-width: 0; }
+.pin-l .pin { flex: 1; min-width: 0; }
+.pin-menu { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 8px; font-size: 16px; border-radius: 6px; }
+.pin-menu:hover { background: var(--bg); color: var(--ink); }
+.xbtn.xbtn-save { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; white-space: nowrap; }
+.xbtn.xbtn-annuler { margin-left: auto; border-color: transparent; background: none; color: var(--muted); }
+.xbtn-annuler + .xbtn-save { margin-left: 0; }
 .sbody { padding: 14px 18px 20px; display: flex; flex-direction: column; gap: 12px; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); z-index: 40; }
@@ -1218,8 +1252,8 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 
 <header class="bar">
   <div class="bar-in">
-    <a class="home" id="home-btn" href="#/" hidden aria-label="Retour à l'accueil">← Accueil</a>
-    <h1 id="title">Gamins de Talus</h1>
+    <a class="home" id="home-btn" href="#/" hidden aria-label="Retour à l'accueil">‹ GDT</a>
+    <h1 id="title">GDT</h1>
     <a class="drive" id="drive" href="#/drive" title="Drive : les fichiers de Gamins de Talus"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>Drive</a>
     <button class="sync" id="sync" type="button" data-act="syncSheet">…</button>
     <button class="me" id="me" type="button" data-act="syncSheet" hidden></button>
@@ -1258,6 +1292,8 @@ details.fold summary { cursor: pointer; font-weight: 700; font-size: 13px; color
 <script src="js/m-stock.js"></script>
 <script src="js/m-precommandes.js"></script>
 <script src="js/m-statsself.js"></script>
+<script src="js/m-journal.js"></script>
+<script src="js/copie-locale.js"></script>
 <script src="js/m-parcelle.js"></script>
 <script src="js/m-itineraires.js"></script>
 <script src="js/m-idees.js"></script>
