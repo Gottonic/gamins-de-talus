@@ -3,6 +3,15 @@
    NOUVEAUTES : le plus récent en premier. Une entrée n'est ajoutée qu'une fois la note validée par Nicolas. */
 'use strict';
 const NOUVEAUTES = [
+  { id: '2026-11-18', titre: 'Quoi de neuf', points: [
+    '🐞 <b>Corrigé</b> : un texte en cours n\'est plus perdu par un clic à côté ou en sélectionnant le texte d\'un mail ; dès qu\'on écrit, « Fermer » devient « Enregistrer et fermer »',
+    '📅 <b>Mails programmés</b> : à une date, chaque semaine ou chaque mois, avec pièces jointes ; liens cliquables dans les mails',
+    '💳 <b>TWINT</b> : paiements enregistrés tout seuls, résumé à l\'ouverture de l\'app au lieu d\'une notification',
+    '📓 <b>Journal</b> (Calendrier) : notes avec photos, et toutes les remarques au même endroit',
+    '🧾 <b>Finances et factures</b> : tri par colonne, catégories dans un sélecteur, aperçus des justificatifs ; achats au stand et ventes d\'un même client sur une seule facture',
+    '📁 <b>Copie des fichiers sur l\'ordinateur</b> (Réglages → Données)',
+    '✨ <b>GDT</b> en haut, moins de texte (explications derrière ⓘ), désépingler un message depuis ⋯',
+  ] },
   { id: '2026-11-12', titre: 'Quoi de neuf', points: [
     '🐞 <b>Corrigé</b> : une note en cours d\'édition n\'est plus effacée dans la prospection en cas de modification, supprimer une tâche ne ferme plus l\'événement',
     '🧁 <b>Précommandes pour la Saint-Nicolas</b> mises en place, dans Ventes (stock réservé)',
