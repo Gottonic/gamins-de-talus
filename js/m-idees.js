@@ -7,6 +7,9 @@
 const IDEE_TYPES = [['bug', '🐞', 'Bug'], ['idee', '💡', 'Idée']];
 const idees = () => DB.all('idee:').sort((a, b) => String(b.cree || '').localeCompare(String(a.cree || '')));
 const IDEE = { type: 'idee', faites: false, caps: [], cle: '' };
+/* brouillon (comme dans Locus, 18.11) : une idée en cours d'écriture survit à un toucher à côté de la fenêtre */
+const ideeBrouillon = () => { try { return JSON.parse(localStorage.getItem('gdt-idee-brouillon') || 'null') || {}; } catch (e) { return {}; } };
+const ideeGarderBrouillon = (b) => { try { if (b && ((b.titre || '').trim() || (b.details || '').trim())) localStorage.setItem('gdt-idee-brouillon', JSON.stringify(b)); else localStorage.removeItem('gdt-idee-brouillon'); } catch (e) {} };
 const IDEE_MAXCAP = 6;
 const ideeCapsHtml = () => IDEE.caps.map((c) => `<span class="idee-cap"><a data-fichier="${esc(c.chemin)}" target="_blank" rel="noopener" aria-label="Voir la capture"><img data-fichier="${esc(c.chemin)}" alt=""></a><button type="button" class="idee-cap-x" data-act="ideeCapRetirer" data-ch="${esc(c.chemin)}" aria-label="Retirer la capture">✕</button></span>`).join('');
 const ideeJoindreHtml = () => `<div class="idee-joindre"><div class="idee-caps" id="idee-caps">${ideeCapsHtml()}</div>
@@ -39,8 +42,8 @@ function ideesHtml() {
   return `${sheetHead('Bugs et idées', 'Ce qui ne marche pas, ce qui manque')}<div class="sbody" data-vue-racine>
     <form class="form idee-ajout" data-form="ideeAjout">
       <div class="chips">${IDEE_TYPES.map(([k, e, n]) => `<button type="button" class="chip${IDEE.type === k ? ' on' : ''}" data-act="ideeType" data-k="${k}">${e} ${n}</button>`).join('')}</div>
-      <div class="ab-ligne"><input name="titre" id="idee-titre" placeholder="${IDEE.type === 'bug' ? 'Ce qui ne marche pas…' : 'Ton idée, une nouvelle fonction…'}" autocomplete="off" enterkeyhint="done" aria-label="Titre"><button class="btn primary ab-plus" type="submit" aria-label="Ajouter">+</button></div>
-      <textarea id="idee-det" name="details" rows="1" class="idee-ext" style="width:100%;margin-top:8px;resize:none;overflow:hidden;min-height:0" placeholder="Détails (facultatif)" aria-label="Détails"></textarea>
+      <div class="ab-ligne"><input name="titre" id="idee-titre" value="${esc(ideeBrouillon().titre || '')}" placeholder="${IDEE.type === 'bug' ? 'Ce qui ne marche pas…' : 'Ton idée, une nouvelle fonction…'}" autocomplete="off" enterkeyhint="done" aria-label="Titre"><button class="btn primary ab-plus" type="submit" aria-label="Ajouter">+</button></div>
+      <textarea id="idee-det" name="details" rows="1" class="idee-ext" style="width:100%;margin-top:8px;resize:none;overflow:hidden;min-height:0" placeholder="Détails (facultatif)" aria-label="Détails">${esc(ideeBrouillon().details || '')}</textarea>
       ${ideeJoindreHtml()}</form>
     <div class="idees">${ouv.length ? ouv.map(ligne).join('') : '<p class="empty">Rien en attente. 🌿</p>'}</div>
     <div class="row idees-pied">${ouv.length ? `<span class="row" style="gap:12px"><button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>${ouv.length > 1 ? '<button type="button" class="btn link small" data-act="ideesToutFait">☑ Tout cocher</button>' : ''}${(() => { const n = ouv.reduce((a, x) => a + (x.captures || []).length, 0); return n ? (partageFichiersPossible() ? `<button type="button" class="btn link small" data-act="ideesPartager">Partager avec les captures (${n})</button>` : `<button type="button" class="btn link small" data-act="ideesCaptures">Télécharger les captures (${n})</button>`) : ''; })()}</span>` : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
@@ -90,7 +93,14 @@ const ideesRafraichir = () => {
 ACTIONS.ideeType = (el) => { IDEE.type = el.dataset.k; const t = $('idee-titre'), v = t ? t.value : '', d = $('idee-det'), dv = d ? d.value : ''; openSheet(ideesHtml()); const nd = $('idee-det'); if (nd) { nd.value = dv; ideeAgrandir(nd); } const n = $('idee-titre'); if (n) { n.value = v; n.focus(); } };
 /* champ « Détails » sur une ligne, qui s'agrandit en écrivant (comme dans Locus, 18.11) */
 function ideeAgrandir(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; }
-document.addEventListener('input', (e) => { if (e.target && e.target.classList && e.target.classList.contains('idee-ext')) ideeAgrandir(e.target); });
+document.addEventListener('input', (e) => { if (e.target && e.target.classList && e.target.classList.contains('idee-ext')) ideeAgrandir(e.target);
+  if (e.target && (e.target.id === 'idee-titre' || e.target.id === 'idee-det')) { const t = $('idee-titre'), d = $('idee-det'); ideeGarderBrouillon({ titre: t ? t.value : '', details: d ? d.value : '' }); } });
+/* une idée ouverte et modifiée s'enregistre en fermant par un toucher à côté (comme dans Locus, 18.11) */
+document.addEventListener('click', (e) => {
+  if (!e.target || e.target.id !== 'scrim') return; const f = document.querySelector('#sheet form[data-form="ideeEdit"]'); if (!f) return;
+  const v = Object.fromEntries(new FormData(f)), x = DB.get(v.key); if (!x) return; const t = String(v.titre || '').trim(), d = String(v.details || '').trim();
+  if (t && (t !== x.titre || d !== (x.details || '') || (v.type && v.type !== x.type))) FORMS.ideeEdit(v);
+}, true);
 /* Tout cocher d'un coup (après les avoir données à Claude, par ex.) ; ↶ Annuler les remet toutes */
 ACTIONS.ideesToutFait = () => {
   const ouv = idees().filter((x) => !x.fait); if (!ouv.length) return;
@@ -101,7 +111,7 @@ ACTIONS.ideeFaites = () => { IDEE.faites = !IDEE.faites; openSheet(ideesHtml());
 FORMS.ideeAjout = (v) => {
   if (!String(v.titre || '').trim()) { toast('Écris le titre.'); return; }
   DB.put('idee:' + uid('i'), Object.assign({ titre: v.titre.trim(), type: IDEE.type, details: String(v.details || '').trim(), par: Sync.me || '', cree: new Date().toISOString() }, IDEE.caps.length ? { captures: IDEE.caps.slice() } : {}));
-  IDEE.caps = [];
+  IDEE.caps = []; ideeGarderBrouillon(null);
   toast(IDEE.type === 'bug' ? 'Bug noté. Merci !' : 'Idée notée. Merci !'); openSheet(ideesHtml()); const n = $('idee-titre'); if (n) n.focus();
 };
 document.addEventListener('change', (e) => {
