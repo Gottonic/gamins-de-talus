@@ -811,7 +811,7 @@ ACTIONS.mailPlus = (el) => {
 };
 ACTIONS.mailTache = (el) => {
   const m = DB.get(el.dataset.key); if (!m) return; const k = 't:' + uid('t');
-  DB.put(k, { titre: trunc('Mail : ' + (m.objet || (m.de && m.de.nom) || ''), 80), statut: 'afaire', responsable: Sync.me || '', cat: 'admin', remarques: `De ${(m.de && (m.de.nom + ' <' + m.de.adresse + '>')) || ''} le ${fmtDate(String(m.date || '').slice(0, 10))}\n\n${m.extrait || ''}`, cree: new Date().toISOString(), creePar: Sync.me || '' });
+  DB.put(k, { titre: trunc('Mail : ' + (m.objet || (m.de && m.de.nom) || ''), 80), statut: 'afaire', responsable: Sync.me || '', cat: 'admin', remarques: `De ${(m.de && (m.de.nom + ' <' + m.de.adresse + '>')) || ''} le ${fmtDate(String(m.date || '').slice(0, 10))}\n\n${m.extrait || ''}`, deMail: el.dataset.key, cree: new Date().toISOString(), creePar: Sync.me || '' });
   majMail(el.dataset.key, mailFini(m) ? { tache: k } : { statut: 'encours', par: m.par || Sync.me, tache: k }); closeSheet(); ACTIONS.taEdit({ dataset: { key: k } });
 };
 ACTIONS.mailContact = (el) => {

@@ -132,57 +132,29 @@ document.addEventListener('click', (e) => {
   l = l.includes(b.dataset.v) ? l.filter((x) => x !== b.dataset.v) : l.concat([b.dataset.v]); inpt.value = JSON.stringify(l); b.classList.toggle('on');
 });
 const lireListe = (t) => { try { const l = JSON.parse(t || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; } };
-function renderJournal() {
-  const all = journal(), ans = [...new Set(all.map((j) => String(j.date).slice(0, 4)).concat([todayISO().slice(0, 4)]))].sort().reverse();
-  const an = PARC.jAnnee || ans[0];
-  let l = all.filter((j) => String(j.date).slice(0, 4) === an);
-  if (PARC.jFiche) l = l.filter((j) => jnlFiches(j).includes(PARC.jFiche));
-  if (PARC.jType) l = l.filter((j) => j.type === PARC.jType);
-  const ligne = (j) => { const fs = jnlFiches(j).map((k) => DB.get(k)).filter(Boolean), es = jnlPlanches(j);
-    return `<div class="jnl" data-act="jnlEdit" data-key="${esc(j.key)}" role="button" tabindex="0"><div class="between"><span><b>${fmtDate(j.date)}</b> · <span class="tpill">${esc(typeJnl(j.type))}</span>${fs.map((f) => ` <span class="sw" style="background:${f.couleur || '#999'}"></span>${esc(f.nom)}`).join(',')}${es.length ? ` · ${es.map((e) => esc(nomPlanche(e))).join(', ')}` : ''}</span><span class="hint">${esc(nomDe(j.par))}</span></div>
-      ${j.photo && j.photo.chemin ? `<button type="button" class="msg-photo" data-act="voirFichier" data-fichier="${esc(j.photo.chemin)}"><img data-fichier="${esc(j.photo.chemin)}" alt="Photo" style="max-height:160px"></button>` : ''}<p style="white-space:pre-wrap;margin:4px 0 0">${esc(j.texte)}</p></div>`; };
-  const fsF = [...new Set(all.flatMap(jnlFiches))].map((k) => DB.get(k) && Object.assign({ key: k }, DB.get(k))).filter(Boolean);
-  return `<div class="panel"><form class="form" data-form="jnlRapide">
-      ${txt('jr-txt', 'Note', '', { name: 'texte', rows: 3 })}
-      <div class="field"><span class="flabel">Concerne <span class="hint">(facultatif : rien = général)</span></span>${jnlTagsHtml('jr-tags', PARC.jFiche ? [PARC.jFiche] : [], [])}</div>
-      <div class="row-end">${sel('jr-type', 'Type', 'observation', JNL_TYPES, { name: 'type' })}<button class="btn primary" type="submit">Ajouter au journal</button></div></form></div>
-    <div class="between"><div class="row">${ans.map((x) => `<button class="chip${x === an ? ' on' : ''}" type="button" data-act="jnlAn" data-y="${x}">${x}</button>`).join('')}</div><button class="btn primary small" type="button" data-act="jnlRapport" data-y="${an}">Rapport ${an}</button></div>
-    <div class="chips"><button class="chip${!PARC.jType ? ' on' : ''}" type="button" data-act="jnlType" data-k="">Tout</button>${JNL_TYPES.map(([k, t]) => `<button class="chip${PARC.jType === k ? ' on' : ''}" type="button" data-act="jnlType" data-k="${k}">${t}</button>`).join('')}</div>
-    ${fsF.length ? `<div class="chips"><button class="chip${!PARC.jFiche ? ' on' : ''}" type="button" data-act="jnlFiche" data-k="">Toutes les cultures</button>${fsF.map((f) => `<button class="chip${PARC.jFiche === f.key ? ' on' : ''}" type="button" data-act="jnlFiche" data-k="${esc(f.key)}">${esc(f.nom)}</button>`).join('')}</div>` : ''}
-    <div class="panel">${l.length ? l.map(ligne).join('') : '<p class="empty">Pas encore de note pour ce filtre.</p>'}</div>`;
-}
-ACTIONS.jnlAn = (el) => { PARC.jAnnee = el.dataset.y; render(); };
-ACTIONS.jnlType = (el) => { PARC.jType = el.dataset.k; render(); };
-ACTIONS.jnlFiche = (el) => { PARC.jFiche = el.dataset.k; render(); };
-FORMS.jnlRapide = (v) => {
-  if (!v.texte) { toast('Écris la note.'); return; }
-  DB.put('jnl:' + uid('j'), { date: todayISO(), par: Sync.me || '', texte: v.texte, type: v.type, fiches: lireListe(v.fiches), emplacements: lireListe(v.emplacements), cree: new Date().toISOString() });
-  toast('Note ajoutée.');
-};
+/* (l'ancien onglet Cultures → Journal est devenu Calendrier → Journal : m-journal.js) */
 ACTIONS.jnlNouveau = (el) => ACTIONS.jnlEdit({ dataset: { e: el.dataset.e || '', fiche: el.dataset.fiche || '' } });
 ACTIONS.jnlEdit = (el) => {
   if (el.closest && el.closest('.msg-photo')) return;
   const k = el.dataset.key || '', j = k ? DB.get(k) : { date: todayISO(), type: 'observation', fiches: el.dataset.fiche ? [el.dataset.fiche] : [], emplacements: el.dataset.e ? [el.dataset.e] : [] };
-  openSheet(`${sheetHead(k ? 'Note du journal' : 'Nouvelle note')}<form class="sbody form" data-form="jnl"><input type="hidden" name="key" value="${esc(k)}">
-    <div class="grid2">${inp('jn-d', 'Date', j.date, { name: 'date', type: 'date' })}${sel('jn-t', 'Type', j.type, JNL_TYPES, { name: 'type' })}</div>
+  JNL.caps = typeof capturesJnl === 'function' ? capturesJnl(j || {}) : [];
+  openSheet(`${sheetHead(k ? 'Note du journal' : 'Nouvelle note', k ? `${nomDe(j.par)} · ${fmtDate(j.date)}` : '')}<form class="sbody form" data-form="jnl"><input type="hidden" name="key" value="${esc(k)}">
     ${txt('jn-x', 'Note', j.texte, { name: 'texte', rows: 5 })}
-    <div class="field"><span class="flabel">Concerne</span>${jnlTagsHtml('jn-tags', jnlFiches(j), jnlPlanches(j))}</div>
-    <label class="btn justif-btn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.3h6.8L17 8h3v11H4z"/><circle cx="12" cy="13.2" r="3.4"/></svg>${j.photo ? 'Changer la photo' : 'Ajouter une photo'}<input id="jn-ph" type="file" accept="image/*" hidden></label><span class="hint" id="jn-ph-etat">${j.photo ? 'Une photo est jointe.' : ''}</span>
+    <div class="grid2">${inp('jn-d', 'Date', j.date, { name: 'date', type: 'date' })}${sel('jn-t', 'Type', j.type, JNL_TYPES, { name: 'type' })}</div>
+    <div class="field"><span class="flabel">Concerne <span class="hint">(facultatif : rien = note générale)</span></span>${jnlTagsHtml('jn-tags', jnlFiches(j), jnlPlanches(j))}</div>
+    <div class="field"><span class="flabel">Photos, captures</span><div class="idee-caps" id="jnl-caps">${typeof capsJnlHtml === 'function' ? capsJnlHtml() : ''}</div>
+      <label class="btn small">📷 Ajouter<input type="file" id="jn-ph" accept="image/*" multiple hidden></label><span class="sub" id="jnl-cap-etat">${matchMedia('(pointer:fine)').matches ? 'ou colle (Ctrl+V), ou glisse ici' : ''}</span></div>
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette note">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
-  PARC.photo = j.photo || null;
-  const f = $('jn-ph'); if (f) f.addEventListener('change', async () => {
-    const et = $('jn-ph-etat'); et.textContent = 'Envoi de la photo…';
-    try { const r = await preparerFichier(f.files[0], 'photo'); const ch = await Fichiers.envoyer(r.blob, cheminFichier('journal', r.ext)); PARC.photo = { chemin: ch, w: r.w, h: r.h }; et.textContent = 'Photo prête.'; }
-    catch (e) { et.textContent = 'Photo impossible : ' + e.message; }
-  });
+  const f = $('jn-ph'); if (f) f.addEventListener('change', () => { jnlJoindre([...f.files]); f.value = ''; });
+  if (typeof hydraterFichiers === 'function') hydraterFichiers($('sheet'));
+  const t = $('jn-x'); if (t && !k) t.focus();
 };
 FORMS.jnl = (v) => {
-  if (!v.texte) { toast('Écris la note.'); return; }
+  if (!String(v.texte || '').trim() && !JNL.caps.length) { toast('Écris la note, ou ajoute une photo.'); return; }
   const k = v.key || 'jnl:' + uid('j'), old = DB.get(k) || { par: Sync.me || '', cree: new Date().toISOString() };
-  const o = Object.assign({}, old, { date: v.date || todayISO(), type: v.type, fiches: lireListe(v.fiches), emplacements: lireListe(v.emplacements), texte: v.texte });
-  delete o.fiche; delete o.emplacement;
-  if (PARC.photo) o.photo = PARC.photo;
-  DB.put(k, o); closeSheet(); toast('Note enregistrée.');
+  const o = Object.assign({}, old, { date: v.date || todayISO(), type: v.type, fiches: lireListe(v.fiches), emplacements: lireListe(v.emplacements), texte: String(v.texte || '').trim(), captures: JNL.caps.slice() });
+  delete o.fiche; delete o.emplacement; delete o.photo;
+  DB.put(k, o); JNL.caps = []; closeSheet(); toast(v.key ? 'Note enregistrée.' : 'Note ajoutée au journal.');
 };
 
 /* ---------- Rapport de fin d'année (texte à relire ou à donner à une IA) ---------- */
@@ -203,6 +175,17 @@ function rapportAnnee(y) {
     lignes.push(`### ${fk ? (DB.get(fk) || {}).nom || 'Culture' : 'Général'}`, '');
     for (const j of js) lignes.push(`- ${fmtDate(j.date)} [${typeJnl(j.type)}]${jnlPlanches(j).length ? ' (' + jnlPlanches(j).map(nomPlanche).join(', ') + ')' : ''} ${j.texte.replace(/\s*\n\s*/g, ' / ')} — ${nomDe(j.par)}`);
     lignes.push('');
+  }
+  /* Le reste du journal : anciennes notes, calendrier, heures, tâches, échanges avec les contacts */
+  const autres = typeof entreesJournal === 'function' ? entreesJournal().filter((x) => String(x.date).slice(0, 4) === y && !String(x.key || '').startsWith('jnl:')).reverse() : [];
+  if (autres.length) {
+    const titres = { note: 'Notes', calendrier: 'Remarques du calendrier et des heures', tache: 'Remarques des tâches', contact: 'Échanges avec les clients et prospects' };
+    for (const src of ['note', 'calendrier', 'tache', 'contact']) {
+      const xs = autres.filter((x) => x.src === src); if (!xs.length) continue;
+      lignes.push(`### ${titres[src]}`, '');
+      for (const x of xs) lignes.push(`- ${fmtDate(x.date)}${x.sous ? ' [' + x.sous + ']' : ''} ${String(x.texte).replace(/\s*\n\s*/g, ' / ')}${x.par ? ' — ' + nomDe(x.par) : ''}`);
+      lignes.push('');
+    }
   }
   lignes.push('## À demander à une IA', '', `« Voici le rapport de saison ${y} de notre maraîchage (Marly, Suisse). Dégage les points importants : ce qui a bien marché, les problèmes qui reviennent (maladies, ravageurs, météo, organisation), les écarts entre prévu et réel, et propose 5 à 10 changements concrets pour la saison ${Number(y) + 1}. »`);
   return lignes.join('\n');

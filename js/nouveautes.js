@@ -7,7 +7,7 @@ const NOUVEAUTES = [
     '🐞 <b>Corrigé</b> : un texte en cours n\'est plus perdu par un clic à côté ou en sélectionnant le texte d\'un mail ; dès qu\'on écrit, « Fermer » devient « Enregistrer et fermer »',
     '📅 <b>Mails programmés</b> : à une date, chaque semaine ou chaque mois, avec pièces jointes ; liens cliquables dans les mails',
     '💳 <b>TWINT</b> : paiements enregistrés tout seuls, résumé à l\'ouverture de l\'app au lieu d\'une notification',
-    '📓 <b>Journal</b> (Calendrier) : notes avec photos, et toutes les remarques au même endroit',
+    '📓 <b>Journal</b> (Calendrier) : à remplir pour se souvenir de ce qui compte en fin d\'année (observations, problèmes, idées, avec photos) ; une note liée à une culture revient dans le plan, et toutes les remarques s\'y retrouvent',
     '🧾 <b>Finances et factures</b> : tri par colonne, catégories dans un sélecteur, aperçus des justificatifs ; achats au stand et ventes d\'un même client sur une seule facture',
     '📁 <b>Copie des fichiers sur l\'ordinateur</b> (Réglages → Données)',
     '✨ <b>GDT</b> en haut, moins de texte (explications derrière ⓘ), désépingler un message depuis ⋯',

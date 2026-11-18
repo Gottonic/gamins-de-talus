@@ -14,12 +14,12 @@ MODULES.cultures = {
   render(sub, id) {
     creerFichesManquantes();
     const nR = typeof recoltesAEnregistrer === 'function' ? recoltesAEnregistrer().length : 0;
-    const t = tabs('cultures', [['', 'Plan de cultures'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['fumure', 'Fumure'], ['journal', 'Journal'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
+    const t = tabs('cultures', [['', 'Plan de cultures'], ['planches', 'Planches'], ['recoltes', `Récoltes${nR ? ' · ' + nR + ' à noter' : ''}`, nR > 0], ['fumure', 'Fumure'], ['marges', 'Marges'], ['fiches', `Nos cultures · ${fiches().length}`]], sub);
     if (sub === 'recoltes') return t + renderRecoltes();
     if (sub === 'marges') return t + renderMarges();
     if (sub === 'fiches') return t + renderFiches(id);
     if (sub === 'planches') return t + renderPlanches();
-    if (sub === 'journal') return t + renderJournal();
+    if (sub === 'journal') { JNL.filtre = 'culture'; setTimeout(() => location.replace('#/calendrier/journal'), 0); return ''; } /* un seul journal : Calendrier → Journal */
     if (sub === 'fumure') return t + renderPlan('fumure');
     return t + renderPlan();
   },
@@ -132,7 +132,7 @@ function renderPlan(vue) {
     const semTxt = (w) => { const r = parseSemaines(w); return r ? (r[0] === r[1] ? 'sem. ' + r[0] : `sem. ${r[0]}–${r[1]}`) : '—'; };
     const ligne = (c, i) => { const e = eff[i], o = os[i], u = uniteRecolte(c), placees = (c.emplacements || []).length;
       const pl = placees ? `${placees}<br><span class="hint">${esc(resumeEmplacements(c.emplacements))}</span>` : `<input class="cell-in" id="ci-${i}-planches" data-cu="${esc(c.key)}" data-f="planches" inputmode="decimal" autocomplete="off" value="${esc(String(c.planches ?? ''))}" aria-label="Planches · ${esc(c.nom)}" style="width:56px">${secs.length ? '<br><span class="hint">à placer</span>' : ''}`;
-      return `<tr><td><button type="button" class="lien-cu" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button>${c.remarque ? `<br><span class="hint">${esc(trunc(c.remarque, 60))}</span>` : ''}</td>
+      return `<tr><td><button type="button" class="lien-cu" data-act="cuEdit" data-key="${esc(c.key)}"><span class="sw" style="background:${coul[i]}"></span>${esc(c.nom)}</button>${c.remarque ? `<br><span class="hint">${esc(trunc(c.remarque, 60))}</span>` : ''}${(() => { const ns = typeof notesDeFiche === 'function' ? notesDeFiche(ficheDe(c)) : []; return ns.length ? `<br><button type="button" class="lien-notes" data-act="jnlCuVoir" data-fiche="${esc(ficheDe(c))}" title="${esc(trunc(ns[0].texte || '', 200))}">📝 ${ns.length} note${ns.length > 1 ? 's' : ''} · ${esc(trunc(ns[0].texte || '', 40))}</button>` : ''; })()}</td>
         <td class="r num">${pl}</td><td class="r num">${f0(o.surface)} m²</td><td>${esc(semTxt(e.semPlantation))}</td><td>${esc(semTxt(e.semRecolte))}</td><td class="r num">${o.plantons ? f0(o.plantons) : '—'}</td>
         <td class="r num">${u === 'kg' ? (o.recolte ? f0(o.recolte) + ' kg' : '—') : (o.plantons ? f0(o.plantons) + ' ' + esc(uniteCourte(u)) : '—')}</td><td class="r num">${ca[i] ? fmtFourchette(ca[i]) : '<span class="hint">prix ?</span>'}</td></tr>`; };
     return `${head}
