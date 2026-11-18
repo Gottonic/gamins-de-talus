@@ -375,7 +375,7 @@ function formModifie() {
   return null;
 }
 function majBoutonFermer() {
-  const x = document.querySelector('#sheet .shead .xbtn'); if (!x) return;
+  const x = document.querySelector('#sheet .shead .xbtn:not(.xbtn-annuler)'); if (!x) return;
   const f = formModifie(), avecSauve = f && !f.dataset.brouillon;
   if (avecSauve && x.dataset.act !== 'closeSave') {
     x.dataset.act = 'closeSave'; x.textContent = 'Enregistrer et fermer'; x.classList.add('xbtn-save');
