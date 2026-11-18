@@ -4,6 +4,7 @@
 'use strict';
 const NOUVEAUTES = [
   { id: '2026-11-18', titre: 'Quoi de neuf', points: [
+    '➕ <b>Bouton « + »</b> en bas à droite, de partout : nouvelle vente, noter mes heures, nouvelle tâche, remplir le stand, dépense, note au journal',
     '🐞 <b>Corrigé</b> : un texte en cours n\'est plus perdu par un clic à côté ou en sélectionnant le texte d\'un mail ; dès qu\'on écrit, « Fermer » devient « Enregistrer et fermer »',
     '📅 <b>Mails programmés</b> : à une date, chaque semaine ou chaque mois, avec pièces jointes ; liens cliquables dans les mails',
     '💳 <b>TWINT</b> : paiements enregistrés tout seuls, résumé à l\'ouverture de l\'app au lieu d\'une notification',
