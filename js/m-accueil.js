@@ -55,7 +55,6 @@ function renderAccueil() {
   }).join('');
   /* Soit la journée en cours (avec « Terminer l'événement et enregistrer mes heures »), soit ce bouton */
   return `<section class="hello"><div><span class="eyebrow">Maraîchers · Marly · ${fmtDate(today)}</span><h2>${salut}${Sync.me ? ' ' + esc(nomDe(Sync.me)) : ''}</h2></div>
-    /* (« Noter mes heures » : par le bouton « + » en bas à droite) */
     </section>
     ${retourHtml()}
     ${typeof journeeEnCoursHtml === 'function' ? journeeEnCoursHtml() : ''}
