@@ -68,7 +68,7 @@ function aLieu(ev: any, jour: string) {
   const jours = Math.round((Date.parse(jour) - Date.parse(ev.date)) / 864e5);
   return jours % (rec === 'bihebdo' ? 14 : 7) === 0;
 }
-const estPaiementTwint = (d: any) => !!d.twAuto || (/twint/i.test(((d.de && d.de.adresse) || '') + ' ' + ((d.de && d.de.nom) || '') + ' ' + (d.objet || '')) && /re[çc]u|paiement|payment|zahlung|erhalten|bezahlt|pagamento/i.test((d.objet || '') + ' ' + (d.extrait || '')));
+const estPaiementTwint = (d: any) => !!d.twAuto || (/twint/i.test(((d.de && d.de.adresse) || '') + ' ' + ((d.de && d.de.nom) || '') + ' ' + (d.objet || '')) && /re[çc]u|recevoir|transaction|paiement|payment|zahlung|erhalten|bezahlt|pagamento|transazione/i.test((d.objet || '') + ' ' + (d.extrait || '')) && !/annul|rembours|storn|gutschrift|r[üu]ckerstatt|refund|d[ée]compte|abrechnung|auszahlung|versement|[ée]chou|refus/i.test(d.objet || ''));
 const court = (s: string, n: number) => (String(s || '').length > n ? String(s).slice(0, n - 1) + '…' : String(s || ''));
 const json = (o: any, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };

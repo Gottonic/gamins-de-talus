@@ -99,12 +99,16 @@ export async function relever(sb: any, env: (k: string) => string | undefined, l
 
 /* ---------- Paiements TWINT reçus par mail → vente directe, au jour du mail (comme l'app : mêmes clés, jamais en double) ----------
    Sauf : montant = une facture ouverte (l'app demande « c'est elle ? »), ou une vente déjà notée payée par TWINT ce jour-là (on la relie). */
-const estPaiementTwint = (d: any) => /twint/i.test(((d.de && d.de.adresse) || '') + ' ' + ((d.de && d.de.nom) || '') + ' ' + (d.objet || '')) && /re[çc]u|paiement|payment|zahlung|erhalten|bezahlt|pagamento/i.test((d.objet || '') + ' ' + (d.extrait || ''));
+const estPaiementTwint = (d: any) => /twint/i.test(((d.de && d.de.adresse) || '') + ' ' + ((d.de && d.de.nom) || '') + ' ' + (d.objet || '')) && /re[çc]u|recevoir|transaction|paiement|payment|zahlung|erhalten|bezahlt|pagamento|transazione/i.test((d.objet || '') + ' ' + (d.extrait || ''))
+  && !/annul|rembours|storn|gutschrift|r[üu]ckerstatt|refund|d[ée]compte|abrechnung|auszahlung|versement|[ée]chou|refus/i.test(d.objet || '');
+/* Date et heure de la transaction écrites dans le mail (« 18.11.2026, 11:10 »), et la référence de commande (orderUuid = ID de commande du relevé) */
+const dateTwint = (d: any) => { const r = /(\d{1,2})\.(\d{1,2})\.(\d{4}),?\s*(?:à\s*|um\s*)?(\d{1,2})[:.h](\d{2})/.exec((d.objet || '') + ' ' + (d.extrait || '')); return r ? { jour: `${r[3]}-${r[2].padStart(2, '0')}-${r[1].padStart(2, '0')}`, heure: `${r[4].padStart(2, '0')}:${r[5]}` } : null; };
+const commandeTwint = (d: any) => [/orderUuid=([0-9a-f-]{36})/i, /(?:Num[ée]ro de transaction|Transaktionsnummer|Transaction number)\s*:?\s*([0-9a-f-]{36})/i].map((re) => (re.exec(d.extrait || '') || [])[1]).filter(Boolean);
 function montantDansTexte(t: string) {
   const r = /(?:CHF|Fr\.?)\s*([0-9'’]{1,7}(?:[.,]\d{1,2})?)|([0-9'’]{1,7}(?:[.,]\d{1,2})?)\s*(?:CHF|Fr\.)/i.exec(String(t || ''));
   if (!r) return 0; const v = Number(String(r[1] || r[2]).replace(/['’]/g, '').replace(',', '.')); return v > 0 ? Math.round(v * 100) / 100 : 0;
 }
-const payeurDansTexte = (t: string) => { const r = /(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/u.exec(String(t || '')); return r ? r[1] : ''; };
+const payeurDansTexte = (t: string) => { for (const r of String(t || '').matchAll(/(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/gu)) if (!/^(CHF|Fr|TWINT|Gamins)\b/i.test(r[1])) return r[1]; return ''; };
 const jourZurich = (iso: string) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Zurich' }).format(new Date(iso));
 const heureZurich = (iso: string) => new Intl.DateTimeFormat('fr-CH', { timeZone: 'Europe/Zurich', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
 const fmtJour = (d: string) => `${d.slice(8)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
@@ -117,12 +121,12 @@ async function preparerTwint(sb: any, nouveaux: any[], log: (s: string) => void)
   for (const m of tws) {
     const d = m.data, mt = montantDansTexte((d.objet || '') + ' ' + (d.extrait || '')); if (!mt) continue;
     if (Date.now() - Date.parse(d.date) > 3 * 864e5) continue; /* un vieux mail (boîte réorganisée) : pas tout seul */
-    const jour = jourZurich(d.date), id = String(m.key).replace(/^mail:/, '').replace(/[^\w-]/g, ''), payeur = payeurDansTexte((d.objet || '') + ' ' + (d.extrait || '')), maintenant = new Date().toISOString();
+    const dt = dateTwint(d), jour = dt ? dt.jour : jourZurich(d.date), cmd = commandeTwint(d), id = String(m.key).replace(/^mail:/, '').replace(/[^\w-]/g, ''), payeur = payeurDansTexte((d.objet || '') + ' ' + (d.extrait || '')), maintenant = new Date().toISOString();
     const ouvertes = facs.filter((f: any) => f.numero && f.statut === 'ouverte' && Math.abs(Number(f.total) - mt) < 0.005);
     if (ouvertes.length) { d.twAttente = { montant: mt, factures: ouvertes.map((f: any) => f.key), payeur }; continue; } /* l'app demandera */
-    const tw: any = { cle: 'mail:' + m.key, src: 'mail', mail: m.key, date: jour, heure: heureZurich(d.date), montant: mt, ref: '', texte: payeur || d.objet || '', importe: maintenant, par: '', auto: 'serveur' };
+    const tw: any = { cle: 'mail:' + m.key, src: 'mail', mail: m.key, date: jour, heure: dt ? dt.heure : heureZurich(d.date), montant: mt, ref: '', ...(cmd.length ? { refs: cmd } : {}), texte: payeur || d.objet || '', importe: maintenant, par: '', auto: 'serveur' };
     const vt = facs.find((f: any) => f.statut === 'payee' && f.payeePar === 'twint' && (f.payeeLe || f.date) === jour && Math.abs(Number(f.total) - mt) < 0.005 && !pris.has(f.key));
-    if (vt) { tw.utilise = vt.key; tw.ref = vt.numero || ''; pris.add(vt.key); }
+    if (vt) { tw.utilise = vt.key; pris.add(vt.key); }
     else {
       const s = selfs.filter((x: any) => x.date <= jour && (!x.closeLe || x.closeLe >= jour)).sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)))[0];
       const rk = 'rec:twm-' + id; tw.utilise = rk;

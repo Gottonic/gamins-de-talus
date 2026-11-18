@@ -807,7 +807,8 @@ function importerTransactionsTwint(tx) {
     if (t.frais) mois.add(t.date.slice(0, 7));
     if (deja.has(cle)) { if (t.frais) { const x = DB.all('tw:').find((y) => y.cle === cle || y.apparie === cle); if (x && x.frais !== t.frais) DB.put(x.key, Object.assign({}, DB.get(x.key), { frais: t.frais })); } continue; }
     /* Déjà enregistré depuis le mail TWINT (même jour, même montant) : on le relie, sans le recompter */
-    const viaMail = DB.all('tw:').find((x) => x.src === 'mail' && !x.apparie && x.date === t.date && Math.abs(num(x.montant) - t.montant) < 0.01);
+    const libresMail = DB.all('tw:').filter((x) => x.src === 'mail' && !x.apparie);
+    const viaMail = (t.ref && libresMail.find((x) => (x.refs || []).includes(t.ref))) || libresMail.find((x) => x.date === t.date && Math.abs(num(x.montant) - t.montant) < 0.01);
     if (viaMail) { DB.put(viaMail.key, Object.assign({}, viaMail, { apparie: cle, ref: t.ref || viaMail.ref }, t.frais ? { frais: t.frais } : {})); deja.add(cle); continue; }
     const o = Object.assign({ cle, importe: new Date().toISOString(), par: Sync.me || '' }, t);
     const v = ventes.find((f) => !prises.has(f.key) && (f.payeeLe || f.date) === t.date && Math.abs(num(f.total) - t.montant) < 0.01);

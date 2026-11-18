@@ -645,7 +645,12 @@ function montantDansTexte(t) {
   if (!r) return null; const v = Number(String(r[1] || r[2]).replace(/['’]/g, '').replace(',', '.'));
   return v > 0 ? r2(v) : null;
 }
-const payeurDansTexte = (t) => { const r = /(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/u.exec(String(t || '')); return r ? r[1] : ''; };
+/* Le nom de celui qui paie, s'il est dans le mail (« de Anna Muster ») ; pas « de CHF 12.00 », ni le nom de la ferme */
+const payeurDansTexte = (t) => { for (const r of String(t || '').matchAll(/(?:de|von|from|par)\s+([A-ZÀ-Ý][\p{L}'’-]+(?:\s+[A-ZÀ-Ý][\p{L}'’.-]*){0,2})/gu)) if (!/^(CHF|Fr|TWINT|Gamins)\b/i.test(r[1])) return r[1]; return ''; };
+/* Le mail TWINT donne la date et l'heure de la transaction (« 18.11.2026, 11:10 » ou « le 18.11.2026 à 11:10 ») ; sinon celles du mail */
+const dateTwint = (m) => { const r = /(\d{1,2})\.(\d{1,2})\.(\d{4}),?\s*(?:à\s*|um\s*)?(\d{1,2})[:.h](\d{2})/.exec((m.objet || '') + ' ' + (m.extrait || '')); return r ? { jour: `${r[3]}-${r[2].padStart(2, '0')}-${r[1].padStart(2, '0')}`, heure: `${r[4].padStart(2, '0')}:${r[5]}` } : null; };
+/* La référence de la commande (lien « annuler cette transaction » : orderUuid) = l'« ID de commande » du relevé TWINT : le relevé le reconnaîtra */
+const commandeTwint = (m) => [/orderUuid=([0-9a-f-]{36})/i, /(?:Num[ée]ro de transaction|Transaktionsnummer|Transaction number)\s*:?\s*([0-9a-f-]{36})/i].map((re) => (re.exec(m.extrait || '') || [])[1]).filter(Boolean);
 function twintMailHtml(m) {
   const tw = DB.all('tw:').find((t) => t.mail === m.key), r = tw && tw.utilise && DB.get(tw.utilise);
   if (r && String(tw.utilise).startsWith('fac:')) return `<p class="twint-fait">✓ Facture ${esc(r.numero || '')} payée par TWINT (${chf(r.total)})</p>`;
@@ -673,15 +678,15 @@ function twMailFeuille(k, quoi, date, payeur) {
 }
 FORMS.twMail = (v) => { const mt = r2(num(v.montant)); if (!(mt > 0)) { toast('Indique le montant.'); return; } closeSheet(); enregistrerTwintMail(v.key, v.quoi, v.date, mt, v.payeur); };
 /* Le jour du mail (heure de Suisse), pas celui où on l'enregistre */
-const jourDuMail = (m) => { const d = new Date(m && m.date); return isNaN(d) ? todayISO() : isoDate(d); };
+const jourDuMail = (m) => { const t = m && estMailTwint(m) ? dateTwint(m) : null; if (t) return t.jour; const d = new Date(m && m.date); return isNaN(d) ? todayISO() : isoDate(d); };
 function enregistrerTwintMail(k, quoi, date, montant, payeur, auto) {
   const id = String(k).replace(/^mail:/, '').replace(/[^\w-]/g, '');
   const m = DB.get(k) || {}, rk = 'rec:twm-' + id, par = (typeof titulaireCompte === 'function' && titulaireCompte()) || Sync.me || '';
   const s = quoi === 'self' && typeof misesEnVente === 'function' ? misesEnVente().find((x) => x.date <= date && (!x.closeLe || x.closeLe >= date)) : null;
   DB.put(rk, Object.assign({ date, montant, moyen: 'TWINT', par, client: quoi === 'self' ? (s ? s.lieu || 'Self-service' : 'Vente directe') : payeur || 'Paiement TWINT',
     libelle: quoi === 'self' ? `Vente directe${s ? ' du ' + fmtDate(s.date) : ''} · TWINT${payeur ? ' de ' + payeur : ''}` : `Paiement TWINT${payeur ? ' de ' + payeur : ''}`, remarque: (auto ? 'Enregistré tout seul depuis le mail TWINT : ' : 'Depuis le mail TWINT : ') + trunc(m.objet || '', 80), cree: new Date().toISOString(), creePar: auto ? '' : Sync.me || '' }, quoi === 'self' ? { vd: true } : {}, s ? { self: s.key } : {}));
-  const hd = new Date(m.date), heure = isNaN(hd) ? '' : String(hd.getHours()).padStart(2, '0') + ':' + String(hd.getMinutes()).padStart(2, '0');
-  DB.put('tw:twm-' + id, { cle: 'mail:' + k, src: 'mail', mail: k, date, heure, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' });
+  const hd = new Date(m.date), dt = dateTwint(m), heure = dt ? dt.heure : isNaN(hd) ? '' : String(hd.getHours()).padStart(2, '0') + ':' + String(hd.getMinutes()).padStart(2, '0'), refs = commandeTwint(m);
+  DB.put('tw:twm-' + id, Object.assign({ cle: 'mail:' + k, src: 'mail', mail: k, date, heure, montant, ref: '', texte: payeur || m.objet || '', utilise: rk, importe: new Date().toISOString(), par: Sync.me || '' }, refs.length ? { refs } : {}));
   /* Traité (sans en faire le référent de l'adresse TWINT) et lu aussi chez Infomaniak */
   const m2 = DB.get(k); if (m2) DB.put(k, Object.assign({}, m2, { statut: 'traite', traitePar: auto ? '' : Sync.me || '', twAttente: null }));
   if (!LOCAL_MODE) boite(k, 'lu').catch(() => {});
@@ -691,7 +696,10 @@ function enregistrerTwintMail(k, quoi, date, montant, payeur, auto) {
    Sauf si le montant est celui d'une facture ouverte : on demande (dans le mail) si c'est elle.
    Clés fixes (rec:twm-…, tw:twm-…) : deux appareils qui le font en même temps n'en créent pas deux. */
 const TW_AUTO_DEPUIS = '2026-11-12';
-const estPaiementTwint = (m) => estMailTwint(m) && /re[çc]u|paiement|payment|zahlung|erhalten|bezahlt|pagamento/i.test((m.objet || '') + ' ' + (m.extrait || ''));
+/* Un paiement reçu : « Transaction de CHF 12.00 effectuée », « Vous venez de recevoir une transaction réussie », « Zahlung erhalten »…
+   Pas : une annulation, un remboursement, un décompte (versement de TWINT sur le compte). */
+const estPaiementTwint = (m) => estMailTwint(m) && /re[çc]u|recevoir|transaction|paiement|payment|zahlung|erhalten|bezahlt|pagamento|transazione/i.test((m.objet || '') + ' ' + (m.extrait || ''))
+  && !/annul|rembours|storn|gutschrift|r[üu]ckerstatt|refund|d[ée]compte|abrechnung|auszahlung|versement|[ée]chou|refus/i.test(m.objet || '');
 const facturesOuvertesDe = (mt) => (typeof factures === 'function' ? factures() : []).filter((f) => f.numero && f.statut === 'ouverte' && Math.abs(r2(f.total) - mt) < 0.005);
 let twAutoEnCours = false;
 async function twintAuto() {
