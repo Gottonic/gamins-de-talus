@@ -163,3 +163,12 @@ ACTIONS.logout = () => {
 ACTIONS.logoutOk = async () => { ls.del(Sync.cacheKey()); Sync.uid = null; try { await Sync.sb.auth.signOut(); } catch (e) { /* */ } location.reload(); };
 
 startApp();
+
+/* ---------- Bouton « + » : les actions les plus fréquentes, de partout ---------- */
+ACTIONS.actionsRapides = () => openSheet(`${sheetHead('Actions rapides')}<div class="sbody"><div class="menu-list">
+  <button type="button" class="menu-it" data-act="closeGo" data-href="#/factures/nouvelle">🧾 Nouvelle vente</button>
+  <button type="button" class="menu-it" data-act="heuresJour">🕐 Noter mes heures</button>
+  <button type="button" class="menu-it" data-act="taEdit">☑ Nouvelle tâche</button>
+  <button type="button" class="menu-it" data-act="selfNouveau">🧺 Remplir le stand</button>
+  <button type="button" class="menu-it" data-act="depEdit">💸 Nouvelle dépense (photo du ticket)</button>
+  <button type="button" class="menu-it" data-act="jnlNouveau">📝 Note au journal</button></div></div>`);

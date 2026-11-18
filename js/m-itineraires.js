@@ -60,7 +60,7 @@ const lireEtapes = (id) => [...document.querySelectorAll(`#${id} [data-et]`)].ma
 function itinerairesHtml() {
   const l = itineraires();
   return `<div class="panel"><div class="between"><h2>Itinéraires de travail</h2><button class="btn small" type="button" data-act="itinEdit">+ Itinéraire</button></div>
-    <p class="hint">Vos suites de travaux, à associer aux cultures dans leur fiche : leurs tâches se créent toutes seules dans Planification, aux bonnes dates.</p>
+    <p class="hint">Vos suites de travaux, à associer aux cultures dans leur fiche : leurs tâches se créent toutes seules dans le Calendrier, aux bonnes dates.</p>
     ${l.length ? `<div class="items">${l.map((it) => `<button type="button" class="item" data-act="itinEdit" data-k="${esc(it.k)}"><span class="who"><strong>${esc(it.nom)}</strong><span class="meta">${it.etapes.map((e) => esc(e.t) + ' (' + (num(e.j) > 0 ? '+' : '') + num(e.j) + ' j)').join(' · ')}</span></span><span class="hint">${fiches().filter((f) => (f.itin || []).includes(it.k)).length} cult.</span></button>`).join('')}</div>` : '<p class="empty">Aucun itinéraire.</p>'}</div>`;
 }
 ACTIONS.itinEdit = (el) => {
@@ -117,7 +117,7 @@ function synchroTachesCultures(saison) {
   });
   return { n, m };
 }
-ACTIONS.cuTaches = () => { const r = synchroTachesCultures(saisonCourante()); toast(r.n || r.m ? `${r.n} tâche${r.n > 1 ? 's' : ''} créée${r.n > 1 ? 's' : ''}${r.m ? `, ${r.m} remise${r.m > 1 ? 's' : ''} à la bonne date` : ''} dans Planification.` : 'Les tâches sont à jour.', 4500); };
+ACTIONS.cuTaches = () => { const r = synchroTachesCultures(saisonCourante()); toast(r.n || r.m ? `${r.n} tâche${r.n > 1 ? 's' : ''} créée${r.n > 1 ? 's' : ''}${r.m ? `, ${r.m} remise${r.m > 1 ? 's' : ''} à la bonne date` : ''} dans le Calendrier.` : 'Les tâches sont à jour.', 4500); };
 /* Une fois par jour sur l'appareil : les nouvelles étapes et les dates changées */
 setTimeout(() => { if (!(Sync.me || LOCAL_MODE) || ls.get('gdt-cu-synchro') === todayISO()) return; ls.set('gdt-cu-synchro', todayISO()); synchroTachesCultures(); }, 15000);
 

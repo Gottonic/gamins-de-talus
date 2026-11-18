@@ -361,7 +361,7 @@ FORMS.cuPlacer = (v) => {
   const s = v.saison;
   const o = Object.assign({ saison: s, fiche: v.fiche, ordre: cultures(s).length + 1, recolteReelle: null }, valeursFiche(f), { planches: num(v.planches), longueur: v.longueur === '' ? null : num(v.longueur) });
   DB.put('cul:' + uid('c'), o); closeSheet(); const r = s >= todayISO().slice(0, 4) ? synchroTachesCultures(s) : { n: 0 };
-  toast(`${f.nom} placé dans le plan ${s}.${r.n ? ` ${r.n} tâche${r.n > 1 ? 's' : ''} créée${r.n > 1 ? 's' : ''} dans Planification.` : ''}`, 4500);
+  toast(`${f.nom} placé dans le plan ${s}.${r.n ? ` ${r.n} tâche${r.n > 1 ? 's' : ''} créée${r.n > 1 ? 's' : ''} dans le Calendrier.` : ''}`, 4500);
 };
 ACTIONS.ficheNouvelle = () => { closeSheet(); go('#/cultures/fiches'); setTimeout(() => ACTIONS.ficheEdit({ dataset: {} }), 60); };
 ACTIONS.ficheEdit = (el) => {
@@ -386,7 +386,7 @@ ACTIONS.ficheEdit = (el) => {
     </div>
     <div class="field"><span class="flabel">Itinéraires de travail</span><div class="row">${itineraires().map((it) => `<label class="chip-cb"><input type="checkbox" name="itin_${esc(it.k)}"${(f.itin || []).includes(it.k) ? ' checked' : ''}> ${esc(it.nom)}</label>`).join('') || '<span class="hint">Aucun : crée-en dans « Nos cultures ».</span>'}</div></div>
     <div class="field"><span class="flabel">Travaux propres à cette culture</span>${etapesEditeurHtml('fi-et', f.etapes || [])}</div>
-    <p class="hint">Les tâches (plantation, récolte, étapes des itinéraires et de la culture) se créent dans Planification pour chaque saison où la culture est au plan.</p>
+    <p class="hint">Les tâches (plantation, récolte, étapes des itinéraires et de la culture) se créent dans le Calendrier (Tâches) pour chaque saison où la culture est au plan.</p>
     <div class="grid2">
       ${n('fi-l', 'Lignes par planche', f.lignes, 'lignes')}${n('fi-i', 'Interplant cm', f.interplant, 'interplant')}
       ${inp('fi-v', 'Variété', f.variete, { name: 'variete' })}${inp('fi-f', 'Fournisseur', f.fournisseur, { name: 'fournisseur', attrs: { list: 'fi-four' } })}</div>

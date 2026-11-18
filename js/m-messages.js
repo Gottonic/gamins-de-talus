@@ -29,7 +29,7 @@ const APP_URL = 'https://gottonic.github.io/gamins-de-talus/';
 const LIEN_MSG = `[🔗](<${APP_URL}#/messages>)`;
 
 MODULES.messages = {
-  titre: 'Messagerie',
+  titre: 'Discussion',
   tuile() {
     const n = nonLus().length, ms = messages(), der = ms[ms.length - 1];
     if (!der) return { line: 'Discuter entre associés' };
@@ -116,7 +116,7 @@ function renderMessages() {
   const bandeau = edit ? `<div class="msg-prev"><span>✏️ Modifier ton message</span><button type="button" class="btn small" data-act="msgAnnuler">Annuler</button></div>`
     : cible ? `<div class="msg-prev"><span>↪ Réponse à <b>${esc(nomDe(cible.de))}</b> : ${esc(trunc(apercuMsg(cible), 80))}</span><button type="button" class="btn small" data-act="msgAnnuler">Annuler</button></div>` : '';
   return `<div class="panel chat">
-    <div class="between chat-head"><a class="btn small chat-fermer" href="#/" data-act="chatFermer" aria-label="Fermer la discussion">←</a><h2>Entre nous</h2>
+    <div class="between chat-head"><a class="btn small chat-fermer" href="#/" data-act="chatFermer" aria-label="Fermer la discussion">←</a><h2>Discussion</h2>
       <a class="btn small" href="#/reglages/notifications">🔔 Notifications</a></div>
     <p class="hint chat-who">${esc(personnes().map((p) => p.nom).join(', '))}${prevenus.length ? ' · prévenus sur Discord : ' + esc(prevenus.join(', ')) : ''}</p>
     ${pinsHtml}${(() => { const h = hautSondages(); return h ? `<div class="pins">${h}</div>` : ''; })()}
@@ -591,7 +591,7 @@ function renderMails() {
   const carte = (m) => {
     const ct = contactDuMail(m.de && m.de.adresse), vus = Object.keys(m.vus || {}).filter((p) => p !== m.par);
     const et = etatMail(m), confie = !mailFini(m) && m.par && m.confiePar && m.confiePar !== m.par ? `confié par ${m.confiePar === Sync.me ? 'toi' : nomDe(m.confiePar)}` : '';
-    return `<div class="mail${!mailFini(m) && m.par ? ' encours' : ''}${mailFini(m) ? ' fini' : ''}">
+    return `<div class="mail${!mailFini(m) && m.par ? ' encours' : ''}${mailFini(m) ? ' fini' : ''}" data-mail="${esc(m.key)}">
       <div class="between"><b>${esc((m.de && (m.de.nom || m.de.adresse)) || '?')}</b><span class="hint">${esc(depuis(m.date))}</span></div>
       <div class="mail-objet">${esc(m.objet || '(sans objet)')}</div>
       ${ct ? `<a class="hint" href="#/${ct.prospect ? 'contacts/prospect' : 'contacts/voir'}/${encodeURIComponent(ct.key)}">👤 ${esc(displayName(ct))}${ct.prospect ? ' (prospect)' : ''}</a>` : `<span class="hint">${esc((m.de && m.de.adresse) || '')}</span>`}
@@ -839,7 +839,7 @@ ACTIONS.chatFermer = () => { if (NAV_N > 0) { const avant = location.hash; histo
 
 /* ---------- Module Mails (la boîte Infomaniak), à côté de la Messagerie ---------- */
 MODULES.mails = {
-  titre: 'Contacts',
+  titre: 'Mails et contacts',
   tuile() {
     const nm = typeof mailsATraiter === 'function' ? mailsATraiter().length : 0, tous = typeof mails === 'function' ? mails() : [];
     if (!tous.length) return { line: 'La boîte ' + (cfgMails().adresse || 'info@') };
@@ -1008,3 +1008,20 @@ ACTIONS.mailSupprOk = async (el) => {
   const k = el.dataset.key; closeSheet();
   try { await boite(k, 'supprimer'); delete MAIL.complet[k]; DB.del(k); toast('Mail mis à la corbeille d\'Infomaniak.'); } catch (e) { toast('Suppression impossible : ' + e.message, 7000); }
 };
+
+/* Mails (téléphone) : glisser un mail vers la gauche = traité (↶ pour annuler) */
+(() => {
+  let m = null, x0 = 0, y0 = 0, dx = 0, actif = false;
+  document.addEventListener('touchstart', (e) => { const c = e.target.closest && e.target.closest('.mail[data-mail]:not(.fini)'); if (!c || e.touches.length !== 1 || e.target.closest('button, a, input, textarea')) { m = null; return; } m = c; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; actif = false; }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!m) return; const x = e.touches[0].clientX - x0, y = e.touches[0].clientY - y0;
+    if (!actif) { if (Math.abs(y) > 12 && Math.abs(y) > Math.abs(x)) { m = null; return; } if (x < -12 && -x > Math.abs(y) * 1.5) actif = true; else return; }
+    dx = Math.max(-120, Math.min(0, x)); m.style.transform = `translateX(${dx}px)`; m.classList.toggle('glisse-ok', dx <= -80);
+  }, { passive: true });
+  const fin = () => {
+    if (!m) return; const c = m; m = null; c.style.transition = 'transform .15s'; c.style.transform = ''; setTimeout(() => { c.style.transition = ''; c.classList.remove('glisse-ok'); }, 160);
+    if (actif && dx <= -80) { if (navigator.vibrate) navigator.vibrate(10); ACTIONS.mailStatut({ dataset: { key: c.dataset.mail, s: 'traite' } }); toast('Mail traité. ↶ pour annuler.'); }
+    actif = false; dx = 0;
+  };
+  document.addEventListener('touchend', fin, { passive: true }); document.addEventListener('touchcancel', fin, { passive: true });
+})();

@@ -59,7 +59,7 @@ function relationsTabs(cur) {
 const SOUS_PROSPECTION = ['prospection', 'prospect', 'convertir', 'pmodifier'];
 const ongletProspection = () => { const np = prospects().filter((c) => !['clos', 'valide'].includes(groupeStatut(pStat(c)))).length, nRel = prospects().filter(aRelancer).length; return ['prospection', `Prospection${nRel ? ' · ' + nRel + ' à relancer' : np ? ' · ' + np : ''}`, nRel > 0]; };
 MODULES.contacts = {
-  titre: 'Contacts',
+  titre: 'Mails et contacts',
   tuile() {
     const n = contacts().length;
     return { line: `${n} contact${n > 1 ? 's' : ''}` };

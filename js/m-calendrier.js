@@ -62,7 +62,7 @@ function itemsPeriode(de, a) {
 /* ---------- Module ---------- */
 /* Planification = calendrier + tâches : Vue d'ensemble, Tâches, Mois, Heures (l'adresse reste #/calendrier) */
 MODULES.calendrier = {
-  titre: 'Planification',
+  titre: 'Calendrier',
   tuile() {
     /* Événements du jour pour moi, sauf ceux déjà bouclés : marqués faits, ou journée de travail dont mes heures sont notées */
     /* Une journée de travail est déjà bien visible sur l'accueil (journée en cours) : pas de pastille pour elle */

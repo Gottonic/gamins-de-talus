@@ -7,7 +7,9 @@ MODULES.reglages = {
   render(sub) {
     /* Notifications d'abord (onglet par défaut), puis Associés, Données, Entreprise */
     if (sub === 'notifications') sub = '';
-    const t = tabs('reglages', [['', 'Notifications'], ['associes', 'Associés'], ['donnees', 'Données'], ['entreprise', 'Entreprise'], ['categories', 'Catégories'], ['apparence', 'Apparence'], ['nouveautes', 'Nouveautés']], sub);
+    /* Deux groupes : ce que chacun règle pour lui, et ce qui vaut pour toute la ferme */
+    const ong = (k, l) => `<a href="#/reglages/${k}" class="${k === (sub || '') ? 'on' : ''}"${k === (sub || '') ? ' aria-current="page"' : ''}>${esc(l)}</a>`;
+    const t = `<nav class="subtabs tabs-grp" aria-label="Sections"><span class="tab-grp">Pour moi</span>${ong('', 'Notifications')}${ong('apparence', 'Apparence')}${ong('nouveautes', 'Nouveautés')}<span class="tab-grp">Pour la ferme</span>${ong('entreprise', 'Entreprise')}${ong('associes', 'Répartition')}${ong('categories', 'Catégories')}${ong('donnees', 'Données')}</nav>`;
     if (sub === 'apparence') return t + renderApparence();
     if (sub === 'nouveautes') return t + renderNouveautes();
     if (sub === 'categories') return t + renderCategories() + renderComptesReglages();

@@ -145,6 +145,8 @@ MODULES.factures = {
   garderDefilement(sub, avant) { return SOUS_PROSPECTION.includes(sub) && SOUS_PROSPECTION.includes(avant); },
 };
 
+const VF = { filtre: '' };
+ACTIONS.ventesFiltre = (el) => { VF.filtre = el.dataset.k; render(); };
 function renderListeFactures(selKey) {
   const list = factures().sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.seq || 0) - (a.seq || 0) || String(b.cree).localeCompare(String(a.cree)));
   const y = todayISO().slice(0, 4); let open = 0, late = 0, nLate = 0, year = 0;
@@ -152,8 +154,12 @@ function renderListeFactures(selKey) {
   const sp = recettesDirectes().filter((r) => r.spontanee && String(r.date || '').slice(0, 4) === y).sort((a, b) => String(b.date).localeCompare(String(a.date))), tSp = sp.reduce((a, r) => a + num(r.montant), 0); year += tSp;
   /* Toutes les ventes au même endroit : le self-service une ligne par semaine, les ventes spontanées une par vente */
   const sem = typeof semainesSelf === 'function' ? semainesSelf() : [], tSelf = sem.filter((w) => w.date.slice(0, 4) === y).reduce((a, w) => a + w.total, 0); year += tSelf;
-  const lignes = list.map((f) => ({ date: f.date, f })).concat(sem.map((w) => ({ date: w.date, w })), recettesDirectes().filter((r) => r.spontanee).map((r) => ({ date: r.date, r })))
+  const tout = list.map((f) => ({ date: f.date, f })).concat(sem.map((w) => ({ date: w.date, w })), recettesDirectes().filter((r) => r.spontanee).map((r) => ({ date: r.date, r })))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  /* Filtres : factures, à encaisser, ventes sans facture, self-service, spontanées */
+  const FILTRES_V = [['', 'Tout', () => true], ['encaisser', 'À encaisser', (x) => x.f && ['ouverte', 'retard'].includes(facStatut(x.f))], ['factures', 'Factures', (x) => x.f && !!x.f.numero], ['sans', 'Sans facture', (x) => x.f && !x.f.numero], ['self', 'Self-service', (x) => !!x.w], ['spont', 'Spontanées', (x) => !!x.r]];
+  const fv = FILTRES_V.find((z) => z[0] === (VF.filtre || '')) || FILTRES_V[0], lignes = tout.filter(fv[2]);
+  const chipsV = `<div class="chips ventes-filtres">${FILTRES_V.map(([k, l, t]) => { const n = k ? tout.filter(t).length : 0; return k && !n ? '' : `<button type="button" class="chip small${(VF.filtre || '') === k ? ' on' : ''}" data-act="ventesFiltre" data-k="${k}">${l}${n ? `<span class="n">${n}</span>` : ''}</button>`; }).join('')}</div>`;
   const dbl = numerosEnDouble();
   const probs = problemesReglages(false);
   const setup = probs.length ? `<div class="errors">Pour facturer par virement, il manque ${esc(probs.join(', '))}. <a href="#/reglages/entreprise">Compléter les réglages</a></div>` : '';
@@ -169,7 +175,7 @@ function renderListeFactures(selKey) {
       <div class="stat bad"><span class="k">En retard</span><span class="v">${nLate ? `${nLate} · ${chf(late)}` : 'Aucune'}</span></div>
       <div class="stat"><span class="k">Vendu en ${y}</span><span class="v">${chf(year)}</span>${tSelf || tSp ? `<span class="s">${[tSelf ? `self-service ${chf(tSelf)}` : '', tSp ? `spontanées ${chf(tSp)}` : ''].filter(Boolean).join(' · ')}</span>` : ''}</div></div>
     <div class="split">
-      <div class="panel"><div class="between"><h2>Ventes</h2><div class="row"><button class="btn small" type="button" data-act="facCsv">Exporter (CSV)</button><button class="btn small" type="button" data-act="facMois">Facture du mois</button><button class="btn small" type="button" data-act="venteSpontanee">Vente spontanée</button><a class="btn primary small" href="#/factures/nouvelle">+ Vente</a></div></div>${table}</div>
+      <div class="panel"><div class="between"><h2>Ventes</h2><div class="row"><button class="btn small" type="button" data-act="facCsv">Exporter (CSV)</button><button class="btn small" type="button" data-act="facMois">Facture du mois</button><button class="btn small" type="button" data-act="venteSpontanee">Vente spontanée</button><a class="btn primary small" href="#/factures/nouvelle">+ Vente</a></div></div>${chipsV}${table}</div>
       <div>${sel ? renderDetailFacture(Object.assign({ key: selKey }, sel), dbl) : (list.length ? '<div class="panel"><p class="hint">Choisis une vente pour voir sa facture ou son bulletin, ou la marquer comme payée.</p></div>' : '')}</div>
     </div>`;
 }
