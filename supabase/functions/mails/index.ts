@@ -137,7 +137,7 @@ async function preparerTwint(sb: any, nouveaux: any[], log: (s: string) => void)
   return out;
 }
 
-/* ---------- Mails programmés : lignes mailprog:<id> = { a, cc?, objet, texte, le (date et heure ISO), rec: '' | 'semaine' | 'mois', statut: 'prevu' | 'envoye' | 'erreur' } ----------
+/* ---------- Mails programmés : lignes mailprog:<id> = { a, cc?, objet, texte, pieces?: [{ chemin, nom, type }], le (date et heure ISO), rec: '' | 'semaine' | 'mois', statut: 'prevu' | 'envoye' | 'erreur' } ----------
    Envoyés à chaque relève, et toutes les 15 minutes par Supabase Cron ({ programmes: true }). Récurrent : la prochaine date est recalculée. */
 async function envoyerProgrammes(sb: any, env: (k: string) => string | undefined, log: (s: string) => void) {
   const { data } = await sb.from('rows').select('key,data').like('key', 'mailprog:%').eq('deleted', false);
@@ -147,7 +147,15 @@ async function envoyerProgrammes(sb: any, env: (k: string) => string | undefined
   let n = 0;
   for (const r of dus) {
     const o = r.data, suite: any = { envois: (o.envois || []).concat([maintenant]).slice(-24), envoyeLe: maintenant, erreur: '' };
-    try { await envoyerMail(env, { a: o.a, cc: o.cc || undefined, objet: o.objet, texte: o.texte }, reg.nom || 'Gamins de Talus'); n++; }
+    try {
+      /* Les pièces jointes attendent dans le stockage privé (seau « fichiers ») */
+      const pieces: any[] = [];
+      for (const x of o.pieces || []) {
+        const { data: f, error } = await sb.storage.from('fichiers').download(x.chemin); if (error || !f) throw new Error('pièce jointe introuvable : ' + x.nom);
+        pieces.push({ nom: x.nom, type: x.type || 'application/octet-stream', base64: b64(new Uint8Array(await f.arrayBuffer())) });
+      }
+      await envoyerMail(env, { a: o.a, cc: o.cc || undefined, objet: o.objet, texte: o.texte, pieces }, reg.nom || 'Gamins de Talus'); n++;
+    }
     catch (e) { suite.erreur = String((e as any).response || (e as Error).message || e).slice(0, 300); suite.statut = 'erreur'; }
     if (!suite.erreur) {
       if (o.rec === 'semaine' || o.rec === 'mois') {

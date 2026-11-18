@@ -617,7 +617,7 @@ const quandMail = (iso) => { const d = new Date(iso); return isNaN(d) ? '?' : `$
 function programmesHtml() {
   const l = mailsProgrammes(), faits = DB.all('mailprog:').filter((x) => x.statut === 'envoye').sort((a, b) => String(b.envoyeLe).localeCompare(String(a.envoyeLe))).slice(0, 10);
   const carte = (o) => `<div class="mail${o.statut === 'envoye' ? ' fini' : ''}"><div class="between"><b>→ ${esc(o.a)}</b><span class="hint">${o.statut === 'envoye' ? 'envoyé le ' + esc(quandMail(o.envoyeLe)) : esc(quandMail(o.le))}${o.rec ? ' · 🔁 ' + REC_MAIL[o.rec] : ''}</span></div>
-    <div class="mail-objet">${esc(o.objet || '(sans objet)')}</div><p class="mail-extrait">${esc(trunc(o.texte || '', 200))}</p>
+    <div class="mail-objet">${esc(o.objet || '(sans objet)')}</div><p class="mail-extrait">${esc(trunc(o.texte || '', 200))}</p>${(o.pieces || []).length ? `<p class="hint">📎 ${esc(o.pieces.map((x) => x.nom).join(', '))}</p>` : ''}
     ${o.statut === 'erreur' ? `<p class="bad">Pas parti : ${esc(o.erreur || '?')}</p>` : ''}
     ${o.statut !== 'envoye' ? `<div class="row mail-actions"><button class="btn small" type="button" data-act="mailProgModifier" data-key="${esc(o.key)}">Modifier</button><button class="btn small danger" type="button" data-act="delItem" data-key="${esc(o.key)}" data-what="ce mail programmé">Supprimer</button></div>` : ''}</div>`;
   return (l.length ? l.map(carte).join('') : '<p class="empty">Aucun mail programmé. « ✉️ Nouveau mail » → « Envoyer plus tard ».</p>') + (faits.length ? `<h3>Déjà partis</h3>${faits.map(carte).join('')}` : '');
@@ -853,7 +853,7 @@ MODULES.mails = {
 const signatureMail = () => { const s = cfg(); return `\n\n${Sync.me ? nomDe(Sync.me) + '\n' : ''}${s.nom}${s.telephone ? '\n' + s.telephone : ''}`; };
 const ECR = { pieces: [] };
 function ouvrirComposeur(o) {
-  ECR.pieces = []; const emails = [...new Set(tousContacts().map((c) => String(c.email || '').trim()).filter(Boolean))];
+  ECR.pieces = []; ECR.piecesProg = o.programme ? ((DB.get(o.programme) || {}).pieces || []).slice() : []; const emails = [...new Set(tousContacts().map((c) => String(c.email || '').trim()).filter(Boolean))];
   const mr = o.repond ? DB.get(o.repond) : null, autre = mr && !mailFini(mr) && mr.par && mr.par !== Sync.me ? mr.par : '';
   /* Un brouillon gardé (fenêtre fermée avant l'envoi) pour ce même mail : on le reprend */
   const cleB = o.repond || 'nouveau', br = ECR.brouillon && ECR.brouillon.cle === cleB && !o.programme ? ECR.brouillon.v : null;
@@ -871,20 +871,22 @@ function ouvrirComposeur(o) {
     <input type="hidden" name="programme" value="${esc(o.programme || '')}">
     <details class="me-prog"${o.programme ? ' open' : ''}><summary>📅 Envoyer plus tard${o.programme ? '' : ' (date, répétition)'}</summary>
       <div class="grid2">${inp('me-le', 'Le', o.le ? (() => { const d = new Date(o.le); return isoDate(d) + 'T' + d.toTimeString().slice(0, 5); })() : '', { name: 'le', type: 'datetime-local' })}${sel('me-rec', 'Répéter', o.rec || '', [['', 'Une seule fois'], ['semaine', 'Chaque semaine'], ['mois', 'Chaque mois']], { name: 'rec' })}</div>
-      <span class="sub">Il part tout seul à l'heure choisie (à un quart d'heure près), même si personne n'ouvre l'app. Sans pièce jointe.</span></details>
+      <span class="sub">Il part tout seul à l'heure choisie (à un quart d'heure près), même si personne n'ouvre l'app, avec ses pièces jointes.</span></details>
     <div class="row-end"><button class="btn primary" type="submit" id="me-envoyer">${o.programme ? 'Enregistrer' : 'Envoyer'}</button></div></form>`);
   const le = $('me-le'); if (le) le.addEventListener('input', () => { const b = $('me-envoyer'); if (b) b.textContent = le.value ? (o.programme ? 'Enregistrer' : '📅 Programmer') : 'Envoyer'; });
   const t = $('me-t'); if (t && o.repond) { t.focus(); t.setSelectionRange(0, 0); } else { const a = $('me-a'); if (a && !o.a) a.focus(); }
   if (br) { for (const [n, x] of Object.entries(br)) { const e = document.querySelector(`#sheet form[data-form="mailEnvoyer"] [name="${n}"]`); if (e && e.type !== 'checkbox' && e.type !== 'hidden') e.value = x; } toast('Brouillon repris.'); }
   $('me-file').addEventListener('change', (e) => {
     for (const f of e.target.files) ECR.pieces.push(f); e.target.value = '';
-    const tot = ECR.pieces.reduce((a, f) => a + f.size, 0); if (tot > 8 * 1024 * 1024) { ECR.pieces.pop(); toast('Trop lourd : 8 Mo au total.'); }
+    const tot = ECR.pieces.reduce((a, f) => a + f.size, 0) + (ECR.piecesProg || []).reduce((a, f) => a + num(f.taille), 0); if (tot > 8 * 1024 * 1024) { ECR.pieces.pop(); toast('Trop lourd : 8 Mo au total.'); }
     majPieces();
   });
+  if (ECR.piecesProg.length) majPieces();
   if (emails.length === 0) { /* pas de contact avec adresse : rien à proposer */ }
 }
 document.addEventListener('input', (e) => { const f = e.target.closest && e.target.closest('form[data-form="mailEnvoyer"]'); if (f) ECR.brouillon = { cle: f.dataset.brouillon, v: formValues(f) }; });
-function majPieces() { const b = $('me-pj'); if (b) b.innerHTML = ECR.pieces.map((f, i) => `<span class="tpill">${esc(trunc(f.name, 30))} · ${tailleTxt(f.size)} <button type="button" class="btn link" data-act="mePjOff" data-i="${i}">×</button></span>`).join(' '); }
+function majPieces() { const b = $('me-pj'); if (b) b.innerHTML = (ECR.piecesProg || []).map((f, i) => `<span class="tpill">${esc(trunc(f.nom, 30))} · ${tailleTxt(f.taille)} <button type="button" class="btn link" data-act="mePjProgOff" data-i="${i}">×</button></span> `).join('') + ECR.pieces.map((f, i) => `<span class="tpill">${esc(trunc(f.name, 30))} · ${tailleTxt(f.size)} <button type="button" class="btn link" data-act="mePjOff" data-i="${i}">×</button></span>`).join(' '); }
+ACTIONS.mePjProgOff = (el) => { ECR.piecesProg.splice(Number(el.dataset.i), 1); majPieces(); };
 ACTIONS.mePjOff = (el) => { ECR.pieces.splice(Number(el.dataset.i), 1); majPieces(); };
 ACTIONS.mailEcrire = () => ouvrirComposeur({});
 ACTIONS.mailRepondre = (el) => {
@@ -899,9 +901,16 @@ FORMS.mailEnvoyer = async (v) => {
   if (v.le || v.programme) {
     const d = new Date(v.le); if (!v.le || isNaN(d)) { toast('Choisis la date et l\'heure.'); return; }
     if (d < new Date(Date.now() - 60000) && !v.rec) { toast('Cette date est passée.'); return; }
-    if (ECR.pieces.length) toast('Les pièces jointes ne partent pas avec un mail programmé.', 5000);
+    /* Les pièces jointes attendent dans le stockage privé ; la fonction « mails » les reprend au moment d'envoyer */
+    let pieces = (ECR.piecesProg || []).slice();
+    if (ECR.pieces.length) {
+      const b = $('me-envoyer'); if (b) { b.disabled = true; b.textContent = 'Pièces jointes…'; }
+      try { for (const f of ECR.pieces) { const ext = (f.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'bin'; const chemin = await Fichiers.envoyer(f, cheminFichier('mailprog', ext)); pieces.push({ chemin, nom: f.name, type: f.type || 'application/octet-stream', taille: f.size }); } }
+      catch (e) { if (b) { b.disabled = false; b.textContent = '📅 Programmer'; } toast('Pièce jointe pas envoyée : ' + e.message, 6000); return; }
+    }
     const k = v.programme || 'mailprog:' + uid('p'), old = DB.get(k) || { cree: new Date().toISOString(), par: Sync.me || '' };
-    DB.put(k, Object.assign({}, old, { a, cc: String(v.cc || '').trim(), objet: v.objet, texte: v.texte, le: d.toISOString(), rec: v.rec || '', statut: 'prevu', erreur: '' }));
+    DB.put(k, Object.assign({}, old, { a, cc: String(v.cc || '').trim(), objet: v.objet, texte: v.texte, pieces, le: d.toISOString(), rec: v.rec || '', statut: 'prevu', erreur: '' }));
+    ECR.piecesProg = [];
     ECR.pieces = []; ECR.brouillon = null; closeSheet(); toast(`📅 Programmé pour le ${quandMail(d.toISOString())}${v.rec ? ', ' + REC_MAIL[v.rec] : ''}.`, 5000); return;
   }
   if (LOCAL_MODE || !Sync.sb) { toast("En mode essai, rien n'est envoyé."); return; }
