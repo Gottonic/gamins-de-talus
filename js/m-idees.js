@@ -40,8 +40,8 @@ function ideesHtml() {
     <form class="form idee-ajout" data-form="ideeAjout">
       <div class="chips">${IDEE_TYPES.map(([k, e, n]) => `<button type="button" class="chip${IDEE.type === k ? ' on' : ''}" data-act="ideeType" data-k="${k}">${e} ${n}</button>`).join('')}</div>
       <div class="ab-ligne"><input name="titre" id="idee-titre" placeholder="${IDEE.type === 'bug' ? 'Ce qui ne marche pas…' : 'Ton idée, une nouvelle fonction…'}" autocomplete="off" enterkeyhint="done" aria-label="Titre"><button class="btn primary ab-plus" type="submit" aria-label="Ajouter">+</button></div>
-      ${ideeJoindreHtml()}
-      <textarea id="idee-det" name="details" rows="1" class="idee-ext" style="width:100%;margin-top:8px;resize:none;overflow:hidden;min-height:0" placeholder="Détails (facultatif)" aria-label="Détails"></textarea></form>
+      <textarea id="idee-det" name="details" rows="1" class="idee-ext" style="width:100%;margin-top:8px;resize:none;overflow:hidden;min-height:0" placeholder="Détails (facultatif)" aria-label="Détails"></textarea>
+      ${ideeJoindreHtml()}</form>
     <div class="idees">${ouv.length ? ouv.map(ligne).join('') : '<p class="empty">Rien en attente. 🌿</p>'}</div>
     <div class="row idees-pied">${ouv.length ? `<span class="row" style="gap:12px"><button type="button" class="btn link small" data-act="ideesCopier">Copier pour Claude</button>${ouv.length > 1 ? '<button type="button" class="btn link small" data-act="ideesToutFait">☑ Tout cocher</button>' : ''}${(() => { const n = ouv.reduce((a, x) => a + (x.captures || []).length, 0); return n ? (partageFichiersPossible() ? `<button type="button" class="btn link small" data-act="ideesPartager">Partager avec les captures (${n})</button>` : `<button type="button" class="btn link small" data-act="ideesCaptures">Télécharger les captures (${n})</button>`) : ''; })()}</span>` : '<span></span>'}${faites.length ? `<button type="button" class="btn link small" data-act="ideeFaites">${IDEE.faites ? 'Cacher' : 'Voir'} les faites (${faites.length})</button>` : ''}</div>
     ${faites.length && IDEE.faites ? `<div class="idees">${faites.slice(0, 50).map(ligne).join('')}</div>` : ''}</div>`;
