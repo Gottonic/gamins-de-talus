@@ -177,3 +177,46 @@ function renderStatsSelf() {
     </section>`}
   </div>`;
 }
+
+/* ---------- Conseil de remplissage : combien mettre de chaque article ----------
+   Vitesse de vente = ce qui est parti entre deux comptages (8 dernières semaines, sinon toute l'année passée au stand),
+   sans comptage : ce qui a été mis en vente moins les retours. Article souvent épuisé au comptage : +30 % (il en serait parti plus).
+   Il faut tenir jusqu'au prochain remplissage (écart habituel entre deux remplissages, 2 à 14 jours ; 7 par défaut).
+   Conseil = vitesse × jours − ce qui reste sans doute sur le stand (dernier comptage + remplis depuis − vendu depuis, estimé). */
+function conseilsRemplissage() {
+  const auj = todayISO(), jours = (a, b) => Math.max(0, Math.round((new Date(b + 'T12:00') - new Date(a + 'T12:00')) / 864e5));
+  const ev = [];
+  for (const s of misesEnVente()) (s.lignes || []).forEach((l, i) => ev.push({ d: String(s.date), c: String(s.cree || ''), o: 0, id: cleArticleStand(l), q: Math.max(0, num(l.qte) - num((s.retours || {})[i])) }));
+  for (const p of pointsStand()) ev.push({ d: String(p.date), c: String(p.cree || ''), o: 1, p });
+  ev.sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c) || a.o - b.o);
+  /* Deux fenêtres : 8 semaines (récent, la saison), et 365 jours si la première ne dit rien */
+  const calc = (depuis) => {
+    const etat = {}, A = {}, a = (id) => (A[id] = A[id] || { vendu: 0, mis: 0, de: '', comptes: 0, epuise: 0, dernier: '' });
+    let dernierPt = '';
+    for (const e of ev) {
+      if (e.o === 0) { etat[e.id] = (etat[e.id] || 0) + e.q; if (e.d >= depuis) { const o = a(e.id); o.mis += e.q; if (!o.de) o.de = e.d; } continue; }
+      const lignes = {}; for (const l of e.p.lignes || []) lignes[cleArticleStand(l)] = l;
+      for (const id of new Set(Object.keys(etat).filter((k) => etat[k] > 0).concat(Object.keys(lignes)))) {
+        const l = lignes[id], reste = l ? num(l.reste) : 0, avant = etat[id] || 0;
+        if (e.d >= depuis && avant > 0) { const o = a(id); o.vendu += Math.max(0, avant - reste); o.comptes++; if (reste === 0) o.epuise++; o.dernier = e.d; }
+        etat[id] = Math.max(0, reste - (l ? Math.min(reste, num(l.repris)) : 0));
+      }
+      dernierPt = e.d;
+    }
+    return { A, etat, dernierPt };
+  };
+  const r8 = calc(addDays(auj, -56)), r1 = calc(addDays(auj, -365));
+  const dates = [...new Set(misesEnVente().map((s) => String(s.date)))].sort().slice(-9), ecarts = dates.slice(1).map((d, i) => jours(dates[i], d)).filter((x) => x > 0).sort((a, b) => a - b);
+  const horizon = Math.min(14, Math.max(2, ecarts.length ? ecarts[Math.floor(ecarts.length / 2)] : 7));
+  const out = {};
+  for (const id of new Set(Object.keys(r8.A).concat(Object.keys(r1.A)))) {
+    const vitesse = (o, fen) => { if (!o || !o.de) return 0; const nb = Math.max(7, jours(o.de, auj)); return (o.comptes ? o.vendu : o.mis) / Math.min(nb, fen); };
+    let v = vitesse(r8.A[id], 56), o = r8.A[id]; if (!(v > 0)) { v = vitesse(r1.A[id], 365); o = r1.A[id]; }
+    if (!(v > 0)) continue;
+    const bonus = o.comptes >= 2 && o.epuise / o.comptes >= 0.5 ? 1.3 : 1;
+    const depuis = r8.dernierPt ? jours(r8.dernierPt, auj) : 0, reste = Math.max(0, (r8.etat[id] || 0) - v * depuis);
+    const n = Math.max(0, Math.ceil(v * bonus * horizon - reste));
+    out[id] = { n, parJour: v, reste: Math.round(reste), epuise: bonus > 1, horizon, estime: !o.comptes };
+  }
+  return { par: out, horizon };
+}

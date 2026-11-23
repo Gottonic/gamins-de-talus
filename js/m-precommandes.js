@@ -1,5 +1,5 @@
 /* Gamins de Talus — précommandes (ventes spéciales : sachets de la Saint-Nicolas…), dans Ventes → Stock et prix.
-   pcmd:<id> = { contactId, lignes: [{ prod, qte }], qui (qui s'en occupe), remarque, payeTwint (déjà payée d'avance), facture (veut une facture),
+   pcmd:<id> = { contactId, lignes: [{ prod, qte }], qui (qui s'en occupe), remarque, paiement: '' | 'twint' | 'facture' | 'especes' (comment le client paiera, à la livraison),
                  statut: 'reservee' | 'livree' | 'annulee', vente (clé fac: une fois livrée), moyen, livreeLe, cree, creePar }
    Le stock ne bouge qu'à la livraison (une vente normale : stock, prix, recette). En attendant : en stock / réservé / libre.
    L'adresse du contact sert à la tournée : facultative, mais signalée tant qu'elle manque.
@@ -15,7 +15,10 @@ const nomContactPc = (p) => { const c = contactPc(p); return c ? displayName(c) 
 const adresseOk = (c) => !!(c && String(c.rue || '').trim() && (String(c.npa || '').trim() || String(c.localite || '').trim()));
 const adresseTxt = (c) => (c ? [street(c), place(c)].filter(Boolean).join(', ') : '');
 const prixPc = (prodKey, contactId) => { const p = DB.get(prodKey); if (!p) return 0; const pc = typeof prixClient === 'function' ? prixClient(contactId, prodKey) : null; if (pc) return num(pc.prix); const c = DB.get(contactId); return num(prixPour(p, c ? (c.type || 'autre') : 'particulier')); };
-const payeTxt = (p) => [p.payeTwint ? '📱 déjà payée' : '', p.facture ? '🧾 facture' : ''].filter(Boolean).join(' · ');
+/* Comment le client paiera (anciennes fiches : payeTwint / facture) */
+const paiementPc = (p) => p.paiement || (p.facture ? 'facture' : p.payeTwint ? 'twint' : '');
+const PAIEMENTS_PC = [['', 'Pas encore dit'], ['twint', '📱 TWINT'], ['facture', '🧾 Sur facture'], ['especes', '💵 Espèces']];
+const payeTxt = (p) => { const m = paiementPc(p); return m ? PAIEMENTS_PC.find(([k]) => k === m)[1] : ''; };
 const totalPc = (p) => r2((p.lignes || []).reduce((a, l) => a + num(l.qte) * prixPc(l.prod, p.contactId), 0));
 const qteTxt = (q, u) => `${fmtQty(r2(q))} ${u === 'pièce' ? 'pc' : esc(u || '')}`.trim();
 const quoiPc = (p) => (p.lignes || []).map((l) => `${qteTxt(l.qte, (DB.get(l.prod) || {}).unite)} ${esc((DB.get(l.prod) || { nom: '?' }).nom)}`).join(' · ');
@@ -39,7 +42,7 @@ function precommandesPanelHtml() {
 /* ---------- La liste ---------- */
 function ligneListePc(p) {
   const c = contactPc(p), ok = adresseOk(c);
-  return `<button type="button" class="item" data-act="pcEdit" data-key="${esc(p.key)}"><span class="who"><strong>${esc(nomContactPc(p))}</strong><span class="meta">${quoiPc(p)}${p.qui ? ` · 👤 ${esc(p.qui === Sync.me ? 'toi' : nomDe(p.qui))}` : ''}${p.remarque ? ' · 📝' : ''}${p.payeTwint ? ' · <b>📱 déjà payée</b>' : ''}${p.facture ? ' · 🧾 facture' : ''}<br>${p.statut === 'reservee' ? (ok ? esc(adresseTxt(c)) : '<span class="bad">⚠️ adresse manquante</span>') : ''}</span></span>
+  return `<button type="button" class="item" data-act="pcEdit" data-key="${esc(p.key)}"><span class="who"><strong>${esc(nomContactPc(p))}</strong><span class="meta">${quoiPc(p)}${p.qui ? ` · 👤 ${esc(p.qui === Sync.me ? 'toi' : nomDe(p.qui))}` : ''}${p.remarque ? ' · 📝' : ''}${payeTxt(p) ? ' · ' + payeTxt(p) : ''}<br>${p.statut === 'reservee' ? (ok ? esc(adresseTxt(c)) : '<span class="bad">⚠️ adresse manquante</span>') : ''}</span></span>
     <span class="num">${p.statut === 'livree' ? '<span class="pill payee">livrée</span><br>' : p.statut === 'annulee' ? '<span class="pill annulee">annulée</span><br>' : ''}${chf(totalPc(p))}</span></button>`;
 }
 ACTIONS.pcListe = () => {
@@ -69,9 +72,8 @@ function pcFeuille(k, garder) {
     <div class="field"><span class="flabel">Quoi</span>
       ${PC.lignes.map((l, i) => `<div class="row pc-ligne"><select aria-label="Produit" name="p_${i}">${optP(l.prod)}</select><input class="cell-in" name="q_${i}" inputmode="decimal" placeholder="Qté" value="${esc(l.qte ?? '')}" style="width:70px">${PC.lignes.length > 1 ? `<button type="button" class="btn small" data-act="pcLigneOff" data-i="${i}" data-key="${esc(k || '')}" aria-label="Retirer">×</button>` : ''}</div>`).join('')}
       <button type="button" class="btn link small" data-act="pcLigne" data-key="${esc(k || '')}">+ un autre produit</button></div>
-    <div class="field"><span class="flabel">Paiement</span><div class="row" style="flex-wrap:wrap;gap:6px 16px">
-      <label class="row" style="font-size:14px"><input type="checkbox" name="payeTwint"${o.payeTwint ? ' checked' : ''}> 📱 Déjà payée par TWINT</label>
-      <label class="row" style="font-size:14px"><input type="checkbox" name="facture"${o.facture ? ' checked' : ''}> 🧾 Veut une facture</label></div></div>
+    <div class="field"><span class="flabel">Paiement</span><div class="chips ta-quand">${PAIEMENTS_PC.map(([m, l]) => `<label class="chip${paiementPc(o) === m ? ' on' : ''}"><input type="radio" name="paiement" value="${m}"${paiementPc(o) === m ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>
+      <span class="sub">Le jour de la livraison : TWINT ou espèces sur place, ou une facture envoyée.</span></div>
     <div class="grid2">${sel('pc-qui', "Qui s'en occupe", o.qui || '', [['', 'Personne en particulier']].concat(persOptions()), { name: 'qui' })}${inp('pc-rem', 'Remarque', o.remarque, { name: 'remarque', attrs: { placeholder: 'Ex. sonner chez le voisin' } })}</div>
     <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette précommande">Supprimer</button>` : ''}
       ${p && p.statut === 'reservee' ? `<button class="btn" type="button" data-act="pcStatut" data-key="${esc(k)}" data-s="annulee">Annulée</button><button class="btn" type="button" data-act="pcLivree" data-key="${esc(k)}">✓ Livrée…</button>` : ''}
@@ -81,6 +83,8 @@ function pcFeuille(k, garder) {
   const s = $('pc-contact');
   if (s) s.addEventListener('change', () => { $('pc-nouveau').hidden = !!s.value; const x = DB.get(s.value) || {}; for (const [id, f] of [['pc-rue', 'rue'], ['pc-num', 'numero'], ['pc-npa', 'npa'], ['pc-loc', 'localite']]) $(id).value = x[f] || ''; });
 }
+/* Les choix en pastilles (paiement, « Quand » d'une tâche) : la pastille cochée s'allume */
+document.addEventListener('change', (e) => { const r = e.target; if (r.type !== 'radio' || !r.closest('.ta-quand')) return; r.closest('.ta-quand').querySelectorAll('label').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked)); });
 ACTIONS.pcEdit = (el) => pcFeuille((el.dataset && el.dataset.key) || '');
 /* Ajouter / retirer une ligne sans perdre ce qui est déjà rempli */
 const pcRelire = () => { const l = pcLignesForm(); if (l) PC.lignes = l; };
@@ -102,7 +106,8 @@ FORMS.pc = (v, form) => {
     if (change) { const o = Object.assign({}, c, adr); delete o.geo; DB.put(ck, o); }
   }
   const k = v.key || 'pcmd:' + uid('p'), old = DB.get(k) || { statut: 'reservee', cree: new Date().toISOString(), creePar: Sync.me || '' };
-  DB.put(k, Object.assign({}, old, { contactId: ck, lignes, qui: v.qui || '', remarque: String(v.remarque || '').trim(), payeTwint: !!v.payeTwint, facture: !!v.facture })); PC.lignes = null;
+  const o2 = Object.assign({}, old); delete o2.payeTwint; delete o2.facture;
+  DB.put(k, Object.assign(o2, { contactId: ck, lignes, qui: v.qui || '', remarque: String(v.remarque || '').trim(), paiement: v.paiement || '' })); PC.lignes = null;
   closeSheet(); toast((v.key ? 'Précommande mise à jour.' : 'Précommande notée.') + (adresseOk(DB.get(ck)) ? '' : ' Il manque l\'adresse pour la livraison.'), 4500);
 };
 
@@ -110,8 +115,10 @@ FORMS.pc = (v, form) => {
 ACTIONS.pcLivree = (el) => {
   const k = el.dataset.key, p = DB.get(k); if (!p) return;
   const b = (m, t) => `<button type="button" class="menu-it" data-act="pcLivrer" data-key="${esc(k)}" data-m="${m}">${t}</button>`;
-  const choix = [p.payeTwint ? b('twint', '📱 Déjà payée par TWINT <b>(noté à la commande)</b>') : '', p.facture ? b('facture', '🧾 Avec une facture (ouvre la vente pour la vérifier)') : '',
-    p.payeTwint ? '' : b('twint', '📱 TWINT'), b('especes', '💵 Espèces'), p.facture ? '' : b('facture', '🧾 Avec une facture'), b('plustard', '🧾 Plus tard (reste à encaisser)'), b('vente', '✏️ Autre : ouvrir la vente pour la modifier')].join('');
+  /* Le moyen prévu à la commande vient en premier */
+  const m0 = paiementPc(p), L = { twint: '📱 TWINT', especes: '💵 Espèces', facture: '🧾 Sur facture (ouvre la vente pour la vérifier)', plustard: '⏳ Plus tard (reste à encaisser)', vente: '✏️ Autre : ouvrir la vente pour la modifier' };
+  const ordre = (m0 ? [m0] : []).concat(['twint', 'especes', 'facture', 'plustard', 'vente'].filter((x) => x !== m0));
+  const choix = ordre.map((m) => b(m, L[m] + (m === m0 ? ' <b>(prévu)</b>' : ''))).join('');
   openSheet(`${sheetHead('Livrée : ' + nomContactPc(p), `${quoiPc(Object.assign({ key: k }, p)).replace(/<[^>]+>/g, '')} · ${chf(totalPc(p))}`)}<div class="sbody">
     <p>Comment ${esc(nomContactPc(p))} a payé ?</p>
     <div class="menu-list">${choix}</div>
@@ -146,7 +153,7 @@ function pcLivrerDirect(k, moyen) {
 /* « Autre » : l'écran « Nouvelle vente » prérempli ; à l'enregistrement, la précommande passe en « livrée » */
 function pcVersVente(k, facture) {
   const p = DB.get(k); if (!p) return;
-  viderBrouillon(); Object.assign(draftF, { clientId: p.contactId, facture: !!facture, moyen: facture ? 'virement' : p.payeTwint ? 'twint' : 'especes', precommande: k, remarque: p.remarque || '' }); draftF.lignes = lignesVentePc(p);
+  viderBrouillon(); Object.assign(draftF, { clientId: p.contactId, facture: !!facture, moyen: facture ? 'virement' : paiementPc(p) === 'twint' ? 'twint' : 'especes', precommande: k, remarque: p.remarque || '' }); draftF.lignes = lignesVentePc(p);
   go('#/factures/nouvelle'); toast('Vérifie et enregistre la vente.', 4000);
 }
 function pcVenteEnregistree(venteKey) {
@@ -240,15 +247,15 @@ function itinerairesHtml(l) {
 }
 /* La feuille à imprimer : une page propre, ouverte à part */
 ACTIONS.pcImprimer = () => {
-  const l = ordreTournee(), s = cfg(), tot = l.filter((p) => !p.payeTwint && !p.facture).reduce((a, p) => a + totalPc(p), 0);
-  const lignes = l.map((p, i) => { const c = contactPc(p) || {}; return `<tr><td class="n">${i + 1}</td><td><b>${esc(nomContactPc(p))}</b>${c.telephone ? `<br>${esc(c.telephone)}` : ''}</td><td>${adresseOk(c) ? `${esc(street(c))}<br>${esc(place(c))}` : '<b>⚠ adresse manquante</b>'}</td><td>${quoiPc(p)}</td><td class="r">${p.payeTwint ? '<s>' + money(totalPc(p)) + '</s><br>payé TWINT' : p.facture ? money(totalPc(p)) + '<br>facture' : money(totalPc(p))}</td><td>${esc(p.remarque || '')}</td><td class="ck">☐</td></tr>`; }).join('');
+  const l = ordreTournee(), s = cfg(), tot = l.filter((p) => paiementPc(p) !== 'facture').reduce((a, p) => a + totalPc(p), 0);
+  const lignes = l.map((p, i) => { const c = contactPc(p) || {}; return `<tr><td class="n">${i + 1}</td><td><b>${esc(nomContactPc(p))}</b>${c.telephone ? `<br>${esc(c.telephone)}` : ''}</td><td>${adresseOk(c) ? `${esc(street(c))}<br>${esc(place(c))}` : '<b>⚠ adresse manquante</b>'}</td><td>${quoiPc(p)}</td><td class="r">${money(totalPc(p))}${paiementPc(p) === 'twint' ? '<br>TWINT' : paiementPc(p) === 'facture' ? '<br>facture' : paiementPc(p) === 'especes' ? '<br>espèces' : ''}</td><td>${esc(p.remarque || '')}</td><td class="ck">☐</td></tr>`; }).join('');
   const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tournée de livraison</title><style>
     body{font:12px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:18px}h1{font-size:18px;margin:0 0 4px}p{margin:2px 0 8px}
     table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border-bottom:1px solid #bbb;padding:6px 5px;vertical-align:top;text-align:left}th{font-size:11px;text-transform:uppercase;color:#555;border-bottom:2px solid #333}
     td.n{font-weight:700;font-size:14px;width:22px}td.r,th.r{text-align:right;white-space:nowrap}td.ck{font-size:18px;width:26px;text-align:center}tr{page-break-inside:avoid}
     .charge{border:1px solid #333;padding:6px 8px;display:inline-block;margin-top:4px}@page{size:A4;margin:12mm}@media print{body{margin:0}.noprint{display:none}}</style></head><body>
     <h1>Tournée de livraison · ${esc(s.nom || 'Gamins de Talus')}</h1><p>${fmtDate(todayISO())} · ${l.length} arrêts${departTxt() ? ' · départ : ' + esc(departTxt()) : ''}</p>
-    <div class="charge"><b>À charger :</b> ${aChargerTxt(l)} · à encaisser au plus : <b>${chf(tot)}</b></div>
+    <div class="charge"><b>À charger :</b> ${aChargerTxt(l)} · à encaisser sur place (sans les factures) : <b>${chf(tot)}</b></div>
     <table><thead><tr><th>#</th><th>Client</th><th>Adresse</th><th>Quoi</th><th class="r">CHF</th><th>Remarque</th><th>✓</th></tr></thead><tbody>${lignes}</tbody></table>
     <p class="noprint" style="margin-top:16px"><button onclick="print()">Imprimer</button></p><script>setTimeout(function(){print()},300)<\/script></body></html>`;
   const w = window.open('', '_blank');

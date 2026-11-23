@@ -170,5 +170,6 @@ ACTIONS.actionsRapides = () => openSheet(`${sheetHead('Actions rapides')}<div cl
   <button type="button" class="menu-it" data-act="heuresJour">🕐 Noter mes heures</button>
   <button type="button" class="menu-it" data-act="taEdit">☑ Nouvelle tâche</button>
   <button type="button" class="menu-it" data-act="selfNouveau">🧺 Remplir le stand</button>
+  <button type="button" class="menu-it" data-act="standCompter">🧮 Compter le stand</button>
   <button type="button" class="menu-it" data-act="depEdit">💸 Nouvelle dépense (photo du ticket)</button>
   <button type="button" class="menu-it" data-act="jnlNouveau">📝 Note au journal</button></div></div>`);
