@@ -42,6 +42,7 @@ function renderAccueil() {
   const rappels = [];
   const sv = DB.get('cfg:sauvegarde') || {};
   if (Object.keys(DB.data).length > 30 && (!sv.le || sv.le.slice(0, 10) < addDays(today, -31))) rappels.push(`<a class="banner rappel" href="#/reglages/donnees">💾 <span><b>Sauvegarde du mois</b> · télécharger une copie des données${sv.le ? ` (dernière le ${fmtDateCourt(sv.le.slice(0, 10))})` : ''}</span></a>`);
+  if (typeof facturesMoisHtml === 'function') { const fm = facturesMoisHtml(); if (fm) rappels.push(fm); }
   const yb = String(Number(y) - 1);
   if (typeof archiveManquePour === 'function' && (depenses().some((x) => yearOf(x.date) === yb) || recettesToutes().some((x) => yearOf(x.date) === yb))) {
     const manque = archiveManquePour(yb);

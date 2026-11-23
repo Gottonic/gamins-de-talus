@@ -154,7 +154,7 @@ function contactFiche(c) {
   const billed = invs.filter((i) => i.statut !== 'annulee').reduce((a, i) => a + i.total, 0);
   const open = invs.filter((i) => ['ouverte', 'retard'].includes(facStatut(i))).reduce((a, i) => a + i.total, 0);
   return `<div class="panel">
-    <div class="between"><div><h2>${esc(displayName(c))}</h2><span class="tpill">${esc(typeLabel(c.type))}</span>${c.devenuClientLe ? ` <span class="hint">client depuis le ${fmtDate(c.devenuClientLe)}</span>` : ''}</div>
+    <div class="between"><div><h2>${esc(displayName(c))}</h2><span class="tpill">${esc(typeLabel(c.type))}</span>${c.factureMois ? ' <span class="tpill">🗓 facturé chaque mois</span>' : ''}${c.devenuClientLe ? ` <span class="hint">client depuis le ${fmtDate(c.devenuClientLe)}</span>` : ''}</div>
       <div class="row"><a class="btn primary" href="#/factures/nouvelle/${encodeURIComponent(c.key)}">Facturer</a><a class="btn" href="#/contacts/modifier/${encodeURIComponent(c.key)}">Modifier</a></div></div>
     ${typeof pcSansAdressePour === 'function' && pcSansAdressePour(c.key) ? `<p class="pc-alerte">🎁 Précommande à livrer : il manque l'adresse. <a href="#/contacts/modifier/${encodeURIComponent(c.key)}">Compléter</a></p>` : ''}
     ${lignesContact(c)}
@@ -196,6 +196,7 @@ function contactForm(c, prospect) {
     ${isP ? `<div class="grid2">${sel('ct-prio', 'Priorité', String(p.priorite || 2), [['1', '1 · en premier'], ['2', '2'], ['3', '3 · plus tard']], { name: 'priorite' })}${inp('ct-lieu', 'Lieu', p.lieu, { name: 'lieu' })}</div>
       ${inp('ct-horaires', "Horaires d'appel", p.horaires, { name: 'horaires' })}
       ${txt('ct-pourquoi', 'Pourquoi eux', p.pourquoi, { name: 'pourquoi', rows: 2 })}` : '<p class="hint">Pour une facture par virement, NPA et localité sont obligatoires. La facture est au nom de l\'organisation, « à l\'att. de » la personne.</p>'}
+    ${isP ? '' : `<label class="row" style="font-size:14px"><input type="checkbox" name="factureMois"${c.factureMois ? ' checked' : ''}> 🗓 Facturé chaque mois <span class="hint">(ses ventes sans facture, à payer plus tard ; un rappel en début de mois pour la facture du mois)</span></label>`}
     ${txt('ct-notes', 'Notes', c.notes, { name: 'notes' })}
     <div class="row-end"><a class="btn" href="${back}">Annuler</a><button class="btn primary" type="submit">${k ? 'Enregistrer' : 'Ajouter'}</button></div>
   </form>`;
@@ -206,6 +207,7 @@ FORMS.contact = (v) => {
   const k = v.key || 'ct:' + uid('c'), old = DB.get(k) || { cree: new Date().toISOString() };
   const o = Object.assign({}, old); for (const f of ['prenom', 'nomFamille', 'nom', 'organisation', 'fonction', 'telephone', 'email', 'site', 'rue', 'numero', 'npa', 'localite', 'notes']) o[f] = v[f] || '';
   o.canaux = CANAUX.map(([x]) => x).filter((x) => v['canal_' + x]);
+  if (!v.prospect) o.factureMois = !!v.factureMois;
   if (v.prospect) {
     o.prospect = true;
     o.prospection = Object.assign({ statut: 'À contacter' }, old.prospection || {}, { categorie: v.categorie, priorite: Number(v.priorite) || 2, lieu: v.lieu, horaires: v.horaires, pourquoi: v.pourquoi });

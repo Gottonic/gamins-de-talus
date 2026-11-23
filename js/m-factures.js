@@ -170,7 +170,7 @@ function renderListeFactures(selKey) {
     return `<tr class="click${f.key === selKey ? ' sel' : ''}" data-act="go" data-href="#/factures/voir/${encodeURIComponent(f.key)}"><td class="num">${f.numero ? esc(f.numero) : `<span class="hint">${esc(f.blNumero || 'vente')}</span>`}${f.numero && dbl[f.numero] > 1 && s !== 'annulee' ? ' <span class="pill retard">double</span>' : ''}</td><td>${esc(trunc(f.client && f.client.nom, 28))}</td><td class="num">${fmtDate(f.date)}</td><td class="r num">${money(f.total)}</td><td><span class="pill ${s}">${esc(facLabel(f))}</span></td></tr>`;
   }).join('')}</tbody></table></div>` : `<p class="empty">Aucune vente pour l'instant. <a href="#/factures/nouvelle">Enregistrer la première</a></p>`;
   const sel = DB.get(selKey);
-  return `${setup}${virementsAVerifierHtml()}<div class="stats">
+  return `${setup}${facturesMoisHtml()}${virementsAVerifierHtml()}<div class="stats">
       <div class="stat good"><span class="k">À encaisser</span><span class="v">${chf(open)}</span></div>
       <div class="stat bad"><span class="k">En retard</span><span class="v">${nLate ? `${nLate} · ${chf(late)}` : 'Aucune'}</span></div>
       <div class="stat"><span class="k">Vendu en ${y}</span><span class="v">${chf(year)}</span>${tSelf || tSp ? `<span class="s">${[tSelf ? `self-service ${chf(tSelf)}` : '', tSp ? `spontanées ${chf(tSp)}` : ''].filter(Boolean).join(' · ')}</span>` : ''}</div></div>
@@ -199,9 +199,29 @@ function renderDetailFacture(f, dbl) {
     <div class="paper">${f.numero ? invoiceSvg(f) : bulletinSvg(f, true)}</div></div>`;
 }
 
+/* Client « facturé chaque mois » : ses ventes partent sans facture, à payer plus tard (la facture du mois les regroupe) */
+function appliquerFactureMois(c, dire) {
+  if (!c || !c.factureMois || draftF.edition || draftF.precommande) return;
+  draftF.facture = false; draftF.moyen = 'plustard';
+  if (dire) toast('Client facturé chaque mois : vente sans facture, à payer plus tard (tu peux changer).', 4500);
+}
+/* Les factures du mois à faire : clients « facturés chaque mois » avec des ventes d'un mois passé pas encore facturées */
+function facturesMoisAFaire() {
+  const m0 = todayISO().slice(0, 7);
+  return contacts().filter((c) => c.factureMois).map((c) => { const v = aFacturer(c.key), avant = v.filter((f) => String(f.date).slice(0, 7) < m0); return { c, avant, mois: [...new Set(avant.map((f) => String(f.date).slice(0, 7)))] }; })
+    .filter((x) => x.avant.length);
+}
+function facturesMoisHtml() {
+  const l = facturesMoisAFaire(); if (!l.length) return '';
+  return `<div class="banner rappel fm-rappel"><span>🗓 <b>Facture${l.length > 1 ? 's' : ''} du mois à faire</b> · ${l.map((x) => `<button type="button" class="btn link small" data-act="facMoisPour" data-ck="${esc(x.c.key)}">${esc(displayName(x.c))} (${x.avant.length} vente${x.avant.length > 1 ? 's' : ''} · ${chf(x.avant.reduce((a, f) => a + num(f.total), 0))})</button>`).join(' ')}</span></div>`;
+}
+ACTIONS.facMoisPour = (el) => {
+  const x = facturesMoisAFaire().find((y) => y.c.key === el.dataset.ck); if (!x) { toast('Plus rien à facturer pour ce client.'); return; }
+  FM.client = x.c.key; FM.mois = x.mois.length === 1 ? x.mois[0] : 'tout'; ACTIONS.facMois();
+};
 function renderNouvelleFacture(contactKey) {
   if (contactKey) { try { history.replaceState(null, '', '#/factures/nouvelle'); render._last = location.hash; } catch (e) { /* */ } }
-  if (contactKey && DB.get(contactKey) && draftF.clientId !== contactKey) { draftF.clientId = contactKey; const c = DB.get(contactKey); if (!c.npa || !c.localite) draftF.paiement = 'especes'; for (const l of draftF.lignes) { const pr = DB.get(l.produitId); if (pr && l.auto) l.prix = prixLigne(pr, l.produitId); } }
+  if (contactKey && DB.get(contactKey) && draftF.clientId !== contactKey) { draftF.clientId = contactKey; const c = DB.get(contactKey); if (!c.npa || !c.localite) draftF.paiement = 'especes'; appliquerFactureMois(c, true); for (const l of draftF.lignes) { const pr = DB.get(l.produitId); if (pr && l.auto) l.prix = prixLigne(pr, l.produitId); } }
   if (!draftF.lignes.length) draftF.lignes.push(nouvelleLigne());
   const cl = contacts().sort(byName);
   const groups = [[{ label: '★ Favoris' }, cl.filter((c) => c.favori)]].concat(TYPES.map((t) => [t, cl.filter((c) => (c.type || 'autre') === t.k && !c.favori)])).filter(([, l]) => l.length);
@@ -271,7 +291,7 @@ function majApercu() {
 function brancherBrouillon() {
   majApercu();
   $('d-client').addEventListener('change', (e) => {
-    draftF.clientId = e.target.value; const c = DB.get(draftF.clientId); if (c && (!c.npa || !c.localite)) draftF.paiement = 'especes';
+    draftF.clientId = e.target.value; const c = DB.get(draftF.clientId); if (c && (!c.npa || !c.localite)) draftF.paiement = 'especes'; appliquerFactureMois(c, true);
     const ty = typeClientBrouillon(); let n = 0;
     let hab = 0;
     for (const l of draftF.lignes) { const p = DB.get(l.produitId); if (p && l.auto) { if (prixClient(draftF.clientId, l.produitId, l.calibre)) hab++; const np = prixLigne(p, l.produitId, l.calibre); if (String(np) !== String(l.prix)) { l.prix = np; n++; } } }
