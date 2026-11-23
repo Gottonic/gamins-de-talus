@@ -612,10 +612,23 @@ textarea { resize: vertical; }
 .pin-l .pin { flex: 1; min-width: 0; }
 .pin-menu { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 8px; font-size: 16px; border-radius: 6px; }
 .pin-menu:hover { background: var(--bg); color: var(--ink); }
-.shead h2 { flex: 1 1 auto; min-width: 0; }
+.shead h2 { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.shead > .xbtn { flex: 0 0 auto; }
+.shead .xbtn-annuler { padding: 6px 4px; }
+@media (max-width: 480px) { .shead { gap: 8px; padding-left: 14px; padding-right: 14px; } .shead:has(.xbtn-save) h2 { font-size: 18px; } }
 .xbtn.xbtn-save { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; white-space: nowrap; }
 .xbtn.xbtn-annuler { margin-left: auto; border-color: transparent; background: none; color: var(--muted); }
 .xbtn-annuler + .xbtn-save { margin-left: 0; }
+.stv tr.stv-parti td:first-child { font-weight: 600; }
+.stv tr.stv-parti td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.ta-etape { display: flex; flex-direction: column; gap: 12px; }
+.ta-etape[hidden] { display: none; }
+.ta-etape-t { margin: 0; font-size: 12.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.ta-quand { display: flex; flex-wrap: wrap; gap: 6px; }
+.ta-quand label.chip { position: relative; padding: 7px 12px; font-size: 14px; }
+.ta-quand label.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.ta-quand label.chip:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ct-canaux .tpill { text-decoration: none; margin: 0 4px 4px 0; display: inline-block; }
 .sbody { padding: 14px 18px 20px; display: flex; flex-direction: column; gap: 12px; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100% - 32px); z-index: 40; }

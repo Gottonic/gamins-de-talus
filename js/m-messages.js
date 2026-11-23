@@ -851,7 +851,9 @@ MODULES.mails = {
   tuile() {
     const nm = typeof mailsATraiter === 'function' ? mailsATraiter().length : 0, tous = typeof mails === 'function' ? mails() : [];
     if (!tous.length) return { line: 'La boîte ' + (cfgMails().adresse || 'info@') };
-    return { line: nm ? `${nm} mail${nm > 1 ? 's' : ''} à traiter` : 'Rien à traiter', badge: nm };
+    /* La pastille ne compte que ce qui me concerne : les mails pour moi et ceux pas encore confiés */
+    const miens = mailsATraiter().filter((m) => !m.par || m.par === Sync.me).length, autres = nm - miens;
+    return { line: nm ? `${nm} mail${nm > 1 ? 's' : ''} à traiter${autres ? ` (dont ${autres} pour ${autres > 1 ? 'les autres' : "quelqu'un d'autre"})` : ''}` : 'Rien à traiter', badge: miens };
   },
   render() { return (typeof relationsTabs === 'function' ? relationsTabs('mails') : '') + renderMails(); },
   after() { if (typeof releverMails === 'function') releverMails(); },

@@ -350,29 +350,57 @@ ACTIONS.taEdit = (el) => {
   const jrs = journeesProchaines(t.journee);
   TA.liste = (t.liste || []).map((x) => Object.assign({}, x));
   PL.retourEdit = el.closest && el.closest('#sheet') ? PL.rafraichir : null;
-  openSheet(`${sheetHead(k ? 'Modifier la tâche' : 'Nouvelle tâche')}<form class="sbody form" data-form="ta"><input type="hidden" name="key" value="${esc(k)}">
-    ${inp('ta-titre', 'Tâche', t.titre, { name: 'titre', req: true, attrs: k ? {} : { autofocus: '' } })}
+  /* Les parties qui s'ouvrent à la demande : un bouton « + » par partie (déjà ouverte si la tâche en a) */
+  const a = { planif: !!(t.journee || t.jour), cult: !!((t.cultures || []).length || t.planches), client: !!t.contactId, liste: !!(t.liste || []).length, rep: !!t.rep, rem: !!t.remarques };
+  const planifHtml = `<div class="grid2">${sel('ta-jour', 'Dans une journée prévue', t.journee || '', [['', '—']].concat(jrs), { name: 'journee' })}${inp('ta-j', 'Ou un jour', t.journee ? '' : t.jour, { name: 'jour', type: 'date' })}</div>`;
+  const parts = [
+    ['planif', '📅 Planifier', `${planifHtml}<span class="sub">Planifiée, elle quitte « À planifier » et se range à ce jour dans la vue d'ensemble.</span>`],
+    ['cult', '🌿 Culture et planches', `${cus.length ? `<div class="field"><span class="flabel">Culture(s)</span><input type="hidden" name="cultures" id="ta-cus" value="${esc((t.cultures || []).join(','))}"><div class="chips">${cus.map((x) => `<button type="button" class="chip${(t.cultures || []).includes(x.key) ? ' on' : ''}" data-act="taCu" data-k="${esc(x.key)}">${esc(x.nom)}</button>`).join('')}</div></div>` : ''}${inp('ta-pl', 'Planche(s)', t.planches || '', { name: 'planches', attrs: { placeholder: 'ex. A3, A4 ou serre 2', maxlength: 60 } })}`],
+    ['client', '👤 Client', `${sel('ta-ct', 'Client ou contact', t.contactId || '', [['', '—']].concat(tousContacts().sort(byName).map((x) => [x.key, displayName(x) + (x.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour une livraison : « Créer la facture » depuis la tâche.' })}`],
+    ['liste', '☑ Liste à cocher', `<div id="ta-liste">${listeTacheHtml()}</div><div class="row"><input id="ta-li" placeholder="Ajouter un élément…" style="flex:1" autocomplete="off"><button class="btn small" type="button" data-act="taLiAjout">+</button></div>`],
+    ['rep', '↻ Répétition', sel('ta-rep', 'Se répète', t.rep || '', REPETITIONS, { name: 'rep', sub: 'Une fois faite, la suivante est créée avec la prochaine échéance.' })],
+    ['rem', '📝 Remarques', txt('ta-rem', 'Remarques', t.remarques, { name: 'remarques', rows: 3 }) + (t.remarques && /https?:\/\//.test(t.remarques) ? `<p class="hint">${linkify(t.remarques)}</p>` : '')],
+  ];
+  const partsHtml = (l) => `<div class="row ta-plus-btns">${l.map(([id, nom]) => `<button type="button" class="chip" data-act="taPartie" data-p="${id}"${a[id] ? ' hidden' : ''}>+ ${nom.replace(/^\S+ /, '')}</button>`).join('')}</div>
+    ${l.map(([id, nom, html]) => `<fieldset class="ta-partie" id="tp-${id}"${a[id] ? '' : ' hidden'}><legend>${nom}</legend>${html}</fieldset>`).join('')}`;
+  const titreHtml = `${inp('ta-titre', 'Tâche', t.titre, { name: 'titre', req: true, attrs: k ? {} : { autofocus: '', enterkeyhint: 'next' } })}
     ${catChoixHtml('ta-cat', c.cat, c.sous)}
     ${k ? '' : '<p class="hint" id="ta-auto" style="margin:-4px 0 0"></p>'}
-    <label class="chip urgent-chip urgent-cb"><input type="checkbox" name="importance"${imp === 1 ? ' checked' : ''}> 🔥 Urgent</label>
-    <div class="grid2">${inp('ta-ech', 'Échéance (facultatif)', t.echeance, { name: 'echeance', type: 'date', sub: `Date limite. Elle fait remonter la tâche en haut de la liste ${ECH_PROCHE} jours avant.` })}
-      ${sel('ta-resp', 'Qui', t.responsable || '', [['', '—']].concat(persOptions(true), String(t.responsable || '').includes('+') ? [[t.responsable, quiLabel(t.responsable)]] : []), { name: 'responsable' })}</div>
-    ${(() => {
-      /* Le reste s'ouvre à la demande : un bouton « + » par partie (déjà ouverte si la tâche en a) */
-      const a = { planif: !!(t.journee || t.jour), cult: !!((t.cultures || []).length || t.planches), client: !!t.contactId, liste: !!(t.liste || []).length, rep: !!t.rep, rem: !!t.remarques };
-      const parts = [
-        ['planif', '📅 Planifier', `<div class="grid2">${sel('ta-jour', 'Dans une journée prévue', t.journee || '', [['', '—']].concat(jrs), { name: 'journee' })}${inp('ta-j', 'Ou un jour', t.journee ? '' : t.jour, { name: 'jour', type: 'date' })}</div><span class="sub">Planifiée, elle quitte « À planifier » et se range à ce jour dans la vue d'ensemble.</span>`],
-        ['cult', '🌿 Culture et planches', `${cus.length ? `<div class="field"><span class="flabel">Culture(s)</span><input type="hidden" name="cultures" id="ta-cus" value="${esc((t.cultures || []).join(','))}"><div class="chips">${cus.map((x) => `<button type="button" class="chip${(t.cultures || []).includes(x.key) ? ' on' : ''}" data-act="taCu" data-k="${esc(x.key)}">${esc(x.nom)}</button>`).join('')}</div></div>` : ''}${inp('ta-pl', 'Planche(s)', t.planches || '', { name: 'planches', attrs: { placeholder: 'ex. A3, A4 ou serre 2', maxlength: 60 } })}`],
-        ['client', '👤 Client', `${sel('ta-ct', 'Client ou contact', t.contactId || '', [['', '—']].concat(tousContacts().sort(byName).map((x) => [x.key, displayName(x) + (x.prospect ? ' (prospect)' : '')])), { name: 'contactId', sub: 'Pour une livraison : « Créer la facture » depuis la tâche.' })}`],
-        ['liste', '☑ Liste à cocher', `<div id="ta-liste">${listeTacheHtml()}</div><div class="row"><input id="ta-li" placeholder="Ajouter un élément…" style="flex:1" autocomplete="off"><button class="btn small" type="button" data-act="taLiAjout">+</button></div>`],
-        ['rep', '↻ Répétition', sel('ta-rep', 'Se répète', t.rep || '', REPETITIONS, { name: 'rep', sub: 'Une fois faite, la suivante est créée avec la prochaine échéance.' })],
-        ['rem', '📝 Remarques', txt('ta-rem', 'Remarques', t.remarques, { name: 'remarques', rows: 3 }) + (t.remarques && /https?:\/\//.test(t.remarques) ? `<p class="hint">${linkify(t.remarques)}</p>` : '')],
-      ];
-      return `<div class="row ta-plus-btns">${parts.map(([id, nom]) => `<button type="button" class="chip" data-act="taPartie" data-p="${id}"${a[id] ? ' hidden' : ''}>+ ${nom.replace(/^\S+ /, '')}</button>`).join('')}</div>
-        ${parts.map(([id, nom, html]) => `<fieldset class="ta-partie" id="tp-${id}"${a[id] ? '' : ' hidden'}><legend>${nom}</legend>${html}</fieldset>`).join('')}`;
-    })()}
-    ${k ? `<label class="row" style="font-size:14px"><input type="checkbox" name="faite"${t.statut === 'termine' ? ' checked' : ''}> Faite</label>` : ''}
-    <div class="row-end">${k ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette tâche">Supprimer</button>` : ''}<button class="btn primary" type="submit">Enregistrer</button></div></form>`);
+    <label class="chip urgent-chip urgent-cb"><input type="checkbox" name="importance"${imp === 1 ? ' checked' : ''}> 🔥 Urgent</label>`;
+  const echHtml = inp('ta-ech', 'Échéance (facultatif)', t.echeance, { name: 'echeance', type: 'date', sub: `Date limite. Elle fait remonter la tâche en haut de la liste ${ECH_PROCHE} jours avant.` });
+  const quiHtml = sel('ta-resp', 'Qui', t.responsable || '', [['', '—']].concat(persOptions(true), String(t.responsable || '').includes('+') ? [[t.responsable, quiLabel(t.responsable)]] : []), { name: 'responsable' });
+  let corps;
+  if (k) {
+    corps = `${titreHtml}<div class="grid2">${echHtml}${quiHtml}</div>${partsHtml(parts)}
+    <label class="row" style="font-size:14px"><input type="checkbox" name="faite"${t.statut === 'termine' ? ' checked' : ''}> Faite</label>
+    <div class="row-end"><button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="cette tâche">Supprimer</button><button class="btn primary" type="submit">Enregistrer</button></div>`;
+  } else {
+    /* Nouvelle tâche, pas à pas : 1. la tâche et sa catégorie · 2. qui et quand · 3. le reste. « Enregistrer » marche à chaque étape.
+       Quand : par défaut la journée prévue aujourd'hui (la mienne d'abord), sinon aujourd'hui ; avec une échéance et rien de choisi : « À planifier ». */
+    const auj = todayISO(), evsAuj = jrs.filter(([id]) => id.split('|')[1] === auj);
+    const aMoi = (id) => { const e = DB.get(id.split('|')[0]) || {}; return !e.qui || String(e.qui).split(/[+,]/).includes(Sync.me); };
+    const evDef = evsAuj.find(([id]) => aMoi(id)) || evsAuj[0], ctx = !!(t.journee || t.jour);
+    const def = ctx ? 'autre' : evDef ? 'ev:' + evDef[0] : 'auj';
+    const quand = evsAuj.map(([id, l]) => ['ev:' + id, '📅 ' + l.replace(/^\S+ \S+ · /, '')]).concat([['auj', "Aujourd'hui"], ['dem', 'Demain'], ['autre', 'Autre jour…'], ['plus', 'Plus tard (à planifier)']]);
+    const btns = (n, prec, suiv) => `<div class="row-end">${prec ? `<button class="btn" type="button" data-act="taEtape" data-e="${prec}">‹ Retour</button>` : ''}<button class="btn${suiv ? '' : ' primary'}" type="submit">Enregistrer</button>${suiv ? `<button class="btn primary" type="button" data-act="taEtape" data-e="${suiv}">Suivant ›</button>` : ''}</div>`;
+    corps = `<input type="hidden" name="quandAuto" value="${ctx ? '' : '1'}">
+    <div class="ta-etape" data-e="1"><p class="ta-etape-t">1 / 3 · La tâche</p>${titreHtml}${btns(1, 0, 2)}</div>
+    <div class="ta-etape" data-e="2" hidden><p class="ta-etape-t">2 / 3 · Qui et quand</p>${quiHtml}
+      <div class="field"><span class="flabel">Quand</span><div class="chips ta-quand">${quand.map(([v, l]) => `<label class="chip${v === def ? ' on' : ''}"><input type="radio" name="quand" value="${esc(v)}"${v === def ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></div>
+      <div id="ta-autre"${def === 'autre' ? '' : ' hidden'}>${planifHtml}</div>
+      ${echHtml}${btns(2, 1, 3)}</div>
+    <div class="ta-etape" data-e="3" hidden><p class="ta-etape-t">3 / 3 · Autre chose ?</p>${partsHtml(parts.filter(([id]) => id !== 'planif'))}${btns(3, 2, 0)}</div>`;
+  }
+  openSheet(`${sheetHead(k ? 'Modifier la tâche' : 'Nouvelle tâche')}<form class="sbody form" data-form="ta"><input type="hidden" name="key" value="${esc(k)}">
+    ${corps}</form>`);
+  if (!k) {
+    const ti = $('ta-titre'); if (ti) ti.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (ti.value.trim()) ACTIONS.taEtape({ dataset: { e: '2' } }); } });
+    document.querySelectorAll('.ta-quand input').forEach((r) => r.addEventListener('change', () => {
+      document.querySelectorAll('.ta-quand label').forEach((l) => l.classList.toggle('on', l.querySelector('input').checked));
+      const f = r.form; if (f && f.elements.quandAuto) f.elements.quandAuto.value = '';
+      $('ta-autre').hidden = r.value !== 'autre'; if (r.value === 'autre') { const d = $('ta-j'); if (d && !d.value && !$('ta-jour').value) d.focus(); }
+    }));
+  }
   const li = $('ta-li'); if (li) li.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); ACTIONS.taLiAjout(); } });
   /* Nouvelle tâche : la catégorie (et la culture) se devinent pendant qu'on écrit, tant qu'on ne l'a pas choisie soi-même */
   TA.catManuel = !!k || !!el.dataset.cat;
@@ -398,9 +426,26 @@ ACTIONS.taCu = (el) => { const h = $('ta-cus'), l = h.value ? h.value.split(',')
 document.addEventListener('gdt-cat', (e) => { if (e.detail.id === 'ta-cat') { TA.catManuel = true; const a = $('ta-auto'); if (a) a.textContent = ''; } });
 document.addEventListener('change', (e) => { if (e.target.closest && e.target.closest('#ta-cat')) TA.catManuel = true; });
 ACTIONS.taPartie = (el) => { const f = $('tp-' + el.dataset.p); if (f) { f.hidden = false; const x = f.querySelector('input:not([type=hidden]), select, textarea'); if (x) x.focus(); } el.hidden = true; };
+/* Nouvelle tâche : passer d'une étape à l'autre (le titre est demandé avant d'aller plus loin) */
+ACTIONS.taEtape = (el) => {
+  const e = String(el.dataset.e), ti = $('ta-titre');
+  if (e !== '1' && ti && !ti.value.trim()) { toast('Écris d\'abord la tâche.'); ti.focus(); return; }
+  document.querySelectorAll('#sheet .ta-etape').forEach((d) => { d.hidden = d.dataset.e !== e; });
+  const d = document.querySelector(`#sheet .ta-etape[data-e="${e}"]`), sh = $('sheet'); if (sh) sh.scrollTop = 0;
+  if (d && e === '1' && ti) ti.focus();
+};
 ACTIONS.taNouvelle = (el) => ACTIONS.taEdit({ dataset: Object.assign({}, el.dataset, { key: '' }) });
 FORMS.ta = (v) => {
   if (!v.titre) return;
+  /* Nouvelle tâche pas à pas : « Quand » devient une journée, un jour, ou rien (À planifier) */
+  let ou = '';
+  if (!v.key && v.quand) {
+    const q = v.quandAuto && v.echeance ? 'plus' : v.quand;
+    if (q.startsWith('ev:')) { v.journee = q.slice(3); v.jour = ''; } else if (q === 'auj') { v.journee = ''; v.jour = todayISO(); } else if (q === 'dem') { v.journee = ''; v.jour = addDays(todayISO(), 1); } else if (q === 'plus') { v.journee = ''; v.jour = ''; }
+    if (v.journee && !v.responsable) { const e = DB.get(v.journee.split('|')[0]); if (e && e.qui) v.responsable = respDeQui(e.qui) || ''; }
+    const d = v.journee ? v.journee.split('|')[1] : v.jour;
+    ou = d ? (d === todayISO() ? ' pour aujourd\'hui' : d === addDays(todayISO(), 1) ? ' pour demain' : ' pour le ' + fmtDate(d)) + (v.journee ? ' (' + ((DB.get(v.journee.split('|')[0]) || {}).titre || 'journée prévue') + ')' : '') : ' dans « À planifier »';
+  }
   const k = v.key || 't:' + uid('t'), t = DB.get(k) || { cree: new Date().toISOString(), creePar: Sync.me || '' };
   const was = t.statut === 'termine', faite = !!v.faite;
   const o = Object.assign({}, t, { titre: v.titre, statut: faite ? 'termine' : 'afaire', importance: v.importance === true || String(v.importance) === '1' ? 1 : 2, echeance: v.echeance || '', journee: v.journee || '', jour: v.journee ? '' : v.jour || '', responsable: v.responsable, cat: v.cat || '', sous: v.cat ? v.sous || '' : '', rep: v.rep || '',
@@ -409,5 +454,5 @@ FORMS.ta = (v) => {
   delete o.tag; delete o.urgent;
   if ((o.journee && o.journee !== t.journee) || (!o.journee && o.jour && (o.jour !== t.jour || t.journee))) o.ordre = ordreFin({ journee: o.journee, jour: o.jour });
   DB.put(k, o); closeSheet(); if (PL.retourEdit) { const r = PL.retourEdit; PL.retourEdit = null; setTimeout(r, 0); }
-  if (faite && !was && o.rep) repeterSiBesoin(k, o); else toast(v.key ? 'Tâche enregistrée.' : 'Tâche ajoutée.');
+  if (faite && !was && o.rep) repeterSiBesoin(k, o); else toast(v.key ? 'Tâche enregistrée.' : 'Tâche ajoutée' + ou + '.');
 };

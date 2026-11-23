@@ -290,11 +290,12 @@ function renderSelfService() {
 function historiqueStandHtml(y) {
   const ev = [].concat(
     misesEnVente().filter((x) => yearOf(x.date) === y).map((x) => ({ date: x.date, cree: x.cree, t: `Remplissage${x.lieu && x.lieu !== 'Self-service' ? ' · ' + x.lieu : ''}`, d: (x.lignes || []).map((l) => `${fmtNum(num(l.qte), 0)} ${l.nom || (DB.get(l.prod) || {}).nom || '?'}`).join(', '), v: valeurMise(x), key: x.key, what: 'ce remplissage', modif: 'selfModifier' })),
-    pointsStand().filter((p) => yearOf(p.date) === y).map((p) => ({ date: p.date, cree: p.cree, t: 'Comptage du stand', d: `restait ${chf(p.valeur)}${num(p.manque) > 0.05 ? ` · manque ${chf(p.manque)}` : ''}`, v: null, key: p.key, what: 'ce comptage', modif: 'standPoint' })),
+    pointsStand().filter((p) => yearOf(p.date) === y).map((p) => ({ date: p.date, cree: p.cree, t: 'Comptage du stand', d: `restait ${chf(p.valeur)}${num(p.manque) > 0.05 ? ` · manque ${chf(p.manque)}` : ''}${manqueTxt(p) ? ' (' + manqueTxt(p) + ')' : ''}`, v: null, key: p.key, what: 'ce comptage', modif: 'standPoint' })),
     encaissementsVD().filter((r) => yearOf(r.date) === y).map((r) => ({ date: r.date, cree: r.cree, t: `Encaissement ${r.moyen || ''}`, d: r.libelle || '', v: -num(r.montant), key: r.key, rec: true })),
   ).sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.cree || '').localeCompare(String(a.cree || '')));
   return ev.length ? `<div class="table-wrap"><table class="list"><tbody>${ev.slice(0, 200).map((e) => `<tr><td class="num">${fmtDate(e.date)}</td><td><b>${esc(e.t)}</b><br><span class="hint">${esc(trunc(e.d, 120))}</span></td><td class="r num">${e.v == null ? '' : money(e.v)}</td><td class="r">${e.rec ? `<button class="btn link small" type="button" data-act="recEdit" data-key="${esc(e.key)}">modifier</button>` : `<button class="btn link small" type="button" data-act="${e.modif}" data-key="${esc(e.key)}">modifier</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Rien cette année.</p>';
 }
+const manqueTxt = (p) => [(p.lignes || []).filter((l) => num(l.manque) > 0).map((l) => `${fmtNum(num(l.manque), 0)} ${l.nom}`).join(', '), p.manqueNote || ''].filter(Boolean).join(' · ');
 FORMS.standSeuil = (v) => { const x = num(v.seuil); if (!(x >= 0)) { toast('Indique un montant.'); return; } DB.put('cfg:stand', Object.assign({}, DB.get('cfg:stand') || {}, { seuil: r2(x) })); toast(`Alerte sous ${chf(x)}.`); };
 /* Faire le point : on compte ce qui reste sur le stand (et ce qu'on reprend au stock) */
 function lignesStand() {
@@ -309,6 +310,7 @@ function lignesStand() {
   return out.sort((a, b) => (mis.has(b.art || b.prod) ? 1 : 0) - (mis.has(a.art || a.prod) ? 1 : 0));
 }
 ACTIONS.standPoint = (el) => {
+  STV.cree = '';
   const k = (el && el.dataset && el.dataset.key) || '', p = k ? DB.get(k) : null, suite = !k && !!(el && el.dataset && el.dataset.suite);
   const E = p ? { estime: p.estime } : etatStand(), deja = {}; for (const l of (p && p.lignes) || []) deja[l.art ? 'a_' + l.art : l.nom] = l;
   const ls = lignesStand(); for (const l of (p && p.lignes) || []) if (!ls.some((x) => (x.art && x.art === l.art) || (!x.art && x.nom === l.nom))) ls.push({ id: 'x_' + ls.length, art: l.art, prod: l.prod, nom: l.nom, prix: l.prix, unite: l.unite, poids: l.poids });
@@ -322,14 +324,57 @@ ACTIONS.standPoint = (el) => {
     <p class="hint">Compte ce qui reste sur le stand (vide = il n'en reste pas). L'app compare à ce qui devrait rester : la différence est le manque (vol, pertes, erreurs). Ce qui est repris au stock quitte le stand.${suite ? ' Pas le temps de compter ? « Passer ».' : ''}</p>
     <div class="row-end">${p ? `<button class="btn danger" type="button" data-act="delItem" data-key="${esc(k)}" data-what="ce comptage">Supprimer</button>` : ''}${suite ? '<button class="btn" type="button" data-act="selfRemplir">Passer</button>' : ''}<button class="btn primary" type="submit">${suite ? 'Suivant' : 'Enregistrer'}</button></div></form>`);
 };
+/* Ce qu'il y avait sur le stand, article par article, juste avant un comptage (dernier comptage + remplissages depuis) */
+function surStandAvant(date, cree, sauf) {
+  const avant = (d, c) => String(d) < date || (String(d) === date && String(c || '') < cree), etat = {};
+  const ev = [];
+  for (const m of misesEnVente()) if (avant(m.date, m.cree)) ev.push({ d: String(m.date), c: String(m.cree || ''), o: 0, m });
+  for (const p of pointsStand()) if (p.key !== sauf && avant(p.date, p.cree)) ev.push({ d: String(p.date), c: String(p.cree || ''), o: 1, p });
+  ev.sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c) || a.o - b.o);
+  for (const e of ev) {
+    if (e.m) (e.m.lignes || []).forEach((l, i) => { const id = cleArticleStand(l); etat[id] = (etat[id] || 0) + Math.max(0, num(l.qte) - num((e.m.retours || {})[i])); });
+    else { for (const id of Object.keys(etat)) etat[id] = 0; for (const l of e.p.lignes || []) etat[cleArticleStand(l)] = Math.max(0, num(l.reste) - Math.min(num(l.reste), num(l.repris))); }
+  }
+  return etat;
+}
+/* 2e étape quand le compte ne tombe pas juste : il reste bien ça ? Et noter ce qui manque */
+const STV = { v: null };
+function standVerifier(v) {
+  STV.v = v;
+  const old = v.key ? DB.get(v.key) : null, date = v.date || todayISO(), cree = (old && old.cree) || STV.cree || (STV.cree = new Date().toISOString());
+  const k = v.key || 'stp:nouveau', E = etatStand({ key: k, date, cree }), avant = surStandAvant(date, cree, v.key || '');
+  const rows = lignesStand().map((l) => { const id = cleArticleStand(l), a = r2(avant[id] || 0), r = num(v['r_' + l.id]); return Object.assign({}, l, { a, r, parti: r2(Math.max(0, a - r)) }); }).filter((l) => l.a > 0 || l.r > 0);
+  const compte = rows.reduce((x, l) => x + l.r * l.prix, 0), manque = r2(E.estime - compte), paye = r2(E.enc + E.msg);
+  const gros = rows.filter((l) => l.parti > 0).sort((a, b) => b.parti * b.prix - a.parti * a.prix)[0];
+  const u = (l) => (l.unite === 'pièce' ? 'pc' : l.unite);
+  openSheet(`${sheetHead('Vérifier le comptage', (manque > 0 ? `il manque ≈ ${chf(manque)}` : `${chf(-manque)} de plus que prévu`))}<form class="sbody form" data-form="standVerif" data-a-enregistrer="1">
+    <p>${manque > 0 ? `Ce qui est parti du stand vaut <b>${chf(manque + paye)}</b>, les paiements notés <b>${chf(paye)}</b>.` : `Il reste plus que prévu : un paiement noté en trop, ou un remplissage oublié ?`}${gros ? ` Vérifie surtout : <b>il reste bien ${fmtNum(gros.r, 0)} ${esc(gros.nom)}</b> ?` : ''}</p>
+    <div class="table-wrap"><table class="list stv"><thead><tr><th>Article</th><th class="r">Il y avait</th><th>Il reste</th><th class="r">Parti</th><th title="Ce qui a disparu sans être payé, d'après toi">Manque</th></tr></thead><tbody>
+    ${rows.map((l) => `<tr class="${l.parti > 0 ? 'stv-parti' : ''}"><td>${esc(l.nom)}</td><td class="r num">${l.a ? esc(fmtNum(l.a, 0)) : '—'}</td><td><input class="cell-in" name="r_${esc(l.id)}" inputmode="decimal" value="${esc(l.r ? String(l.r).replace('.', ',') : '')}" placeholder="0" style="width:58px"> <span class="hint">${esc(u(l))}</span></td><td class="r num">${l.parti ? esc(fmtNum(l.parti, 0)) : ''}</td><td><input class="cell-in" name="m_${esc(l.id)}" inputmode="decimal" placeholder="—" style="width:52px" value="${esc(v['m_' + l.id] || '')}"></td></tr>`).join('')}
+    </tbody></table></div>
+    ${inp('stv-note', 'Ce qui manque (remarque)', v.manqueNote || '', { name: 'manqueNote', attrs: { placeholder: 'Ex. 2 courges disparues, un sac de pommes abîmé' } })}
+    <p class="hint">« Il y avait » = dernier comptage + remplissages depuis. Corrige « Il reste » si tu t'es trompé, et note dans « Manque » ce qui a disparu sans être payé (si tu le sais).</p>
+    <div class="row-end"><button class="btn primary" type="submit">${v.suite ? 'Suivant' : 'Enregistrer'}</button></div></form>`);
+  majBoutonFermer();
+}
+FORMS.standVerif = (v2) => {
+  const v = Object.assign({}, STV.v || {}), ls = lignesStand();
+  for (const l of ls) { if (('r_' + l.id) in v2) v['r_' + l.id] = v2['r_' + l.id]; if (('m_' + l.id) in v2) v['m_' + l.id] = v2['m_' + l.id]; }
+  v.manqueNote = v2.manqueNote || ''; v.verifie = true; STV.v = null;
+  FORMS.standPoint(v);
+};
 FORMS.standPoint = (v) => {
   const old = v.key ? DB.get(v.key) : null, ls = lignesStand(), lignes = [];
   for (const l of (old && old.lignes) || []) if (!ls.some((x) => (x.art && x.art === l.art) || (!x.art && x.nom === l.nom))) ls.push({ id: 'x_' + ls.length, art: l.art, prod: l.prod, nom: l.nom, prix: l.prix, unite: l.unite, poids: l.poids });
-  for (const l of ls) { const r = num(v['r_' + l.id]), k = Math.min(r, num(v['k_' + l.id])); if (r > 0) lignes.push({ prod: l.prod, art: l.art || '', nom: l.nom, reste: r, repris: k, prix: l.prix, unite: l.unite, poids: l.poids || 0 }); }
-  const k = v.key || 'stp:' + uid('p'), date = v.date || todayISO(), cree = (old && old.cree) || new Date().toISOString();
+  for (const l of ls) { const r = num(v['r_' + l.id]), k = Math.min(r, num(v['k_' + l.id])), mq = num(v['m_' + l.id]); if (r > 0 || mq > 0) lignes.push(Object.assign({ prod: l.prod, art: l.art || '', nom: l.nom, reste: r, repris: k, prix: l.prix, unite: l.unite, poids: l.poids || 0 }, mq > 0 ? { manque: mq } : {})); }
+  if (!v.verifie && !old) {
+    const date0 = v.date || todayISO(), cree0 = STV.cree || (STV.cree = new Date().toISOString()), E0 = etatStand({ key: 'stp:nouveau', date: date0, cree: cree0 });
+    if (Math.abs(E0.estime - lignes.reduce((a, l) => a + l.reste * l.prix, 0)) > 0.05) { standVerifier(v); return; }
+  }
+  const k = v.key || 'stp:' + uid('p'), date = v.date || todayISO(), cree = (old && old.cree) || STV.cree || new Date().toISOString(); STV.cree = '';
   if (old) for (const m of mouvements()) if (m.ref === k) DB.del(m.key); /* ses reprises au stock sont refaites */
   const E = etatStand({ key: k, date, cree }), compte = lignes.reduce((a, l) => a + l.reste * l.prix, 0), reste = lignes.reduce((a, l) => a + (l.reste - l.repris) * l.prix, 0);
-  const o = Object.assign({}, old || {}, { date, cree, lignes, valeur: r2(reste), estime: E.estime, manque: r2(E.estime - compte), par: (old && old.par) || Sync.me || '' }, old ? { modifiePar: Sync.me || '', modifieLe: new Date().toISOString() } : {});
+  const o = Object.assign({}, old || {}, { date, cree, lignes, valeur: r2(reste), estime: E.estime, manque: r2(E.estime - compte), manqueNote: v.manqueNote != null ? String(v.manqueNote).trim() : (old && old.manqueNote) || '', par: (old && old.par) || Sync.me || '' }, old ? { modifiePar: Sync.me || '', modifieLe: new Date().toISOString() } : {});
   DB.put(k, o);
   lignes.forEach((l, i) => { if (!(l.repris > 0)) return; const p = DB.get(l.prod); if (!p || stockDe(l.prod) == null) return; const q = enUniteDeStock(p, l.repris, l.unite, l.poids); if (q == null) return;
     DB.put(`mvt:stpr:${k.slice(4)}:${i}`, { date, prod: l.prod, qte: q, type: 'retour', ref: k, par: Sync.me || '', note: 'Repris du stand' }); });

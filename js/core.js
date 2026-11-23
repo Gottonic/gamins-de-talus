@@ -367,6 +367,7 @@ function formModifie() {
   const sh = $('sheet'); if (!sh || $('scrim').hidden) return null;
   for (const f of sh.querySelectorAll('form[data-form]')) {
     if (f.dataset.envoye) continue;
+    if (f.dataset.aEnregistrer) return f; /* une 2e étape : ce qui précède n'est pas encore enregistré */
     for (const el of f.elements) {
       if (!el.name || el.type === 'hidden' || el.disabled || el.readOnly) continue;
       if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && /^(text|search|email|tel|url|number|)$/i.test(el.type))) { if (el.value.trim() !== el.defaultValue.trim()) return f; }
@@ -378,10 +379,10 @@ function majBoutonFermer() {
   const x = document.querySelector('#sheet .shead .xbtn:not(.xbtn-annuler)'); if (!x) return;
   const f = formModifie(), avecSauve = f && !f.dataset.brouillon;
   if (avecSauve && x.dataset.act !== 'closeSave') {
-    x.dataset.act = 'closeSave'; x.textContent = 'Enregistrer et fermer'; x.classList.add('xbtn-save');
+    x.dataset.act = 'closeSave'; x.textContent = '✓ Enregistrer'; x.title = 'Enregistrer et fermer'; x.classList.add('xbtn-save');
     if (!x.previousElementSibling || !x.previousElementSibling.classList.contains('xbtn-annuler')) x.insertAdjacentHTML('beforebegin', '<button type="button" class="xbtn xbtn-annuler" data-act="close">Annuler</button>');
   } else if (!avecSauve && x.dataset.act === 'closeSave') {
-    x.dataset.act = 'close'; x.textContent = 'Fermer'; x.classList.remove('xbtn-save');
+    x.dataset.act = 'close'; x.textContent = 'Fermer'; x.removeAttribute('title'); x.classList.remove('xbtn-save');
     const a = x.previousElementSibling; if (a && a.classList.contains('xbtn-annuler')) a.remove();
   }
 }
@@ -394,7 +395,7 @@ ACTIONS.closeSave = () => {
 };
 function fermerSiRienEnCours() {
   const f = formModifie();
-  if (f) { toast(f.dataset.brouillon ? 'Pas encore envoyé : « Fermer » le garde en brouillon.' : 'Pas encore enregistré : « Enregistrer et fermer », ou « Annuler ».', 4000); majBoutonFermer(); return; }
+  if (f) { toast(f.dataset.brouillon ? 'Pas encore envoyé : « Fermer » le garde en brouillon.' : 'Pas encore enregistré : « ✓ Enregistrer », ou « Annuler ».', 4000); majBoutonFermer(); return; }
   ACTIONS.close();
 }
 

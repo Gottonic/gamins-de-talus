@@ -118,6 +118,16 @@ document.addEventListener('keydown', (e) => { if (e.key !== 'Escape' || !$('scri
 ACTIONS.ctType = (el) => { CT.type = el.dataset.t; render(); };
 ACTIONS.ctFavori = (el) => { const c = DB.get(el.dataset.key); if (c) DB.put(el.dataset.key, Object.assign({}, c, { favori: !c.favori })); };
 
+/* Les moyens de communication préférés du contact (fiche) : cochés dans le formulaire, avec un lien direct */
+const CANAUX = [['sms', '💬 SMS'], ['whatsapp', '🟢 WhatsApp'], ['signal', '🔵 Signal'], ['appel', '📞 Appel'], ['mail', '✉️ Mail'], ['courrier', '📮 Courrier']];
+function telInternational(t) { let d = String(t || '').replace(/[^+\d]/g, ''); if (!d) return ''; if (d.startsWith('+')) d = d.slice(1); else if (d.startsWith('00')) d = d.slice(2); else if (d.startsWith('0')) d = '41' + d.slice(1); return d; }
+function canauxHtml(c) {
+  const l = (c.canaux || []).filter((k) => CANAUX.some(([x]) => x === k)); if (!l.length) return '';
+  const tel = telInternational(c.telephone);
+  const lien = (k) => k === 'sms' && tel ? `sms:+${tel}` : k === 'whatsapp' && tel ? `https://wa.me/${tel}` : k === 'signal' && tel ? `https://signal.me/#p/+${tel}` : k === 'appel' && tel ? `tel:+${tel}` : k === 'mail' && c.email ? `mailto:${c.email}` : '';
+  return `<dt>Préfère</dt><dd class="ct-canaux">${l.map((k) => { const t = CANAUX.find(([x]) => x === k)[1], h = lien(k); return h ? `<a class="tpill" href="${esc(h)}"${/^https/.test(h) ? ' target="_blank" rel="noopener"' : ''}>${t}</a>` : `<span class="tpill">${t}</span>`; }).join(' ')}</dd>`;
+}
+const canauxCourt = (c) => (c && (c.canaux || []).length ? (c.canaux || []).map((k) => (CANAUX.find(([x]) => x === k) || ['', ''])[1].split(' ')[0]).join('') : '');
 function lignesContact(c) {
   const copy = (v, what) => v ? `<span>${esc(v)}</span><button class="copy" type="button" data-act="copy" data-v="${esc(v)}" aria-label="Copier ${what}">Copier</button>` : '<span class="meta">—</span>';
   const addr = [street(c), place(c)].filter(Boolean).join(', ') || (c.prospection || {}).adresseTexte || '';
@@ -128,6 +138,7 @@ function lignesContact(c) {
     ${c.fonction ? `<dt>Fonction</dt><dd>${esc(c.fonction)}</dd>` : ''}
     <dt>Téléphone</dt><dd>${copy(c.telephone, 'le téléphone')}${tel ? ` <a class="copy" href="tel:${esc(tel[0].replace(/[^+\d]/g, ''))}">Appeler</a>` : ''}</dd>
     <dt>E-mail</dt><dd>${copy(c.email, "l'e-mail")}</dd>
+    ${canauxHtml(c)}
     ${site ? `<dt>Site</dt><dd><a href="${esc(site)}" target="_blank" rel="noopener">${esc(c.site.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a></dd>` : ''}
     <dt>Adresse</dt><dd>${addr ? copy(addr, "l'adresse") : '<span class="meta">À compléter</span>'}</dd>
   </dl>`;
@@ -181,6 +192,7 @@ function contactForm(c, prospect) {
       ${inp('ct-rue', 'Rue', c.rue, { name: 'rue', attrs: { maxlength: 70 } })}${inp('ct-numero', 'N°', c.numero, { name: 'numero', attrs: { maxlength: 16 } })}
       ${inp('ct-npa', 'NPA', c.npa, { name: 'npa', attrs: { maxlength: 16 } })}${inp('ct-localite', 'Localité', c.localite, { name: 'localite', attrs: { maxlength: 35 } })}
     </div>
+    <div class="field"><span class="flabel">Moyens de contact préférés</span><div class="row" style="flex-wrap:wrap;gap:6px 14px">${CANAUX.map(([k, l]) => `<label class="row" style="font-size:14px"><input type="checkbox" name="canal_${k}"${(c.canaux || []).includes(k) ? ' checked' : ''}> ${l}</label>`).join('')}</div></div>
     ${isP ? `<div class="grid2">${sel('ct-prio', 'Priorité', String(p.priorite || 2), [['1', '1 · en premier'], ['2', '2'], ['3', '3 · plus tard']], { name: 'priorite' })}${inp('ct-lieu', 'Lieu', p.lieu, { name: 'lieu' })}</div>
       ${inp('ct-horaires', "Horaires d'appel", p.horaires, { name: 'horaires' })}
       ${txt('ct-pourquoi', 'Pourquoi eux', p.pourquoi, { name: 'pourquoi', rows: 2 })}` : '<p class="hint">Pour une facture par virement, NPA et localité sont obligatoires. La facture est au nom de l\'organisation, « à l\'att. de » la personne.</p>'}
@@ -193,6 +205,7 @@ FORMS.contact = (v) => {
   if (!v.nom && !v.organisation) { toast('Donne au moins un nom ou un établissement.'); return; }
   const k = v.key || 'ct:' + uid('c'), old = DB.get(k) || { cree: new Date().toISOString() };
   const o = Object.assign({}, old); for (const f of ['prenom', 'nomFamille', 'nom', 'organisation', 'fonction', 'telephone', 'email', 'site', 'rue', 'numero', 'npa', 'localite', 'notes']) o[f] = v[f] || '';
+  o.canaux = CANAUX.map(([x]) => x).filter((x) => v['canal_' + x]);
   if (v.prospect) {
     o.prospect = true;
     o.prospection = Object.assign({ statut: 'À contacter' }, old.prospection || {}, { categorie: v.categorie, priorite: Number(v.priorite) || 2, lieu: v.lieu, horaires: v.horaires, pourquoi: v.pourquoi });
