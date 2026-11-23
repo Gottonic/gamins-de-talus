@@ -3,6 +3,11 @@
    NOUVEAUTES : le plus récent en premier. Une entrée n'est ajoutée qu'une fois la note validée par Nicolas. */
 'use strict';
 const NOUVEAUTES = [
+  { id: '2026-11-23', titre: 'Quoi de neuf', points: [
+    '🧺 <b>Stand</b> : « Remplir » et « Compter » sont séparés ; au remplissage, l\'app conseille combien mettre de chaque article (💡) ; au comptage, s\'il manque quelque chose, elle montre ce qui est parti et permet de le noter',
+    '☑ <b>Nouvelle tâche</b> pas à pas : la tâche, puis qui et quand (par défaut : la journée du jour), puis le reste',
+    '👤 <b>Contacts</b> : moyens de contact préférés (SMS, WhatsApp…), avec un lien direct',
+  ] },
   { id: '2026-11-18', titre: 'Quoi de neuf', points: [
     '➕ <b>Bouton « + »</b> en bas à droite, de partout : nouvelle vente, noter mes heures, nouvelle tâche, remplir le stand, dépense, note au journal',
     '🐞 <b>Corrigé</b> : un texte en cours n\'est plus perdu par un clic à côté ou en sélectionnant le texte d\'un mail ; dès qu\'on écrit, « Fermer » devient « Enregistrer et fermer »',
