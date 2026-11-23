@@ -362,11 +362,14 @@ function texteMailFacture(f, rappel) {
     : `vous trouverez ci-joint le bulletin de livraison ${f.blNumero} du ${fmtDate(f.livraison || f.date)}.`;
   return { objet: f.numero ? `Facture ${f.numero} – ${s.nom}` : `Bulletin de livraison ${f.blNumero} – ${s.nom}`, texte: `${salut},\n\n${corps}\n\nMerci beaucoup et à bientôt,\n${Sync.me ? nomDe(Sync.me) + '\n' : ''}${s.nom}${s.telephone ? '\n' + s.telephone : ''}${s.email ? '\n' + s.email : ''}` };
 }
+/* L'adresse où envoyer les factures : celle « pour les factures » de la fiche (comptabilité…), sinon l'adresse du contact */
+const mailFactureDe = (c) => (c && (String(c.emailFacture || '').trim() || String(c.email || '').trim())) || '';
 ACTIONS.facMail = (el) => {
   const k = el.dataset.key, f = DB.get(k); if (!f) return; closeSheet();
   const c = f.client && f.client.id ? DB.get(f.client.id) : null, rappel = !!el.dataset.rappel, t = texteMailFacture(f, rappel);
   openSheet(`${sheetHead(rappel ? 'Envoyer un rappel' : 'Envoyer par mail', nomVente(f))}<form class="sbody form" data-form="facMail"><input type="hidden" name="key" value="${esc(k)}">
-    ${inp('fm-a', 'À', (c && c.email) || '', { name: 'a', type: 'email', req: true, attrs: { placeholder: 'adresse du client' }, sub: c && !c.email ? `Pas d'adresse dans la fiche de ${esc(displayName(c))} : elle y sera ajoutée.` : '' })}
+    ${inp('fm-a', 'À', mailFactureDe(c), { name: 'a', type: 'email', req: true, attrs: { placeholder: 'adresse du client' }, sub: c && !mailFactureDe(c) ? `Pas d'adresse dans la fiche de ${esc(displayName(c))} : elle y sera ajoutée.` : c && c.emailFacture ? 'Adresse pour les factures (fiche du contact).' : '' })}
+    ${c && c.emailFacture && c.email && c.emailFacture.trim().toLowerCase() !== c.email.trim().toLowerCase() ? `<label class="row" style="font-size:14px"><input type="checkbox" name="copieContact"> Copie à ${esc(c.email)} (adresse du contact)</label>` : ''}
     ${inp('fm-o', 'Objet', t.objet, { name: 'objet', req: true })}
     ${txt('fm-t', 'Message', t.texte, { name: 'texte', rows: 9 })}
     <div class="field"><span class="flabel">Pièces jointes</span>
@@ -388,12 +391,13 @@ FORMS.facMail = async (v) => {
   if (LOCAL_MODE || !Sync.sb) { toast("En mode essai, rien n'est envoyé."); return; }
   if (!navigator.onLine) { toast('Il faut du réseau pour envoyer.'); return; }
   const b = $('fm-envoyer'); if (b) { b.disabled = true; b.textContent = 'Envoi…'; }
+  const c0 = f.client && f.client.id ? DB.get(f.client.id) : null;
   try {
     const pieces = await Promise.all((await piecesFacture(f, v)).map(async (p) => ({ nom: p.nom, type: 'application/pdf', base64: await blobB64(p.blob) })));
-    const { data, error } = await Sync.sb.functions.invoke('mails', { body: { envoyer: { a, objet: v.objet, texte: v.texte, pieces, cc: v.copie ? cfgMails().adresse || undefined : undefined, nomExp: cfg().nom } } });
+    const { data, error } = await Sync.sb.functions.invoke('mails', { body: { envoyer: { a, objet: v.objet, texte: v.texte, pieces, cc: [v.copie ? cfgMails().adresse : '', v.copieContact && c0 ? c0.email : ''].filter(Boolean).join(',') || undefined, nomExp: cfg().nom } } });
     if (error) { let m = error.message; try { const x = await error.context.clone().json(); if (x && x.erreur) m = x.erreur; } catch (_) { /* */ } throw new Error(m); }
     const o = DB.get(k), rap = /^Rappel/i.test(v.objet || ''); DB.put(k, Object.assign({}, o, { envois: (o.envois || []).concat([Object.assign({ le: new Date().toISOString(), a, par: Sync.me || '' }, rap ? { rappel: true } : {})]) }, rap ? { verifierApres: addDays(todayISO(), 7) } : {}));
-    const c = f.client && f.client.id ? DB.get(f.client.id) : null; if (c && !c.email) DB.put(f.client.id, Object.assign({}, c, { email: a }));
+    const c = f.client && f.client.id ? DB.get(f.client.id) : null; if (c && !mailFactureDe(c)) DB.put(f.client.id, Object.assign({}, c, { email: a }));
     closeSheet(); toast(`Envoyé à ${a}${data && data.copie ? ' (copie dans « Envoyés »)' : ''}.`, 5000);
   } catch (e) { if (b) { b.disabled = false; b.textContent = 'Envoyer'; } toast('Envoi impossible : ' + e.message, 8000); }
 };
@@ -406,7 +410,8 @@ ACTIONS.facMailApp = async (el) => {
     try { await navigator.share({ files: fichiers, title: v.objet, text: v.texte }); closeSheet(); return; } catch (e) { if (e && e.name === 'AbortError') return; }
   }
   for (const p of pieces) downloadFile(p.nom, p.blob, 'application/pdf');
-  location.href = `mailto:${encodeURIComponent(String(v.a || '').trim())}?subject=${encodeURIComponent(v.objet || '')}&body=${encodeURIComponent((v.texte || '') + '\n\n(Pièce jointe : ' + pieces.map((p) => p.nom).join(', ') + ')')}`;
+  const cf = f.client && f.client.id ? DB.get(f.client.id) : null, ccC = v.copieContact && cf && cf.email ? `cc=${encodeURIComponent(cf.email)}&` : '';
+  location.href = `mailto:${encodeURIComponent(String(v.a || '').trim())}?${ccC}subject=${encodeURIComponent(v.objet || '')}&body=${encodeURIComponent((v.texte || '') + '\n\n(Pièce jointe : ' + pieces.map((p) => p.nom).join(', ') + ')')}`;
   toast('PDF téléchargé : glisse-le dans le mail qui s\'ouvre.', 6000);
 };
 /* ---------- Modifier ou supprimer une vente ----------
@@ -506,7 +511,7 @@ ACTIONS.facVerif = (el) => {
     ${rappels.length ? `<p class="hint">Rappel déjà envoyé le ${rappels.map((e) => fmtDateCourt(String(e.le).slice(0, 10))).join(', ')}.</p>` : ''}
     <div class="menu-list">
       <button type="button" class="menu-it" data-act="facVerifRecu" data-key="${esc(k)}">✓ Reçu : marquer comme payée</button>
-      ${f.numero ? `<button type="button" class="menu-it" data-act="facMail" data-rappel="1" data-key="${esc(k)}">✉️ Pas reçu : envoyer un rappel${c && c.email ? ' à ' + esc(c.email) : ''}</button>` : ''}
+      ${f.numero ? `<button type="button" class="menu-it" data-act="facMail" data-rappel="1" data-key="${esc(k)}">✉️ Pas reçu : envoyer un rappel${mailFactureDe(c) ? ' à ' + esc(mailFactureDe(c)) : ''}</button>` : ''}
       <button type="button" class="menu-it" data-act="facVerifPlusTard" data-key="${esc(k)}" data-j="3">⏳ Pas encore : revoir dans 3 jours</button>
       <button type="button" class="menu-it" data-act="facVerifPlusTard" data-key="${esc(k)}" data-j="7">⏳ Revoir dans une semaine</button>
       <button type="button" class="menu-it" data-act="go" data-href="#/factures/voir/${encodeURIComponent(k)}">Voir la vente</button>

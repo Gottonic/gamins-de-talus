@@ -43,7 +43,7 @@ function pillStatut(s) { return `<span class="pill ps-${groupeStatut(s)}">${esc(
 function contactMatches(c, q) {
   if (!q) return true;
   const p = c.prospection || {};
-  const hay = [c.nom, c.organisation, c.fonction, c.localite, c.npa, c.email, c.telephone, c.site, c.notes, typeLabel(c.type), p.categorie, p.lieu, p.pourquoi, p.statut, ...(c.journal || []).map((e) => e.note)].join(' ').toLowerCase();
+  const hay = [c.nom, c.organisation, c.fonction, c.localite, c.npa, c.email, c.emailFacture, c.telephone, c.site, c.notes, typeLabel(c.type), p.categorie, p.lieu, p.pourquoi, p.statut, ...(c.journal || []).map((e) => e.note)].join(' ').toLowerCase();
   return q.toLowerCase().split(/\s+/).filter(Boolean).every((w) => hay.includes(w));
 }
 function liveSearch(id, setter) {
@@ -138,6 +138,7 @@ function lignesContact(c) {
     ${c.fonction ? `<dt>Fonction</dt><dd>${esc(c.fonction)}</dd>` : ''}
     <dt>Téléphone</dt><dd>${copy(c.telephone, 'le téléphone')}${tel ? ` <a class="copy" href="tel:${esc(tel[0].replace(/[^+\d]/g, ''))}">Appeler</a>` : ''}</dd>
     <dt>E-mail</dt><dd>${copy(c.email, "l'e-mail")}</dd>
+    ${c.emailFacture ? `<dt>Factures à</dt><dd>${copy(c.emailFacture, "l'e-mail des factures")}</dd>` : ''}
     ${canauxHtml(c)}
     ${site ? `<dt>Site</dt><dd><a href="${esc(site)}" target="_blank" rel="noopener">${esc(c.site.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a></dd>` : ''}
     <dt>Adresse</dt><dd>${addr ? copy(addr, "l'adresse") : '<span class="meta">À compléter</span>'}</dd>
@@ -186,6 +187,7 @@ function contactForm(c, prospect) {
       ${isP ? sel('ct-pcat', 'Catégorie', p.categorie || 'Autre', CATEGORIES_P.map((x) => [x, x]), { name: 'categorie' }) : sel('ct-type', 'Type', c.type || 'autre', TYPES.map((t) => [t.k, t.label]), { name: 'type', sub: TARIF_AIDE })}
       ${inp('ct-telephone', 'Téléphone', c.telephone, { name: 'telephone', type: 'tel', attrs: { maxlength: 90 } })}
       ${inp('ct-email', 'E-mail', c.email, { name: 'email', attrs: { maxlength: 160 } })}
+      ${isP ? '' : inp('ct-emailf', 'E-mail pour les factures', c.emailFacture, { name: 'emailFacture', type: 'email', attrs: { maxlength: 160, placeholder: 'si différent (compta…)' } })}
       ${inp('ct-site', 'Site internet', c.site, { name: 'site', attrs: { maxlength: 120 } })}
     </div>
     <div class="grid2">
@@ -206,6 +208,7 @@ FORMS.contact = (v) => {
   if (!v.nom && !v.organisation) { toast('Donne au moins un nom ou un établissement.'); return; }
   const k = v.key || 'ct:' + uid('c'), old = DB.get(k) || { cree: new Date().toISOString() };
   const o = Object.assign({}, old); for (const f of ['prenom', 'nomFamille', 'nom', 'organisation', 'fonction', 'telephone', 'email', 'site', 'rue', 'numero', 'npa', 'localite', 'notes']) o[f] = v[f] || '';
+  if (v.emailFacture != null) o.emailFacture = String(v.emailFacture).trim();
   o.canaux = CANAUX.map(([x]) => x).filter((x) => v['canal_' + x]);
   if (!v.prospect) o.factureMois = !!v.factureMois;
   if (v.prospect) {
